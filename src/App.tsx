@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -157,6 +157,7 @@ export default function App() {
   const [showDeleteChoices, setShowDeleteChoices] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
+  const [showNudgeMenu, setShowNudgeMenu] = useState(false);
   const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' | 'ludo' } | null>(null);
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
@@ -854,6 +855,13 @@ export default function App() {
                               <ImageIcon className="w-4 h-4 text-[#FF8FA3]" />
                               Wallpaper
                             </button>
+                            <button 
+                              onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
+                              className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                            >
+                              <Gamepad2 className="w-4 h-4 text-[#FF8FA3]" />
+                              Play Games
+                            </button>
                           </motion.div>
                         </>
                       )}
@@ -911,6 +919,8 @@ export default function App() {
               isTabActive={isTabActive}
               onBroadcastTyping={broadcastTyping}
               onSendNudge={sendNudge}
+              showNudgeMenu={showNudgeMenu}
+              onSetShowNudgeMenu={setShowNudgeMenu}
             />
           </div>
         </div>
@@ -1210,7 +1220,9 @@ function ChatView({
   onInputTextChange,
   isTabActive,
   onBroadcastTyping,
-  onSendNudge
+  onSendNudge,
+  showNudgeMenu,
+  onSetShowNudgeMenu
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -1243,7 +1255,9 @@ function ChatView({
   onInputTextChange: (val: string) => void,
   isTabActive: boolean,
   onBroadcastTyping: (isTyping: boolean) => void,
-  onSendNudge: (type: string) => void
+  onSendNudge: (type: string) => void,
+  showNudgeMenu: boolean,
+  onSetShowNudgeMenu: (val: boolean) => void
 }) {
   const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1562,10 +1576,10 @@ function ChatView({
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
                <button 
                 type="button"
-                onClick={() => onSetShowGamesMenu(true)}
+                onClick={() => onSetShowNudgeMenu(true)}
                 className="p-1 text-[#FF8FA3]/60 hover:text-[#FF8FA3] transition-colors active:scale-90"
               >
-                <Gamepad2 className="w-5 h-5" />
+                <Heart className="w-5 h-5 fill-current" />
               </button>
             </div>
           </div>
@@ -1588,24 +1602,39 @@ function ChatView({
         <div className="grid grid-cols-4 gap-4 p-4 lg:p-6">
           <AttachmentOption icon={<Camera className="w-6 h-6" />} label="Camera" color="bg-[#FF8FA3]" onClick={() => onSetShowAttachmentMenu(false)} />
           <AttachmentOption icon={<ImageIcon className="w-6 h-6" />} label="Gallery" color="bg-[#FFD6C9]" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[#E9D5FF]" onClick={() => onSetShowAttachmentMenu(false)} />
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={showNudgeMenu}
+        onClose={() => onSetShowNudgeMenu(false)}
+        title="Send a Feeling"
+      >
+        <div className="grid grid-cols-4 gap-4 p-4 lg:p-6 pb-10">
           <AttachmentOption 
             icon={<Heart className="w-6 h-6" />} 
-            label="Nudge" 
+            label="Hug" 
             color="bg-pink-400" 
-            onClick={() => {
-              onSendNudge('hug');
-              onSetShowAttachmentMenu(false);
-            }} 
+            onClick={() => { onSendNudge('hug'); onSetShowNudgeMenu(false); }} 
           />
-          <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[#E9D5FF]" onClick={() => onSetShowAttachmentMenu(false)} />
           <AttachmentOption 
-            icon={<Gamepad2 className="w-6 h-6" />} 
-            label="Games" 
-            color="bg-[#BFDBFE]" 
-            onClick={() => {
-              onSetShowAttachmentMenu(false);
-              onSetShowGamesMenu(true);
-            }} 
+            icon={<Wind className="w-6 h-6" />} 
+            label="Kiss" 
+            color="bg-red-400" 
+            onClick={() => { onSendNudge('kiss'); onSetShowNudgeMenu(false); }} 
+          />
+          <AttachmentOption 
+            icon={<Laugh className="w-6 h-6" />} 
+            label="Tickle" 
+            color="bg-yellow-400" 
+            onClick={() => { onSendNudge('tickle'); onSetShowNudgeMenu(false); }} 
+          />
+          <AttachmentOption 
+            icon={<Star className="w-6 h-6" />} 
+            label="Miss" 
+            color="bg-blue-400" 
+            onClick={() => { onSendNudge('miss'); onSetShowNudgeMenu(false); }} 
           />
         </div>
       </BottomSheet>
@@ -1829,12 +1858,25 @@ function TicTacToe({ sessionId, role, userProfile, partnerProfile, onClose }: { 
 }
 
 function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
+  const configs: Record<string, { label: string, emoji: string, color: string, secondaryEmoji: string }> = {
+    hug: { label: 'Virtual Hug', emoji: '💖', color: 'text-pink-500', secondaryEmoji: '❤️' },
+    kiss: { label: 'Sweet Kiss', emoji: '💋', color: 'text-red-500', secondaryEmoji: '😘' },
+    tickle: { label: 'Tickle!', emoji: '😂', color: 'text-yellow-500', secondaryEmoji: '🤭' },
+    miss: { label: 'Miss You', emoji: '🥺', color: 'text-blue-500', secondaryEmoji: '💙' },
+  };
+
+  const config = configs[nudge.type] || configs.hug;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center bg-pink-400/10 backdrop-blur-[2px]"
+      className={`fixed inset-0 z-[200] pointer-events-none flex items-center justify-center backdrop-blur-[2px] transition-colors duration-500 ${
+        nudge.type === 'kiss' ? 'bg-red-500/10' : 
+        nudge.type === 'tickle' ? 'bg-yellow-500/10' : 
+        nudge.type === 'miss' ? 'bg-blue-500/10' : 'bg-pink-400/10'
+      }`}
     >
       <div className="relative flex flex-col items-center">
         <motion.div
@@ -1845,11 +1887,34 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
              y: [0, -20, 0]
            }}
            transition={{ duration: 1, ease: "easeOut" }}
-           className="relative"
+           className="relative flex items-center justify-center"
         >
-          <Heart className="w-40 h-40 text-pink-500 fill-pink-500 drop-shadow-2xl" />
+          {nudge.type === 'kiss' ? (
+             <motion.div 
+              animate={{ scale: [1, 1.2, 1], rotate: [-10, 10, -10] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+             >
+                <div className="text-[120px] drop-shadow-2xl">💋</div>
+             </motion.div>
+          ) : nudge.type === 'tickle' ? (
+             <motion.div 
+              animate={{ x: [-10, 10, -10], y: [-5, 5, -5] }}
+              transition={{ repeat: Infinity, duration: 0.2 }}
+             >
+                <div className="text-[120px] drop-shadow-2xl">😂</div>
+             </motion.div>
+          ) : nudge.type === 'miss' ? (
+            <motion.div 
+              animate={{ opacity: [0.7, 1, 0.7], y: [0, -10, 0] }}
+              transition={{ repeat: Infinity, duration: 3 }}
+             >
+                <div className="text-[120px] drop-shadow-2xl">🥺</div>
+             </motion.div>
+          ) : (
+            <Heart className={`w-40 h-40 ${config.color} fill-current drop-shadow-2xl`} />
+          )}
           
-          {/* Floating mini hearts */}
+          {/* Floating mini items */}
           {[...Array(12)].map((_, i) => (
             <motion.div
               key={i}
@@ -1857,8 +1922,8 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
               animate={{ 
                 opacity: [0, 1, 0],
                 scale: [0.5, 1.5, 0.5],
-                x: (Math.random() - 0.5) * 300,
-                y: (Math.random() - 0.5) * 300,
+                x: (Math.random() - 0.5) * 400,
+                y: (Math.random() - 0.5) * 400,
                 rotate: Math.random() * 360
               }}
               transition={{ 
@@ -1868,7 +1933,7 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
               }}
               className="absolute top-1/2 left-1/2"
             >
-              <Heart className="w-6 h-6 text-pink-300 fill-pink-300" />
+              <div className="text-2xl">{config.secondaryEmoji}</div>
             </motion.div>
           ))}
         </motion.div>
@@ -1879,8 +1944,8 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
           transition={{ delay: 0.5 }}
           className="mt-12 bg-white/90 backdrop-blur-md px-8 py-4 rounded-[2rem] shadow-2xl border border-pink-100 flex flex-col items-center gap-1"
         >
-          <span className="text-sm font-black text-pink-500 uppercase tracking-[0.2em]">Virtual Hug</span>
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-60">From {nudge.sender} 💖</span>
+          <span className={`text-sm font-black uppercase tracking-[0.2em] ${config.color}`}>{config.label}</span>
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-60">From {nudge.sender} {config.emoji}</span>
         </motion.div>
       </div>
     </motion.div>
