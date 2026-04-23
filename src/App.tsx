@@ -2701,9 +2701,9 @@ function MessageItem({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isSwiping || selectionActive || msg.deleted) return;
+    if (isSwiping || selectionActive) return;
     longPressTimer.current = setTimeout(() => {
-      setShowPicker(true);
+      if (!msg.deleted) setShowPicker(true);
       if (!isSelected) onToggleSelect(msg);
       if (window.navigator.vibrate) window.navigator.vibrate(40);
     }, 400);
@@ -2747,8 +2747,8 @@ function MessageItem({
       onPointerLeave={handlePointerUp}
       onContextMenu={(e) => {
         e.preventDefault();
-        if (isSwiping || msg.deleted) return;
-        setShowPicker(true);
+        if (isSwiping) return;
+        if (!msg.deleted) setShowPicker(true);
         if (!isSelected) onToggleSelect(msg);
         if (window.navigator.vibrate) window.navigator.vibrate(50);
       }}
@@ -2859,7 +2859,7 @@ function MessageItem({
             <div 
               className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all ${
                 isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
-              } ${msg.deleted ? 'select-none pointer-events-none' : ''}`}
+              } ${msg.deleted ? 'select-none' : ''}`}
             >
               {/* Show reply context */}
               {msg.replyTo && !msg.deleted && (
