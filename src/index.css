@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  --theme-bg: #FFF8F6;
+  --theme-text: #1a1a1a;
+  --theme-header-bg: rgba(255, 255, 255, 0.8);
+  --theme-bubble-owner: #FF8FA3;
+  --theme-bubble-owner-text: #FFFFFF;
+  --theme-bubble-partner: #FFD6C9;
+  --theme-bubble-partner-text: #5D5D5D;
+  --theme-input-bg: #FFFFFF;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  max-width: 100vw;
+  position: relative;
+  touch-action: none;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+body {
+  touch-action: pan-y;
+}
+
+@theme {
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --color-romantic-bg: var(--theme-bg);
+  --color-romantic-pink: #FF8FA3;
+  --color-romantic-peach: #FFD6C9;
+  --color-romantic-gray: #6E6E6E;
+}
+
+@layer components {
+  .glass-panel {
+    background: var(--theme-header-bg);
+    backdrop-filter: blur(16px);
+    border-right: 1px solid rgba(255, 143, 163, 0.1);
+  }
+
+  .chat-bubble-owner {
+    background: var(--theme-bubble-owner);
+    color: var(--theme-bubble-owner-text);
+    border-radius: 20px 20px 4px 20px;
+    box-shadow: 0 4px 12px rgba(255, 143, 163, 0.2);
+  }
+
+  .chat-bubble-partner {
+    background: var(--theme-bubble-partner);
+    color: var(--theme-bubble-partner-text);
+    border-radius: 20px 20px 20px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.02);
+  }
+
+  .reaction-tag {
+    @apply flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/50 backdrop-blur-sm border border-black/5 text-[10px] font-bold shadow-sm hover:bg-white transition-all cursor-pointer;
+  }
+
+  /* Custom Scrollbar for a cleaner look */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  @keyframes float-heart {
+    0% { transform: translateY(0) scale(0); opacity: 0; }
+    20% { opacity: 1; scale: 1.2; }
+    100% { transform: translateY(-40px) scale(0.8); opacity: 0; }
+  }
+
+  .animate-float-heart {
+    animation: float-heart 1s ease-out forwards;
+  }
+}
