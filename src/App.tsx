@@ -164,6 +164,7 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isTabActive, setIsTabActive] = useState(true);
+  const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
   const mainChannelRef = useRef<any>(null);
 
   useEffect(() => {
@@ -409,6 +410,16 @@ export default function App() {
           return prev.filter(id => id !== userId);
         });
       })
+      .on('broadcast', { event: 'nudge' }, ({ payload }) => {
+        const { senderId, senderName, type } = payload;
+        if (senderId !== user.id) {
+          setActiveNudge({ type, sender: senderName });
+          // Auto-clear nudge after 4 seconds
+          setTimeout(() => setActiveNudge(null), 4000);
+          // Haptic feedback if supported
+          if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200]);
+        }
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await presenceChannel.track({ 
@@ -446,6 +457,24 @@ export default function App() {
         event: 'typing',
         payload: { userId: user.id, isTyping }
       });
+    }
+  };
+
+  const sendNudge = (type: string = 'hug') => {
+    if (mainChannelRef.current && user && userProfile) {
+      const senderName = userProfile.role === 'owner' ? 'Rahul' : 'Nusrat';
+      mainChannelRef.current.send({
+        type: 'broadcast',
+        event: 'nudge',
+        payload: { 
+          senderId: user.id, 
+          senderName,
+          type 
+        }
+      });
+      // Show locally too
+      setActiveNudge({ type, sender: 'You' });
+      setTimeout(() => setActiveNudge(null), 4000);
     }
   };
 
@@ -881,10 +910,17 @@ export default function App() {
               onInputTextChange={setInputText}
               isTabActive={isTabActive}
               onBroadcastTyping={broadcastTyping}
+              onSendNudge={sendNudge}
             />
           </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {activeNudge && (
+          <NudgeOverlay nudge={activeNudge} />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showProfileModal && userProfile && (
@@ -1173,7 +1209,8 @@ function ChatView({
   inputText,
   onInputTextChange,
   isTabActive,
-  onBroadcastTyping
+  onBroadcastTyping,
+  onSendNudge
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -1205,7 +1242,8 @@ function ChatView({
   inputText: string,
   onInputTextChange: (val: string) => void,
   isTabActive: boolean,
-  onBroadcastTyping: (isTyping: boolean) => void
+  onBroadcastTyping: (isTyping: boolean) => void,
+  onSendNudge: (type: string) => void
 }) {
   const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1550,6 +1588,15 @@ function ChatView({
         <div className="grid grid-cols-4 gap-4 p-4 lg:p-6">
           <AttachmentOption icon={<Camera className="w-6 h-6" />} label="Camera" color="bg-[#FF8FA3]" onClick={() => onSetShowAttachmentMenu(false)} />
           <AttachmentOption icon={<ImageIcon className="w-6 h-6" />} label="Gallery" color="bg-[#FFD6C9]" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption 
+            icon={<Heart className="w-6 h-6" />} 
+            label="Nudge" 
+            color="bg-pink-400" 
+            onClick={() => {
+              onSendNudge('hug');
+              onSetShowAttachmentMenu(false);
+            }} 
+          />
           <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[#E9D5FF]" onClick={() => onSetShowAttachmentMenu(false)} />
           <AttachmentOption 
             icon={<Gamepad2 className="w-6 h-6" />} 
@@ -1778,6 +1825,65 @@ function TicTacToe({ sessionId, role, userProfile, partnerProfile, onClose }: { 
         )}
       </motion.div>
     </div>
+  );
+}
+
+function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center bg-pink-400/10 backdrop-blur-[2px]"
+    >
+      <div className="relative flex flex-col items-center">
+        <motion.div
+           initial={{ scale: 0, rotate: -20 }}
+           animate={{ 
+             scale: [0, 1.2, 1], 
+             rotate: [20, -10, 0],
+             y: [0, -20, 0]
+           }}
+           transition={{ duration: 1, ease: "easeOut" }}
+           className="relative"
+        >
+          <Heart className="w-40 h-40 text-pink-500 fill-pink-500 drop-shadow-2xl" />
+          
+          {/* Floating mini hearts */}
+          {[...Array(12)].map((_, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{ 
+                opacity: [0, 1, 0],
+                scale: [0.5, 1.5, 0.5],
+                x: (Math.random() - 0.5) * 300,
+                y: (Math.random() - 0.5) * 300,
+                rotate: Math.random() * 360
+              }}
+              transition={{ 
+                duration: 2 + Math.random() * 2,
+                repeat: Infinity,
+                delay: Math.random() * 0.5
+              }}
+              className="absolute top-1/2 left-1/2"
+            >
+              <Heart className="w-6 h-6 text-pink-300 fill-pink-300" />
+            </motion.div>
+          ))}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-12 bg-white/90 backdrop-blur-md px-8 py-4 rounded-[2rem] shadow-2xl border border-pink-100 flex flex-col items-center gap-1"
+        >
+          <span className="text-sm font-black text-pink-500 uppercase tracking-[0.2em]">Virtual Hug</span>
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-60">From {nudge.sender} 💖</span>
+        </motion.div>
+      </div>
+    </motion.div>
   );
 }
 
