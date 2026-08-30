@@ -46,13 +46,25 @@ export const ExternalHubView: React.FC<ExternalHubViewProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.AndroidBridge?.openTab) {
+      try {
+        window.AndroidBridge.openTab('dashboard');
+        return;
+      } catch (err) {
+        console.warn('AndroidBridge call error:', err);
+      }
+    }
+    onBackToHub();
+  };
+
   return (
     <div className="h-screen w-full bg-[#121212] text-white flex flex-col overflow-hidden relative select-none">
       {/* Top Floating Control Bar */}
       <header className="h-14 px-4 bg-[#1e1e1e]/95 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-30 shrink-0">
         <div className="flex items-center gap-3">
           <button
-            onClick={onBackToHub}
+            onClick={handleBack}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-semibold text-xs transition-all"
             title="Return to OnlyUs Hub"
           >

@@ -3,3 +3,10 @@ declare module "*.webp" {
   const src: string;
   export default src;
 }
+
+interface Window {
+  AndroidBridge?: {
+    openTab?: (tabName: string) => void;
+    onBackPress?: () => void;
+  };
+}

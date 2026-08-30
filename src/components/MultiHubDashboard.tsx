@@ -52,6 +52,32 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   const myName = userProfile?.display_name || (isOwner ? 'Rahul' : 'Nusrat');
   const isPartnerOnline = formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online';
 
+  const handleTabClick = (tab: 'chat' | 'instagram' | 'whatsapp') => {
+    // 1. If running inside Android Native APK Shell, notify AndroidBridge
+    if (typeof window !== 'undefined' && window.AndroidBridge?.openTab) {
+      try {
+        window.AndroidBridge.openTab(tab);
+        return;
+      } catch (err) {
+        console.warn('AndroidBridge call error:', err);
+      }
+    }
+
+    // 2. Direct opening without intermediary screen
+    if (tab === 'instagram') {
+      window.location.href = 'https://www.instagram.com';
+      return;
+    }
+
+    if (tab === 'whatsapp') {
+      window.location.href = 'https://web.whatsapp.com';
+      return;
+    }
+
+    // 3. Chat navigation
+    onSelectTab(tab);
+  };
+
   return (
     <div className="min-h-screen bg-[#FFF0F3] text-[#1a1a1a] flex flex-col justify-between relative overflow-hidden select-none">
       {/* Background soft ambient glows */}
@@ -165,7 +191,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
           <motion.div
             whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.985 }}
-            onClick={() => onSelectTab('chat')}
+            onClick={() => handleTabClick('chat')}
             className="group relative cursor-pointer p-4 rounded-3xl bg-gradient-to-r from-[#FF758F] via-[#FF4D6D] to-[#C9184A] text-white shadow-[0_12px_32px_rgba(201,24,74,0.28)] overflow-hidden transition-all"
           >
             <div className="absolute right-0 top-0 bottom-0 w-32 bg-white/10 -skew-x-12 translate-x-10 pointer-events-none group-hover:translate-x-6 transition-transform duration-500" />
@@ -197,7 +223,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
           <motion.div
             whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.985 }}
-            onClick={() => onSelectTab('instagram')}
+            onClick={() => handleTabClick('instagram')}
             className="group relative cursor-pointer p-4 rounded-3xl bg-white/95 backdrop-blur-md border border-[#FFCCD5] text-[#1a1a1a] shadow-[0_8px_24px_rgba(255,143,163,0.12)] hover:border-[#FF758F] transition-all"
           >
             <div className="flex items-center justify-between">
@@ -227,7 +253,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
           <motion.div
             whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.985 }}
-            onClick={() => onSelectTab('whatsapp')}
+            onClick={() => handleTabClick('whatsapp')}
             className="group relative cursor-pointer p-4 rounded-3xl bg-white/95 backdrop-blur-md border border-[#FFCCD5] text-[#1a1a1a] shadow-[0_8px_24px_rgba(255,143,163,0.12)] hover:border-emerald-300 transition-all"
           >
             <div className="flex items-center justify-between">

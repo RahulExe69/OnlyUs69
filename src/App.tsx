@@ -180,6 +180,29 @@ export default function App() {
   const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>('dashboard');
   const mainChannelRef = useRef<any>(null);
 
+  const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+    if (typeof window !== 'undefined' && window.AndroidBridge?.openTab) {
+      try {
+        window.AndroidBridge.openTab(tab);
+        return;
+      } catch (err) {
+        console.warn('AndroidBridge call error:', err);
+      }
+    }
+
+    if (tab === 'instagram') {
+      window.location.href = 'https://www.instagram.com';
+      return;
+    }
+
+    if (tab === 'whatsapp') {
+      window.location.href = 'https://web.whatsapp.com';
+      return;
+    }
+
+    setActiveHubTab(tab);
+  };
+
   useEffect(() => {
     if (messages.length > 0) {
       // Keep only last 100 for cache
@@ -966,7 +989,7 @@ export default function App() {
           socketOnlineUsers={socketOnlineUsers}
           formatLastSeen={formatLastSeen}
           totalMessages={messages.length}
-          onSelectTab={(tab) => setActiveHubTab(tab)}
+          onSelectTab={(tab) => handleHubTabChange(tab)}
           onOpenSettings={() => setShowProfileModal(true)}
           onOpenProfile={() => setShowProfileModal(true)}
           onLogout={handleLogout}
@@ -974,7 +997,7 @@ export default function App() {
       ) : activeHubTab === 'instagram' || activeHubTab === 'whatsapp' ? (
         <ExternalHubView
           type={activeHubTab}
-          onBackToHub={() => setActiveHubTab('dashboard')}
+          onBackToHub={() => handleHubTabChange('dashboard')}
         />
       ) : (
         <main className="flex-1 flex flex-col bg-[#FFF8F6] overflow-hidden z-30 transition-all w-full relative">
@@ -1033,7 +1056,7 @@ export default function App() {
                   <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
                     {/* Back to Multi-Hub button */}
                     <button
-                      onClick={() => setActiveHubTab('dashboard')}
+                      onClick={() => handleHubTabChange('dashboard')}
                       className="p-2 -ml-1 mr-2 text-[#FF4D6D] bg-[#FFF0F3] hover:bg-[#FFCCD5]/50 border border-[#FF8FA3]/25 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
                       title="Back to OnlyUs Hub"
                     >
@@ -1098,21 +1121,21 @@ export default function App() {
                               className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] border border-black/5 z-50 overflow-hidden py-1"
                             >
                               <button 
-                                onClick={() => { setActiveHubTab('dashboard'); setShowMenu(false); }}
+                                onClick={() => { handleHubTabChange('dashboard'); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
                               >
                                 <LayoutGrid className="w-4 h-4 text-[#FF4D6D]" />
                                 OnlyUs Hub
                               </button>
                               <button 
-                                onClick={() => { setActiveHubTab('instagram'); setShowMenu(false); }}
+                                onClick={() => { handleHubTabChange('instagram'); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
                               >
                                 <Instagram className="w-4 h-4 text-pink-600" />
                                 Instagram
                               </button>
                               <button 
-                                onClick={() => { setActiveHubTab('whatsapp'); setShowMenu(false); }}
+                                onClick={() => { handleHubTabChange('whatsapp'); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
                               >
                                 <MessageSquareCode className="w-4 h-4 text-emerald-600" />
