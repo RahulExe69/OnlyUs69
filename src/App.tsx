@@ -42,8 +42,10 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
+import { MultiHubDashboard } from './components/MultiHubDashboard';
+import { ExternalHubView } from './components/ExternalHubView';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -175,6 +177,7 @@ export default function App() {
   const [inputText, setInputText] = useState("");
   const [isTabActive, setIsTabActive] = useState(true);
   const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
+  const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>('dashboard');
   const mainChannelRef = useRef<any>(null);
 
   useEffect(() => {
@@ -274,6 +277,13 @@ export default function App() {
 
   // Lifecycle 1: Auth State Monitor (Supports Google OAuth for Rahul & 6-Digit Passcode Session for Nusrat)
   useEffect(() => {
+    // Helper to keep URL bar clean (strip long OAuth hash fragments like #access_token=...)
+    const cleanUrlHash = () => {
+      if (typeof window !== 'undefined' && window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token=') || window.location.hash.includes('token_type='))) {
+        window.history.replaceState(null, '', '/chat');
+      }
+    };
+
     // Check for cached partner passcode session in localStorage first
     const partnerSessionStr = localStorage.getItem('onlyus_partner_session');
     if (partnerSessionStr) {
@@ -302,6 +312,9 @@ export default function App() {
           setIsPartner(true);
           setIsOwner(false);
           setLoading(false);
+          if (window.location.pathname !== '/chat') {
+            window.history.replaceState(null, '', '/chat');
+          }
         }
       } catch (e) {
         localStorage.removeItem('onlyus_partner_session');
@@ -312,6 +325,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
+        cleanUrlHash();
       } else {
         const cached = localStorage.getItem('onlyus_partner_session');
         if (!cached) {
@@ -326,9 +340,10 @@ export default function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(session.user);
+        cleanUrlHash();
       } else {
         const cached = localStorage.getItem('onlyus_partner_session');
         if (!cached) {
@@ -343,7 +358,13 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Run cleanUrlHash after brief timeout to ensure browser address bar is sanitized
+    const timer = setTimeout(cleanUrlHash, 200);
+
+    return () => {
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Helper: Verify if partner's cached passcode is still valid against current app_config
@@ -477,9 +498,9 @@ export default function App() {
     };
     fetchPartner();
 
-    // Periodic DB last_seen heartbeat every 15s while authenticated
+    // Periodic DB last_seen heartbeat every 15s ONLY while tab is active and visible
     const heartbeatInterval = setInterval(() => {
-      if (user?.id) {
+      if (user?.id && !document.hidden && document.visibilityState === 'visible') {
         supabase.from('users').update({ 
           last_seen: new Date().toISOString() 
         }).eq('id', user.id).then();
@@ -507,10 +528,15 @@ export default function App() {
         const state = presenceChannel.presenceState();
         const presences = Object.values(state).flat() as any[];
         
-        const onlineIds = presences.map(p => p.user_id).filter(Boolean);
+        // WhatsApp style: Online ONLY if is_active is true (unminimized, foreground tab)
+        const onlineIds = presences
+          .filter(p => p.is_active === true)
+          .map(p => p.user_id)
+          .filter(Boolean);
+
         setSocketOnlineUsers([...new Set(onlineIds)]);
 
-        // Safety: If they are not online, they are definitely not typing
+        // Safety: If they are not active/online, they are definitely not typing
         setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -535,10 +561,11 @@ export default function App() {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+          const currentVisible = document.visibilityState === 'visible' && !document.hidden;
           await presenceChannel.track({ 
             user_id: user.id, 
             online_at: new Date().toISOString(),
-            is_active: isTabActive,
+            is_active: currentVisible,
             role: role
           });
           setIsSocketConnected(true);
@@ -567,7 +594,7 @@ export default function App() {
   }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner]);
 
   const broadcastTyping = (isTyping: boolean) => {
-    if (mainChannelRef.current && user) {
+    if (mainChannelRef.current && user && isTabActive) {
       mainChannelRef.current.send({
         type: 'broadcast',
         event: 'typing',
@@ -594,22 +621,64 @@ export default function App() {
     }
   };
 
-  // Track Tab Visibility for accurate Read Receipts and Presence
+  // Track Tab Visibility & Minimize/Focus events (WhatsApp-style instant hide/show)
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      const isVisible = document.visibilityState === 'visible';
-      setIsTabActive(isVisible);
-      
-      if (userProfile) {
+    const handleHide = () => {
+      setIsTabActive(false);
+      if (userProfile?.uid) {
         supabase.from('users').update({ 
           last_seen: new Date().toISOString() 
         }).eq('id', userProfile.uid).then();
       }
+      if (mainChannelRef.current && user) {
+        mainChannelRef.current.track({
+          user_id: user.id,
+          online_at: new Date().toISOString(),
+          is_active: false,
+          role: userProfile?.role || (isOwner ? 'owner' : 'partner')
+        });
+      }
     };
-    
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => window.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [userProfile]);
+
+    const handleShow = () => {
+      setIsTabActive(true);
+      if (userProfile?.uid) {
+        supabase.from('users').update({ 
+          last_seen: new Date().toISOString() 
+        }).eq('id', userProfile.uid).then();
+      }
+      if (mainChannelRef.current && user) {
+        mainChannelRef.current.track({
+          user_id: user.id,
+          online_at: new Date().toISOString(),
+          is_active: true,
+          role: userProfile?.role || (isOwner ? 'owner' : 'partner')
+        });
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden || document.visibilityState !== 'visible') {
+        handleHide();
+      } else {
+        handleShow();
+      }
+    };
+
+    window.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', handleHide);
+    window.addEventListener('beforeunload', handleHide);
+    window.addEventListener('blur', handleHide);
+    window.addEventListener('focus', handleShow);
+
+    return () => {
+      window.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', handleHide);
+      window.removeEventListener('beforeunload', handleHide);
+      window.removeEventListener('blur', handleHide);
+      window.removeEventListener('focus', handleShow);
+    };
+  }, [userProfile?.uid, user?.id, isOwner]);
 
   // Unique Room ID for the couple
   const chatRoomId = appConfig ? `room_${appConfig.owner_email.replace(/[@.]/g, '_')}` : 'main-chat';
@@ -617,7 +686,10 @@ export default function App() {
   const handleLogin = async () => {
     setError(null);
     try {
-      await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+      await supabase.auth.signInWithOAuth({ 
+        provider: 'google', 
+        options: { redirectTo: `${window.location.origin}/chat` } 
+      });
     } catch (err: any) {
       console.error("Login failed:", err);
       if (err.code === 'auth/unauthorized-domain') {
@@ -664,6 +736,9 @@ export default function App() {
         setIsPartner(true);
         setIsOwner(false);
         setLoading(false);
+        if (window.location.pathname !== '/chat') {
+          window.history.replaceState(null, '', '/chat');
+        }
         return true;
       } else {
         setError("Invalid 6-digit passcode. Please check with Rahul for the active PIN.");
@@ -728,6 +803,9 @@ export default function App() {
     setIsPartner(false);
     setIsOwner(false);
     setSocketOnlineUsers([]);
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/');
+    }
 
     try {
       // 3. Perform actual signout
@@ -832,8 +910,10 @@ export default function App() {
 
   const formatLastSeen = (timestamp: any, uid?: string) => {
     // 1. Instant Realtime Presence check
-    if (uid && socketOnlineUsers.includes(uid)) return "Online";
-    if (socketOnlineUsers.some(id => id !== user?.id)) return "Online";
+    const targetId = uid || partnerProfile?.uid || partnerProfile?.id;
+    if (targetId && socketOnlineUsers.includes(targetId)) {
+      return "Online";
+    }
 
     if (!timestamp) return "Offline";
     
@@ -841,18 +921,15 @@ export default function App() {
     const lastMillis = getMillis(timestamp);
     if (lastMillis <= 0) return "Offline";
 
-    const now = Date.now();
-    const diffSeconds = (now - lastMillis) / 1000;
-
-    // Active within 45 seconds (tolerance for heartbeat/network transitions)
-    if (diffSeconds < 45) {
-      return "Online";
-    }
-
     const last = new Date(lastMillis);
-    const nowDate = new Date();
-    const isToday = last.toDateString() === nowDate.toDateString();
+    const now = new Date();
+    const isToday = last.toDateString() === now.toDateString();
+    const diffSeconds = Math.max(0, Math.floor((now.getTime() - lastMillis) / 1000));
+
     if (isToday) {
+      if (diffSeconds < 60) {
+        return "Last seen just now";
+      }
       return `Last seen today at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
     return `Last seen on ${last.toLocaleDateString()} at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -879,208 +956,260 @@ export default function App() {
 
   return (
     <div className="flex h-[100dvh] bg-[#FFF8F6] font-sans text-[#1a1a1a] overflow-hidden relative">
-      <main className="flex-1 flex flex-col bg-[#FFF8F6] overflow-hidden z-30 transition-all w-full relative">
-        <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[#FFF8F6] shadow-sm border-b border-[#FF8FA3]/10">
-          <AnimatePresence mode="wait">
-            {selectedMessages.length > 0 ? (
-              <motion.header 
-                key="selection-header"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[#FF8FA3] text-white z-30"
-              >
-                <div className="flex items-center gap-6 lg:gap-8">
-                  <button onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 text-white">
-                    <X className="w-5 h-5 lg:w-6 lg:h-6" />
-                  </button>
-                  <span className="text-lg lg:text-xl font-bold tracking-tight">{selectedMessages.length}</span>
-                </div>
-                <div className="flex items-center gap-2 lg:gap-4">
-                  {selectedMessages.length === 1 && (
-                    <>
-                      <button onClick={startReplyFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Reply">
-                        <Reply className="w-5 h-5" />
-                      </button>
-                      {selectedMessages[0].sender_role === userProfile?.role && !selectedMessages[0].deleted && (
-                        <button onClick={startEditFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Edit">
-                          <Pencil className="w-5 h-5" />
+      {activeHubTab === 'dashboard' ? (
+        <MultiHubDashboard
+          userProfile={userProfile}
+          partnerProfile={partnerProfile}
+          isOwner={isOwner}
+          isPartner={isPartner}
+          isSocketConnected={isSocketConnected}
+          socketOnlineUsers={socketOnlineUsers}
+          formatLastSeen={formatLastSeen}
+          totalMessages={messages.length}
+          onSelectTab={(tab) => setActiveHubTab(tab)}
+          onOpenSettings={() => setShowProfileModal(true)}
+          onOpenProfile={() => setShowProfileModal(true)}
+          onLogout={handleLogout}
+        />
+      ) : activeHubTab === 'instagram' || activeHubTab === 'whatsapp' ? (
+        <ExternalHubView
+          type={activeHubTab}
+          onBackToHub={() => setActiveHubTab('dashboard')}
+        />
+      ) : (
+        <main className="flex-1 flex flex-col bg-[#FFF8F6] overflow-hidden z-30 transition-all w-full relative">
+          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[#FFF8F6] shadow-sm border-b border-[#FF8FA3]/10">
+            <AnimatePresence mode="wait">
+              {selectedMessages.length > 0 ? (
+                <motion.header 
+                  key="selection-header"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[#FF8FA3] text-white z-30"
+                >
+                  <div className="flex items-center gap-6 lg:gap-8">
+                    <button onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 text-white">
+                      <X className="w-5 h-5 lg:w-6 lg:h-6" />
+                    </button>
+                    <span className="text-lg lg:text-xl font-bold tracking-tight">{selectedMessages.length}</span>
+                  </div>
+                  <div className="flex items-center gap-2 lg:gap-4">
+                    {selectedMessages.length === 1 && (
+                      <>
+                        <button onClick={startReplyFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Reply">
+                          <Reply className="w-5 h-5" />
                         </button>
-                      )}
-                    </>
-                  )}
-                  {selectedMessages.length < messages.length && (
-                    <button onClick={selectAllMessages} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Select All">
-                      <ListChecks className="w-5 h-5" />
+                        {selectedMessages[0].sender_role === userProfile?.role && !selectedMessages[0].deleted && (
+                          <button onClick={startEditFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Edit">
+                            <Pencil className="w-5 h-5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {selectedMessages.length < messages.length && (
+                      <button onClick={selectAllMessages} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Select All">
+                        <ListChecks className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button onClick={() => setShowDeleteChoices(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Delete">
+                      <Trash2 className="w-5 h-5" />
                     </button>
-                  )}
-                  <button onClick={() => setShowDeleteChoices(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Delete">
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                  {selectedMessages.every(m => !m.deleted) && (
-                    <button onClick={copySelected} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Copy">
-                      <Copy className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-              </motion.header>
-            ) : (
-              <motion.header 
-                key="normal-header"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 px-4 lg:px-6 flex items-center justify-between bg-white/95 backdrop-blur-md z-20"
-              >
-                <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
-                  <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={() => setShowPartnerInfo(true)}>
-                    <div className="relative" onClick={(e) => { e.stopPropagation(); if(partnerProfile?.photo_url) setShowFullImage(partnerProfile.photo_url); }}>
-                      {partnerProfile?.photo_url ? (
-                        <img 
-                          src={partnerProfile.photo_url} 
-                          alt="Partner" 
-                          referrerPolicy="no-referrer"
-                          className="w-10 h-10 lg:w-11 lg:h-11 rounded-full object-cover border border-[#FF8FA3]/20 shadow-sm"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-full bg-[#FFD6C9]/40 flex items-center justify-center border border-[#FF8FA3]/10 text-[#FF8FA3] font-bold text-lg">
-                          {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
-                        </div>
-                      )}
-                      {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' && (
-                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-white rounded-full"></div>
-                      )}
-                    </div>
-                    
-                    <div className="min-w-0">
-                      <h2 className="text-[15px] lg:text-[16px] font-bold text-[#1a1a1a] truncate leading-tight">
-                        {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
-                      </h2>
-                      <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? 'text-green-500' : 'text-[#6E6E6E]/60'}`}>
-                        {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid)}
-                      </p>
-                    </div>
+                    {selectedMessages.every(m => !m.deleted) && (
+                      <button onClick={copySelected} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Copy">
+                        <Copy className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-gray-100 mr-1 cursor-help" 
-                    title={`${isSocketConnected ? 'Connected' : 'Offline'} | ${socketOnlineUsers.length} in room | Partner: ${partnerProfile?.uid || 'Unknown'}`}
-                  >
-                    <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-                    {isSocketConnected ? <Wifi className="w-3 h-3 text-green-600" /> : <WifiOff className="w-3 h-3 text-gray-400" />}
-                  </div>
-
-                  <div className="relative">
-                    <button 
-                      onClick={() => setShowMenu(!showMenu)}
-                      className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[#FF8FA3]/10 text-[#FF8FA3]' : 'text-[#6E6E6E]/40 hover:text-[#FF8FA3]'}`}
+                </motion.header>
+              ) : (
+                <motion.header 
+                  key="normal-header"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 px-4 lg:px-6 flex items-center justify-between bg-white/95 backdrop-blur-md z-20"
+                >
+                  <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
+                    {/* Back to Multi-Hub button */}
+                    <button
+                      onClick={() => setActiveHubTab('dashboard')}
+                      className="p-2 -ml-1 mr-2 text-[#FF4D6D] bg-[#FFF0F3] hover:bg-[#FFCCD5]/50 border border-[#FF8FA3]/25 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
+                      title="Back to OnlyUs Hub"
                     >
-                      <MoreVertical className="w-5 h-5 lg:w-6 lg:h-6" />
+                      <LayoutGrid className="w-4 h-4" />
                     </button>
-                    
-                    <AnimatePresence>
-                      {showMenu && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                          <motion.div 
-                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                            className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] border border-black/5 z-50 overflow-hidden py-1"
-                          >
-                            <button 
-                              onClick={() => { setShowProfileModal(true); setShowMenu(false); }}
-                              className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                            >
-                              <UserIcon className="w-4 h-4 text-[#FF8FA3]" />
-                              My Profile
-                            </button>
-                            <button 
-                              onClick={() => { setShowThemeModal(true); setShowMenu(false); }}
-                              className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                            >
-                              <Palette className="w-4 h-4 text-[#FF8FA3]" />
-                              Themes
-                            </button>
-                            <button 
-                              onClick={() => { setShowWallpaperModal(true); setShowMenu(false); }}
-                              className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                            >
-                              <ImageIcon className="w-4 h-4 text-[#FF8FA3]" />
-                              Wallpaper
-                            </button>
-                            <button 
-                              onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
-                              className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                            >
-                              <Gamepad2 className="w-4 h-4 text-[#FF8FA3]" />
-                              Play Games
-                            </button>
-                          </motion.div>
-                        </>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              </motion.header>
-            )}
-          </AnimatePresence>
-        </div>
 
-        <div className="flex-1 overflow-hidden relative">
-          {getWallpaperUrl() && (
-            <div 
-              className="absolute inset-0 z-0 opacity-40 pointer-events-none" 
-              style={{ 
-                backgroundImage: `url(${getWallpaperUrl()})`,
-                backgroundSize: userProfile?.wallpaper === 'dots' || userProfile?.wallpaper === 'hearts' ? 'auto' : 'cover',
-                backgroundPosition: 'center',
-                filter: userProfile?.theme === 'dark' ? 'invert(1) opacity(0.1)' : 'none'
-              }}
-            />
-          )}
-          <div className="relative z-10 h-full flex flex-col">
-            <ChatView 
-              role={userProfile?.role || 'partner'} 
-              messages={messages}
-              setMessages={setMessages}
-              messagesLoading={messagesLoading}
-              selectedMessages={selectedMessages}
-              onToggleSelect={toggleSelectMessage}
-              onClearSelection={clearSelection}
-              replyingTo={replyingTo}
-              onSetReplyingTo={setReplyingTo}
-              editingMessage={editingMessage}
-              onSetEditingMessage={setEditingMessage}
-              selectedMessagesCount={selectedMessages.length}
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              onViewImage={(url) => setShowFullImage(url)}
-              isOverlayOpen={showProfileModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || !!activeGame}
-              showAttachmentMenu={showAttachmentMenu}
-              onSetShowAttachmentMenu={setShowAttachmentMenu}
-              showGamesMenu={showGamesMenu}
-              onSetShowGamesMenu={setShowGamesMenu}
-              activeGame={activeGame}
-              onSetActiveGame={setActiveGame}
-              onSendGameInvite={sendGameInvite}
-              socketTypingUsers={socketTypingUsers}
-              chatRoomId={chatRoomId}
-              quotaExceeded={quotaExceeded}
-              setQuotaExceeded={setQuotaExceeded}
-              inputText={inputText}
-              onInputTextChange={setInputText}
-              isTabActive={isTabActive}
-              onBroadcastTyping={broadcastTyping}
-              onSendNudge={sendNudge}
-              showNudgeMenu={showNudgeMenu}
-              onSetShowNudgeMenu={setShowNudgeMenu}
-            />
+                    <div className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0" onClick={() => setShowPartnerInfo(true)}>
+                      <div className="relative" onClick={(e) => { e.stopPropagation(); if(partnerProfile?.photo_url) setShowFullImage(partnerProfile.photo_url); }}>
+                        {partnerProfile?.photo_url ? (
+                          <img 
+                            src={partnerProfile.photo_url} 
+                            alt="Partner" 
+                            referrerPolicy="no-referrer"
+                            className="w-10 h-10 lg:w-11 lg:h-11 rounded-full object-cover border border-[#FF8FA3]/20 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-full bg-[#FFD6C9]/40 flex items-center justify-center border border-[#FF8FA3]/10 text-[#FF8FA3] font-bold text-lg">
+                            {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
+                          </div>
+                        )}
+                        {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' && (
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-white rounded-full"></div>
+                        )}
+                      </div>
+                      
+                      <div className="min-w-0">
+                        <h2 className="text-[15px] lg:text-[16px] font-bold text-[#1a1a1a] truncate leading-tight">
+                          {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
+                        </h2>
+                        <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? 'text-green-500' : 'text-[#6E6E6E]/60'}`}>
+                          {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-gray-100 mr-1 cursor-help" 
+                      title={`${isSocketConnected ? 'Connected' : 'Offline'} | ${socketOnlineUsers.length} in room | Partner: ${partnerProfile?.uid || 'Unknown'}`}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                      {isSocketConnected ? <Wifi className="w-3 h-3 text-green-600" /> : <WifiOff className="w-3 h-3 text-gray-400" />}
+                    </div>
+
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowMenu(!showMenu)}
+                        className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[#FF8FA3]/10 text-[#FF8FA3]' : 'text-[#6E6E6E]/40 hover:text-[#FF8FA3]'}`}
+                      >
+                        <MoreVertical className="w-5 h-5 lg:w-6 lg:h-6" />
+                      </button>
+                      
+                      <AnimatePresence>
+                        {showMenu && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                            <motion.div 
+                              initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                              className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] border border-black/5 z-50 overflow-hidden py-1"
+                            >
+                              <button 
+                                onClick={() => { setActiveHubTab('dashboard'); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
+                              >
+                                <LayoutGrid className="w-4 h-4 text-[#FF4D6D]" />
+                                OnlyUs Hub
+                              </button>
+                              <button 
+                                onClick={() => { setActiveHubTab('instagram'); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                              >
+                                <Instagram className="w-4 h-4 text-pink-600" />
+                                Instagram
+                              </button>
+                              <button 
+                                onClick={() => { setActiveHubTab('whatsapp'); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
+                              >
+                                <MessageSquareCode className="w-4 h-4 text-emerald-600" />
+                                WhatsApp Web
+                              </button>
+                              <button 
+                                onClick={() => { setShowProfileModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                              >
+                                <UserIcon className="w-4 h-4 text-[#FF8FA3]" />
+                                My Profile
+                              </button>
+                              <button 
+                                onClick={() => { setShowThemeModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                              >
+                                <Palette className="w-4 h-4 text-[#FF8FA3]" />
+                                Themes
+                              </button>
+                              <button 
+                                onClick={() => { setShowWallpaperModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                              >
+                                <ImageIcon className="w-4 h-4 text-[#FF8FA3]" />
+                                Wallpaper
+                              </button>
+                              <button 
+                                onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                              >
+                                <Gamepad2 className="w-4 h-4 text-[#FF8FA3]" />
+                                Play Games
+                              </button>
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </motion.header>
+              )}
+            </AnimatePresence>
           </div>
-        </div>
-      </main>
+
+          <div className="flex-1 overflow-hidden relative">
+            {getWallpaperUrl() && (
+              <div 
+                className="absolute inset-0 z-0 opacity-40 pointer-events-none" 
+                style={{ 
+                  backgroundImage: `url(${getWallpaperUrl()})`,
+                  backgroundSize: userProfile?.wallpaper === 'dots' || userProfile?.wallpaper === 'hearts' ? 'auto' : 'cover',
+                  backgroundPosition: 'center',
+                  filter: userProfile?.theme === 'dark' ? 'invert(1) opacity(0.1)' : 'none'
+                }}
+              />
+            )}
+            <div className="relative z-10 h-full flex flex-col">
+              <ChatView 
+                role={userProfile?.role || 'partner'} 
+                messages={messages}
+                setMessages={setMessages}
+                messagesLoading={messagesLoading}
+                selectedMessages={selectedMessages}
+                onToggleSelect={toggleSelectMessage}
+                onClearSelection={clearSelection}
+                replyingTo={replyingTo}
+                onSetReplyingTo={setReplyingTo}
+                editingMessage={editingMessage}
+                onSetEditingMessage={setEditingMessage}
+                selectedMessagesCount={selectedMessages.length}
+                userProfile={userProfile}
+                partnerProfile={partnerProfile}
+                onViewImage={(url) => setShowFullImage(url)}
+                isOverlayOpen={showProfileModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || !!activeGame}
+                showAttachmentMenu={showAttachmentMenu}
+                onSetShowAttachmentMenu={setShowAttachmentMenu}
+                showGamesMenu={showGamesMenu}
+                onSetShowGamesMenu={setShowGamesMenu}
+                activeGame={activeGame}
+                onSetActiveGame={setActiveGame}
+                onSendGameInvite={sendGameInvite}
+                socketTypingUsers={socketTypingUsers}
+                chatRoomId={chatRoomId}
+                quotaExceeded={quotaExceeded}
+                setQuotaExceeded={setQuotaExceeded}
+                inputText={inputText}
+                onInputTextChange={setInputText}
+                isTabActive={isTabActive}
+                onBroadcastTyping={broadcastTyping}
+                onSendNudge={sendNudge}
+                showNudgeMenu={showNudgeMenu}
+                onSetShowNudgeMenu={setShowNudgeMenu}
+              />
+            </div>
+          </div>
+        </main>
+      )}
 
       <AnimatePresence>
         {activeNudge && (
