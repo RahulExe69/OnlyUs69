@@ -1,38 +1,37 @@
-const CACHE_NAME = 'onlyus-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.webp'
-];
+// Service Worker that prioritizes Network-First for HTML/JS so updates never cause white screens
+const CACHE_NAME = 'onlyus-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  console.log('SW: Installed');
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('SW: Activated');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('SW: Clearing old cache', cacheName);
-            return caches.delete(cacheName);
-          }
+          return caches.delete(cacheName);
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
+  // Always fetch fresh HTML & JS bundles from network; fall back to cache only if completely offline
+  if (event.request.mode === 'navigate' || event.request.destination === 'script' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
