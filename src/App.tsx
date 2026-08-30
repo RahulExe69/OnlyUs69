@@ -1479,7 +1479,7 @@ function LoginView({
             }`}
           >
             <KeyRound className="w-3.5 h-3.5" />
-            <span>Nusrat (PIN)</span>
+            <span>Passcode (PIN)</span>
           </button>
           <button
             type="button"
@@ -1491,7 +1491,7 @@ function LoginView({
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>Rahul (Google)</span>
+            <span>Google Login</span>
           </button>
         </div>
 
@@ -1528,7 +1528,7 @@ function LoginView({
                 />
               </div>
               <p className="text-center text-[10px] text-[#6E6E6E] mt-2 opacity-50 font-medium">
-                Ask Rahul for the active 6-digit access code
+                Enter the active 6-digit access code
               </p>
             </div>
 
@@ -1561,7 +1561,7 @@ function LoginView({
               <span>Connect via Google</span>
             </button>
             <p className="text-center text-[10px] text-[#6E6E6E] opacity-50 font-medium">
-              Owner authentication for Rahul's Google account
+              Secure authentication via Google account
             </p>
           </div>
         )}
