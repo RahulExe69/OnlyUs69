@@ -176,48 +176,67 @@ export default function App() {
     }
   }, [messages]);
 
+  // Lifecycle 0: Real-time Messages Sync from Supabase (Immediate upon Auth)
   useEffect(() => {
-    if (!userProfile || !userProfile.role) return;
+    if (!user) return;
+    setMessagesLoading(true);
 
     const fetchMessages = async () => {
-      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(100);
-      if (data) {
-        // Map created_at to timestamp for UI consistency
+      const { data, error: msgErr } = await supabase
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (msgErr) {
+        console.error("Error loading messages from Supabase:", msgErr);
+      } else if (data) {
         const mappedData = data.map((m: any) => ({
           ...m,
-          timestamp: m.created_at,
-          replyTo: m.reply_to ? { id: m.reply_to, text: 'Replied Message', sender_role: 'owner' } : null
+          timestamp: m.created_at || m.timestamp || new Date().toISOString(),
+          replyTo: m.reply_to ? { id: m.reply_to, text: 'Replied Message', sender_role: m.sender_role || 'owner' } : null
         }));
         setMessages(mappedData as Message[]);
         localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
       }
       setMessagesLoading(false);
     };
+
     fetchMessages();
 
     const unsubMsg = supabase.channel('public:messages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-        const msg = {
-          ...payload.new,
-          timestamp: (payload.new as any).created_at,
-          replyTo: (payload.new as any).reply_to ? { id: (payload.new as any).reply_to, text: 'Replied Message', sender_role: 'owner' } : null
-        } as Message;
-
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
+          const raw = payload.new;
+          const msg = {
+            ...raw,
+            timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
+            replyTo: raw.reply_to ? { id: raw.reply_to, text: 'Replied Message', sender_role: raw.sender_role || 'owner' } : null
+          } as Message;
+
           setMessages(prev => {
             const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === msg.text && m.sender_role === msg.sender_role));
             const isDuplicate = filtered.some(m => m.id === msg.id);
             if (isDuplicate) return filtered;
             return [...filtered, msg];
           });
-        }
-        if (payload.eventType === 'UPDATE') {
-          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } as Message : m));
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.new;
+          const msg = {
+            ...raw,
+            timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
+            replyTo: raw.reply_to ? { id: raw.reply_to, text: 'Replied Message', sender_role: raw.sender_role || 'owner' } : null
+          } as Message;
+          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old?.id;
+          if (deletedId) {
+            setMessages(prev => prev.filter(m => m.id !== deletedId));
+          }
         }
       }).subscribe();
       
     return () => { supabase.removeChannel(unsubMsg); };
-  }, [userProfile?.role]);
+  }, [user?.id]);
 
   const sendGameInvite = async (type: 'tictactoe' | 'ludo') => {
     if (!userProfile) return;
@@ -229,7 +248,7 @@ export default function App() {
       await supabase.from('messages').insert([{ 
         sender_role: userProfile.role,
         text: `🎮 ${senderName} invited you to play ${gameName}`,
-         created_at: new Date().toISOString(), 
+        created_at: new Date().toISOString(), 
         reactions: {},
         gameInvite: {
           gameType: type,
@@ -251,8 +270,28 @@ export default function App() {
     if (partnerSessionStr) {
       try {
         const partnerUser = JSON.parse(partnerSessionStr);
-        if (partnerUser && (partnerUser.isPartnerPasscode || partnerUser.id === 'partner_nusrat_main')) {
-          setUser(partnerUser);
+        if (partnerUser && (partnerUser.isPartnerPasscode || partnerUser.id === '625ede11-c534-4475-be39-63554fdbb7a7' || partnerUser.id === 'partner_nusrat_main')) {
+          const standardPartner = {
+            id: '625ede11-c534-4475-be39-63554fdbb7a7',
+            email: 'bodruddoja2@gmail.com',
+            isPartnerPasscode: true,
+            user_metadata: { full_name: 'Nusrat' }
+          };
+          setUser(standardPartner);
+          setUserProfile({
+            id: standardPartner.id,
+            uid: standardPartner.id,
+            email: standardPartner.email,
+            role: 'partner',
+            display_name: 'Nusrat',
+            photo_url: '',
+            theme: 'romantic',
+            wallpaper: 'none',
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString()
+          });
+          setIsPartner(true);
+          setIsOwner(false);
           setLoading(false);
         }
       } catch (e) {
@@ -321,25 +360,18 @@ export default function App() {
 
   // Lifecycle 2: Role & Profile Sync
   useEffect(() => {
-    if (!user || !appConfig) return;
+    if (!user) return;
 
-    const email = user.email;
-    let role: UserRole | null = null;
-    if (email === appConfig.owner_email) {
+    const email = user.email || "";
+    let role: UserRole = 'partner';
+    if (email === OWNER_EMAIL || email === appConfig?.owner_email || user.id === '770c6ecc-e7ed-46ce-b37e-14caae961bb7') {
       role = 'owner';
       setIsOwner(true);
       setIsPartner(false);
-    } else if (user.isPartnerPasscode || user.id === 'partner_nusrat_main' || (appConfig.partner_allowed_emails && appConfig.partner_allowed_emails.includes(email || ""))) {
+    } else {
       role = 'partner';
       setIsPartner(true);
       setIsOwner(false);
-    }
-
-    if (!role) {
-      setError("You are not authorized to use this chat.");
-      setLoading(false);
-      setTimeout(handleLogout, 3000);
-      return;
     }
 
     // Instant update on session start
@@ -363,7 +395,7 @@ export default function App() {
           theme: 'romantic',
           wallpaper: 'none'
         };
-        await supabase.from('users').insert([newProfile]);
+        await supabase.from('users').upsert([newProfile]);
         setUserProfile({ ...newProfile, uid: user.id } as any);
         applyTheme('romantic');
       }
@@ -381,11 +413,25 @@ export default function App() {
 
       if (data && data.length > 0) {
         setPartnerProfile({ ...data[0], uid: data[0].id } as UserProfile);
+      } else if (role === 'owner') {
+        // Fallback for partner profile if not loaded
+        setPartnerProfile({
+          id: '625ede11-c534-4475-be39-63554fdbb7a7',
+          uid: '625ede11-c534-4475-be39-63554fdbb7a7',
+          email: 'bodruddoja2@gmail.com',
+          role: 'partner',
+          display_name: 'Nusrat',
+          photo_url: '',
+          theme: 'romantic',
+          wallpaper: 'none',
+          last_seen: new Date().toISOString(),
+          last_read_at: new Date().toISOString()
+        });
       }
     };
     fetchPartner();
 
-     const profileSub = supabase.channel('user_profiles')
+    const profileSub = supabase.channel('user_profiles')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload: any) => {
         if (payload.new && payload.new.id === user.id) setUserProfile({ ...payload.new, uid: user.id } as UserProfile);
         else fetchPartner();
@@ -519,12 +565,6 @@ export default function App() {
   // Unique Room ID for the couple
   const chatRoomId = appConfig ? `room_${appConfig.owner_email.replace(/[@.]/g, '_')}` : 'main-chat';
 
-  // Lifecycle 3: Real-time Socket sync
-  useEffect(() => {
-    if (!user || !appConfig) return;
-
-      }, [user?.uid, chatRoomId]);
-
   const handleLogin = async () => {
     setError(null);
     try {
@@ -552,13 +592,28 @@ export default function App() {
       
       if (code.trim() === validPasscode) {
         const partnerUser = {
-          id: 'partner_nusrat_main',
-          email: 'nusrat@onlyus.app',
+          id: '625ede11-c534-4475-be39-63554fdbb7a7',
+          email: 'bodruddoja2@gmail.com',
           isPartnerPasscode: true,
           user_metadata: { full_name: 'Nusrat' }
         };
         localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
         setUser(partnerUser);
+        setUserProfile({
+          id: partnerUser.id,
+          uid: partnerUser.id,
+          email: partnerUser.email,
+          role: 'partner',
+          display_name: 'Nusrat',
+          photo_url: '',
+          theme: 'romantic',
+          wallpaper: 'none',
+          last_seen: new Date().toISOString(),
+          last_read_at: new Date().toISOString()
+        });
+        setIsPartner(true);
+        setIsOwner(false);
+        setLoading(false);
         return true;
       } else {
         setError("Invalid 6-digit passcode. Please check with Rahul for the active PIN.");
