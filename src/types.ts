@@ -3,7 +3,8 @@ export type UserRole = 'owner' | 'partner';
 export interface AppConfig {
   owner_email: string;
   partner_allowed_emails: string[];
-  partner_id: string;
+  partner_id?: string;
+  partner_passcode?: string;
 }
 
 export interface UserProfile {

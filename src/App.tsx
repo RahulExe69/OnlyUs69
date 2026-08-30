@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -244,29 +244,53 @@ export default function App() {
     }
   };
 
-  // Lifecycle 1: Auth State Monitor
+  // Lifecycle 1: Auth State Monitor (Supports Google OAuth for Rahul & 6-Digit Passcode Session for Nusrat)
   useEffect(() => {
+    // Check for cached partner passcode session in localStorage first
+    const partnerSessionStr = localStorage.getItem('onlyus_partner_session');
+    if (partnerSessionStr) {
+      try {
+        const partnerUser = JSON.parse(partnerSessionStr);
+        if (partnerUser && (partnerUser.isPartnerPasscode || partnerUser.id === 'partner_nusrat_main')) {
+          setUser(partnerUser);
+          setLoading(false);
+        }
+      } catch (e) {
+        localStorage.removeItem('onlyus_partner_session');
+      }
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        setLoading(false);
-        setUserProfile(null);
-        setPartnerProfile(null);
-        setAppConfig(null);
-        setIsOwner(false);
-        setIsPartner(false);
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        const cached = localStorage.getItem('onlyus_partner_session');
+        if (!cached) {
+          setUser(null);
+          setLoading(false);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setAppConfig(null);
+          setIsOwner(false);
+          setIsPartner(false);
+        }
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        setLoading(false);
-        setUserProfile(null);
-        setPartnerProfile(null);
-        setAppConfig(null);
-        setIsOwner(false);
-        setIsPartner(false);
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        const cached = localStorage.getItem('onlyus_partner_session');
+        if (!cached) {
+          setUser(null);
+          setLoading(false);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setAppConfig(null);
+          setIsOwner(false);
+          setIsPartner(false);
+        }
       }
     });
 
@@ -277,13 +301,13 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    
     const fetchConfig = async () => {
       const { data } = await supabase.from('app_config').select('*').eq('id', 'main').single();
       if (data) {
         setAppConfig(data as AppConfig);
       } else if (user?.email === OWNER_EMAIL) {
-        await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [] }]);
+        await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' }]);
+        setAppConfig({ owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' } as AppConfig);
       }
     };
     fetchConfig();
@@ -304,9 +328,11 @@ export default function App() {
     if (email === appConfig.owner_email) {
       role = 'owner';
       setIsOwner(true);
-    } else if (appConfig.partner_allowed_emails.includes(email || "")) {
+      setIsPartner(false);
+    } else if (user.isPartnerPasscode || user.id === 'partner_nusrat_main' || (appConfig.partner_allowed_emails && appConfig.partner_allowed_emails.includes(email || ""))) {
       role = 'partner';
       setIsPartner(true);
+      setIsOwner(false);
     }
 
     if (!role) {
@@ -316,7 +342,6 @@ export default function App() {
       return;
     }
 
-    
     // Instant update on session start
     supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
 
@@ -347,23 +372,15 @@ export default function App() {
     fetchProfile();
 
     const fetchPartner = async () => {
-      // Sort by last_seen descending to always pick her most recently active account if she has multiple
+      // Sort by last_seen descending to always pick partner's most recently active profile
+      const targetRole = role === 'owner' ? 'partner' : 'owner';
       const { data } = await supabase.from('users')
         .select('*')
-        .eq('role', role === 'owner' ? 'partner' : 'owner')
+        .eq('role', targetRole)
         .order('last_seen', { ascending: false });
 
       if (data && data.length > 0) {
-        const matchingPartners = data.filter(d => {
-          const emailNorm = (d.email || "").trim().toLowerCase();
-          if (role === 'owner') return appConfig.partner_allowed_emails.some((e: string) => e.trim().toLowerCase() === emailNorm);
-          return emailNorm === (appConfig.owner_email || "").trim().toLowerCase();
-        });
-
-        if (matchingPartners.length > 0) {
-          // The first one is the most recently seen due to our order clause
-          setPartnerProfile({ ...matchingPartners[0], uid: matchingPartners[0].id } as UserProfile);
-        }
+        setPartnerProfile({ ...data[0], uid: data[0].id } as UserProfile);
       }
     };
     fetchPartner();
@@ -515,12 +532,42 @@ export default function App() {
     } catch (err: any) {
       console.error("Login failed:", err);
       if (err.code === 'auth/unauthorized-domain') {
-        setError(`Your current domain (${window.location.hostname}) is not authorized in Firebase. Please add this exact text to 'Authorized domains' in the Firebase Console under Authentication > Settings.`);
+        setError(`Your current domain (${window.location.hostname}) is not authorized in Supabase. Please add this domain to Supabase Auth URL configuration.`);
       } else if (err.code === 'auth/popup-closed-by-user') {
         // Silent
       } else {
         setError(`Login error: ${err.message}`);
       }
+    }
+  };
+
+  const handlePasscodeLogin = async (code: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const { data, error: cfgErr } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+      if (cfgErr && cfgErr.code !== 'PGRST116') {
+        console.warn("Config query notice:", cfgErr);
+      }
+      const validPasscode = (data?.partner_passcode || appConfig?.partner_passcode || '123456').trim();
+      
+      if (code.trim() === validPasscode) {
+        const partnerUser = {
+          id: 'partner_nusrat_main',
+          email: 'nusrat@onlyus.app',
+          isPartnerPasscode: true,
+          user_metadata: { full_name: 'Nusrat' }
+        };
+        localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
+        setUser(partnerUser);
+        return true;
+      } else {
+        setError("Invalid 6-digit passcode. Please check with Rahul for the active PIN.");
+        return false;
+      }
+    } catch (err: any) {
+      console.error("Passcode verification error:", err);
+      setError(`Passcode verification failed: ${err.message || 'Please check your connection'}`);
+      return false;
     }
   };
 
@@ -565,10 +612,12 @@ export default function App() {
     setUserProfile(null);
     setPartnerProfile(null);
     
-    // 2. Clear Local Cache (requested by user)
+    // 2. Clear Local Cache and Passcode Session
+    localStorage.removeItem('onlyus_partner_session');
     localStorage.removeItem('cached_msgs');
     localStorage.removeItem('hidden_msgs');
     localStorage.removeItem('cached_users');
+    setUser(null);
     
     // 3. Disconnect Socket
     /* socket call removed */
@@ -714,7 +763,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginView error={error} onLogin={handleLogin} />;
+    return <LoginView error={error} onLogin={handleLogin} onPasscodeLogin={handlePasscodeLogin} />;
   }
 
   if (error && !userProfile) {
@@ -1102,41 +1151,166 @@ export default function App() {
   );
 }
 
-function LoginView({ error, onLogin }: { error: string | null, onLogin: () => void }) {
+function LoginView({ 
+  error, 
+  onLogin, 
+  onPasscodeLogin 
+}: { 
+  error: string | null; 
+  onLogin: () => void; 
+  onPasscodeLogin: (code: string) => Promise<boolean>; 
+}) {
+  const [loginMode, setLoginMode] = useState<'passcode' | 'google'>('passcode');
+  const [passcode, setPasscode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const handlePasscodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcode.trim().length !== 6) {
+      setLocalError("Please enter a valid 6-digit code.");
+      return;
+    }
+    setLocalError(null);
+    setIsVerifying(true);
+    try {
+      const ok = await onPasscodeLogin(passcode.trim());
+      if (!ok) {
+        setLocalError("Invalid 6-digit code. Please verify with Rahul.");
+      }
+    } catch (err: any) {
+      setLocalError(err.message || "Failed to verify passcode.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleDigitChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, '').slice(0, 6);
+    setPasscode(cleaned);
+    if (localError) setLocalError(null);
+  };
+
+  const displayError = localError || error;
+
   return (
     <div className="h-[100dvh] bg-[#FFF8F6] flex items-center justify-center p-4 overflow-hidden">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm bg-white/70 rounded-[2.5rem] p-10 shadow-[0_32px_64px_-16px_rgba(255,143,163,0.15)] border border-[#FF8FA3]/10 backdrop-blur-xl"
+        className="w-full max-w-sm bg-white/80 rounded-[2.5rem] p-8 sm:p-10 shadow-[0_32px_64px_-16px_rgba(255,143,163,0.18)] border border-[#FF8FA3]/15 backdrop-blur-xl"
       >
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-[#FF8FA3] rounded-[2rem] mb-6 shadow-xl shadow-[#FF8FA3]/20">
-            <Heart className="w-10 h-10 text-white fill-white" />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#FF8FA3] rounded-[1.8rem] mb-4 shadow-xl shadow-[#FF8FA3]/20">
+            <Heart className="w-8 h-8 text-white fill-white animate-pulse" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight mb-2 text-[#1a1a1a]">OnlyUs</h2>
+          <h2 className="text-2xl font-bold tracking-tight mb-1 text-[#1a1a1a]">OnlyUs</h2>
           <p className="text-[#6E6E6E] text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Handcrafted Romantic Space</p>
         </div>
 
-        {error && (
-          <div className="mb-8 p-4 bg-red-50 text-red-500 text-[11px] font-medium leading-relaxed rounded-2xl flex items-start gap-3 border border-red-100/50">
-            <X className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
+        {/* Login Mode Selector */}
+        <div className="flex bg-[#FFF0F3] p-1 rounded-2xl mb-6 border border-[#FF8FA3]/10">
+          <button
+            type="button"
+            onClick={() => { setLoginMode('passcode'); setLocalError(null); }}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              loginMode === 'passcode'
+                ? 'bg-white text-[#FF8FA3] shadow-sm'
+                : 'text-[#6E6E6E]/60 hover:text-[#6E6E6E]'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Nusrat (PIN)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLoginMode('google'); setLocalError(null); }}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              loginMode === 'google'
+                ? 'bg-white text-[#FF8FA3] shadow-sm'
+                : 'text-[#6E6E6E]/60 hover:text-[#6E6E6E]'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Rahul (Google)</span>
+          </button>
+        </div>
+
+        {displayError && (
+          <motion.div 
+            initial={{ opacity: 0, y: -5 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-3.5 bg-red-50 text-red-500 text-[11px] font-medium leading-relaxed rounded-2xl flex items-start gap-2.5 border border-red-100/60"
+          >
+            <X className="w-4 h-4 mt-0.5 flex-shrink-0 cursor-pointer" onClick={() => setLocalError(null)} />
+            <span>{displayError}</span>
+          </motion.div>
+        )}
+
+        {loginMode === 'passcode' ? (
+          <form onSubmit={handlePasscodeSubmit} className="space-y-5">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block text-center opacity-70">
+                Enter 6-Digit Passcode
+              </label>
+              
+              {/* PIN input display boxes */}
+              <div className="relative">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={passcode}
+                  onChange={(e) => handleDigitChange(e.target.value)}
+                  placeholder="••••••"
+                  autoFocus
+                  className="w-full h-14 tracking-[0.6em] text-center font-mono text-2xl font-bold bg-[#FFF8F6] border border-[#FF8FA3]/20 rounded-2xl text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/30 focus:border-[#FF8FA3] transition-all placeholder:tracking-normal placeholder:font-sans placeholder:text-sm placeholder:opacity-30"
+                />
+              </div>
+              <p className="text-center text-[10px] text-[#6E6E6E] mt-2 opacity-50 font-medium">
+                Ask Rahul for the active 6-digit access code
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isVerifying || passcode.length !== 6}
+              className="w-full h-14 flex items-center justify-center gap-3 bg-[#FF8FA3] hover:bg-[#FF8FA3]/90 text-white rounded-2xl transition-all font-bold text-xs uppercase tracking-widest shadow-lg shadow-[#FF8FA3]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isVerifying ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Verifying Code...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Enter OnlyUs</span>
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <button 
+              type="button"
+              onClick={onLogin}
+              className="w-full h-14 flex items-center justify-center gap-3 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white rounded-2xl transition-all font-bold text-xs uppercase tracking-widest shadow-lg shadow-black/10 active:scale-[0.98]"
+            >
+              <img src="https://www.google.com/favicon.ico" className="w-4 h-4 invert brightness-0" alt="Google" />
+              <span>Connect via Google</span>
+            </button>
+            <p className="text-center text-[10px] text-[#6E6E6E] opacity-50 font-medium">
+              Owner authentication for Rahul's Google account
+            </p>
           </div>
         )}
 
-        <button 
-          onClick={onLogin}
-          className="w-full h-16 flex items-center justify-center gap-4 bg-[#FF8FA3] hover:bg-[#FF8FA3]/90 text-white rounded-2xl transition-all font-bold text-xs uppercase tracking-widest shadow-lg shadow-[#FF8FA3]/20 active:scale-[0.98]"
-        >
-          <img src="https://www.google.com/favicon.ico" className="w-5 h-5 invert brightness-0" alt="Google" />
-          <span>Connect via Google</span>
-        </button>
-
-        <div className="mt-10 flex flex-col items-center gap-4">
-          <div className="w-1 h-1 rounded-full bg-[#FF8FA3]/20"></div>
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <div className="w-1 h-1 rounded-full bg-[#FF8FA3]/30"></div>
           <p className="text-center text-[9px] font-bold text-[#6E6E6E] uppercase tracking-widest opacity-40">
-            Private Connection Only
+            Private 1-to-1 Handcrafted Space
           </p>
         </div>
       </motion.div>
@@ -3168,9 +3342,22 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
   const [tempImage, setTempImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Partner Management Logic
+  // Partner Management Logic (6-Digit Code + Email backup)
+  const [partnerPasscode, setPartnerPasscode] = useState(config?.partner_passcode || '123456');
+  const [copiedCode, setCopiedCode] = useState(false);
   const [emails, setEmails] = useState<string[]>(config?.partner_allowed_emails || []);
   const [newEmail, setNewEmail] = useState("");
+
+  const generateRandomPin = () => {
+    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
+    setPartnerPasscode(randomPin);
+  };
+
+  const copyPasscodeToClipboard = () => {
+    navigator.clipboard.writeText(partnerPasscode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault();
@@ -3227,9 +3414,10 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
       }).eq('role', profile.role);
       
       // Save Partner Config if Owner
-      if (isOwner && config) {
+      if (isOwner) {
         await supabase.from('app_config').update({
-          partner_allowed_emails: emails
+          partner_allowed_emails: emails,
+          partner_passcode: partnerPasscode.trim()
         }).eq('id', 'main');
       }
       onClose();
@@ -3266,7 +3454,7 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
             onClick={() => setActiveTab('partner')}
             className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === 'partner' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/40'}`}
           >
-            Partners
+            Partner Access
           </button>
         )}
       </div>
@@ -3328,47 +3516,105 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
             </div>
           </div>
         ) : (
-          <div className="max-w-md mx-auto space-y-10">
+          <div className="max-w-md mx-auto space-y-8">
+            {/* 6-Digit Passcode Section */}
+            <section className="bg-gradient-to-br from-[#FFF0F3] to-[#FFF8F6] p-6 rounded-3xl border border-[#FF8FA3]/20 shadow-sm space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#FF8FA3]/15 flex items-center justify-center text-[#FF8FA3]">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-[#1a1a1a]">Nusrat's 6-Digit Passcode</h3>
+                    <p className="text-[10px] text-[#6E6E6E] opacity-70">Used for instant passcode login</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={generateRandomPin}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white border border-[#FF8FA3]/20 rounded-xl text-[10px] font-bold text-[#FF8FA3] hover:bg-[#FF8FA3]/5 active:scale-95 transition-all"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Random PIN</span>
+                </button>
+              </div>
+
+              {/* PIN Display & Input */}
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={partnerPasscode}
+                    onChange={(e) => setPartnerPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="123456"
+                    className="w-full h-14 bg-white border border-[#FF8FA3]/25 rounded-2xl px-5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/30"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={copyPasscodeToClipboard}
+                    className="flex-1 h-11 bg-white border border-[#FF8FA3]/20 text-[#1a1a1a] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#FFF8F6] active:scale-95 transition-all"
+                  >
+                    {copiedCode ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-emerald-600">Copied to Clipboard!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-[#FF8FA3]" />
+                        <span>Copy 6-Digit Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-[#6E6E6E] leading-relaxed opacity-80">
+                Nusrat can enter this 6-digit code on the login screen to enter OnlyUs immediately without any Google account.
+              </p>
+            </section>
+
+            {/* Email Authorizations (Optional backup) */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <UserPlus className="w-4 h-4 text-[#FF8FA3]" />
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] opacity-60">Authorized Access</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] opacity-60">Backup Email Access (Optional)</h3>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {emails.map(email => (
-                  <div key={email} className="flex items-center justify-between p-4 bg-[#FFF8F6] rounded-2xl border border-[#FF8FA3]/5">
-                    <span className="text-sm font-mono text-[#6E6E6E] truncate">{email}</span>
-                    <button onClick={() => removeEmail(email)} className="p-2 text-red-300 hover:text-red-500 transition-colors">
-                      <X className="w-5 h-5" />
+                  <div key={email} className="flex items-center justify-between p-3.5 bg-[#FFF8F6] rounded-2xl border border-[#FF8FA3]/5">
+                    <span className="text-xs font-mono text-[#6E6E6E] truncate">{email}</span>
+                    <button onClick={() => removeEmail(email)} className="p-1.5 text-red-300 hover:text-red-500 transition-colors">
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
-                {emails.length === 0 && (
-                  <div className="text-center py-10 opacity-30 italic text-sm">No partners invited yet.</div>
-                )}
               </div>
-            </section>
 
-            <section className="bg-[#FFF8F6]/50 p-6 rounded-3xl border border-[#FF8FA3]/5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-4 block ml-1 opacity-60">Add Partner Email</label>
-              <form onSubmit={addEmail} className="flex flex-col gap-3">
+              <form onSubmit={addEmail} className="flex gap-2">
                 <input 
                   type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="Partner's email account..."
-                  className="bg-white border border-[#FF8FA3]/10 rounded-2xl px-5 py-4 text-[15px] focus:outline-none"
+                  placeholder="Optional Google Email..."
+                  className="flex-1 bg-[#FFF8F6] border border-[#FF8FA3]/10 rounded-xl px-4 py-2.5 text-xs focus:outline-none"
                 />
-                <button type="submit" className="h-14 bg-[#1a1a1a] text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all">
-                  Authorize Partner
+                <button type="submit" className="px-4 bg-[#1a1a1a] text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all">
+                  Add
                 </button>
               </form>
             </section>
             
             <button 
               onClick={save}
-              disabled={isSaving}
-              className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/10 active:scale-95 transition-all disabled:opacity-50 mt-10"
+              disabled={isSaving || partnerPasscode.length !== 6}
+              className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50 mt-6"
             >
-              {isSaving ? "Syncing Config..." : "Save Configuration"}
+              {isSaving ? "Saving Settings..." : "Save Passcode & Settings"}
             </button>
           </div>
         )}
