@@ -124,6 +124,15 @@ const applyTheme = (themeName: 'light' | 'dark' | 'romantic') => {
   root.style.setProperty('--theme-input-bg', theme.input);
 };
 
+const getMillis = (ts: any) => {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  if (ts.toMillis) return ts.toMillis();
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'string') return new Date(ts).getTime();
+  return 0;
+};
+
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
 export default function App() {
@@ -296,6 +305,7 @@ export default function App() {
         }
       } catch (e) {
         localStorage.removeItem('onlyus_partner_session');
+        localStorage.removeItem('onlyus_partner_passcode');
       }
     }
 
@@ -336,6 +346,30 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Helper: Verify if partner's cached passcode is still valid against current app_config
+  const verifyPasscodeSession = useCallback((config: AppConfig) => {
+    const isPartnerSession = localStorage.getItem('onlyus_partner_session');
+    const storedPasscode = localStorage.getItem('onlyus_partner_passcode');
+    const serverPasscode = (config.partner_passcode || '123456').trim();
+
+    if (isPartnerSession && storedPasscode) {
+      if (storedPasscode.trim() !== serverPasscode) {
+        console.warn("Passcode changed by Rahul. Logging partner out immediately.");
+        localStorage.removeItem('onlyus_partner_session');
+        localStorage.removeItem('onlyus_partner_passcode');
+        setUser(null);
+        setUserProfile(null);
+        setPartnerProfile(null);
+        setIsPartner(false);
+        setIsOwner(false);
+        setSocketOnlineUsers([]);
+        setError("Rahul updated the login passcode. Please enter the new 6-digit PIN to reconnect.");
+        return false;
+      }
+    }
+    return true;
+  }, []);
+
   // Lifecycle 1b: Core Config Sync (Gated by Auth)
   useEffect(() => {
     if (!user) return;
@@ -344,19 +378,31 @@ export default function App() {
       const { data } = await supabase.from('app_config').select('*').eq('id', 'main').single();
       if (data) {
         setAppConfig(data as AppConfig);
+        verifyPasscodeSession(data as AppConfig);
       } else if (user?.email === OWNER_EMAIL) {
         await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' }]);
         setAppConfig({ owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' } as AppConfig);
       }
     };
     fetchConfig();
-    const configSub = supabase.channel('app_config_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config', filter: "id=eq.main" }, (payload) => {
-        setAppConfig(payload.new as AppConfig);
-      }).subscribe();
-    return () => { supabase.removeChannel(configSub); };
 
-  }, [!!user]);
+    const configSub = supabase.channel('app_config_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config', filter: "id=eq.main" }, (payload: any) => {
+        if (payload.new) {
+          const newCfg = payload.new as AppConfig;
+          setAppConfig(newCfg);
+          verifyPasscodeSession(newCfg);
+        }
+      }).subscribe();
+
+    // Fast periodic check (every 5 seconds) to ensure instant logout if config changes
+    const pollInterval = setInterval(fetchConfig, 5000);
+
+    return () => { 
+      supabase.removeChannel(configSub); 
+      clearInterval(pollInterval);
+    };
+  }, [user?.id, verifyPasscodeSession]);
 
   // Lifecycle 2: Role & Profile Sync
   useEffect(() => {
@@ -431,16 +477,29 @@ export default function App() {
     };
     fetchPartner();
 
+    // Periodic DB last_seen heartbeat every 15s while authenticated
+    const heartbeatInterval = setInterval(() => {
+      if (user?.id) {
+        supabase.from('users').update({ 
+          last_seen: new Date().toISOString() 
+        }).eq('id', user.id).then();
+      }
+    }, 15000);
+
     const profileSub = supabase.channel('user_profiles')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload: any) => {
         if (payload.new && payload.new.id === user.id) setUserProfile({ ...payload.new, uid: user.id } as UserProfile);
         else fetchPartner();
       }).subscribe();
 
-    // Presence heartbeat & Broadcast via Supabase
-    // Using chatRoomId for privacy between couples
-    const channelName = appConfig ? `presence:${appConfig.owner_email.replace(/[@.]/g, '_')}` : 'online-users';
-    const presenceChannel = supabase.channel(channelName);
+    // Presence heartbeat & Broadcast via Supabase (static channel name for stability)
+    const presenceChannel = supabase.channel('presence:onlyus_chat', {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
     mainChannelRef.current = presenceChannel;
 
     presenceChannel
@@ -448,20 +507,10 @@ export default function App() {
         const state = presenceChannel.presenceState();
         const presences = Object.values(state).flat() as any[];
         
-        // A user is considered "Online" for the status badge ONLY if they are active (tab visible)
-        const onlineIds = presences.filter(p => p.is_active).map(p => p.user_id);
-        
-        // If we see an online user that isn't our current partner and isn't us, re-fetch profile
-        // This handles cases where Nusrat switches to a 2nd Gmail account while we are already in the chat
-        const currentPartnerUid = partnerProfileRef.current?.uid;
-        const potentialPartnerId = onlineIds.find(id => id !== user.id && id !== currentPartnerUid);
-        if (potentialPartnerId) {
-          fetchPartner();
-        }
-
+        const onlineIds = presences.map(p => p.user_id).filter(Boolean);
         setSocketOnlineUsers([...new Set(onlineIds)]);
 
-        // Safety: If they are not online/active, they are definitely not typing
+        // Safety: If they are not online, they are definitely not typing
         setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -489,19 +538,21 @@ export default function App() {
           await presenceChannel.track({ 
             user_id: user.id, 
             online_at: new Date().toISOString(),
-            is_active: isTabActive
+            is_active: isTabActive,
+            role: role
           });
           setIsSocketConnected(true);
         }
       });
 
     return () => {
+      clearInterval(heartbeatInterval);
       supabase.removeChannel(profileSub);
       supabase.removeChannel(presenceChannel);
       mainChannelRef.current = null;
       setIsSocketConnected(false);
     };
-  }, [user?.id, appConfig]);
+  }, [user?.id]);
 
   // Sync tab activity to Presence without resubscribing
   useEffect(() => {
@@ -509,10 +560,11 @@ export default function App() {
       mainChannelRef.current.track({
         user_id: user.id,
         online_at: new Date().toISOString(),
-        is_active: isTabActive
+        is_active: isTabActive,
+        role: userProfile?.role || (isOwner ? 'owner' : 'partner')
       });
     }
-  }, [isTabActive, isSocketConnected, user?.id]);
+  }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner]);
 
   const broadcastTyping = (isTyping: boolean) => {
     if (mainChannelRef.current && user) {
@@ -549,12 +601,9 @@ export default function App() {
       setIsTabActive(isVisible);
       
       if (userProfile) {
-        if (!isVisible) {
-          // Update Firestore instantly when minimizing/leaving for accurate "Last seen"
-          supabase.from('users').update({ 
-            last_seen: new Date().toISOString() 
-          }).eq('id', userProfile.uid).then();
-        }
+        supabase.from('users').update({ 
+          last_seen: new Date().toISOString() 
+        }).eq('id', userProfile.uid).then();
       }
     };
     
@@ -598,6 +647,7 @@ export default function App() {
           user_metadata: { full_name: 'Nusrat' }
         };
         localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
+        localStorage.setItem('onlyus_partner_passcode', code.trim());
         setUser(partnerUser);
         setUserProfile({
           id: partnerUser.id,
@@ -660,6 +710,7 @@ export default function App() {
     const wp = WALLPAPERS.find(w => w.id === userProfile.wallpaper);
     return wp?.url || '';
   };
+
   const handleLogout = async () => {
     // 1. Instant cleanup of local state to prevent "permission-denied" UI updates
     setLoading(true);
@@ -669,16 +720,17 @@ export default function App() {
     
     // 2. Clear Local Cache and Passcode Session
     localStorage.removeItem('onlyus_partner_session');
+    localStorage.removeItem('onlyus_partner_passcode');
     localStorage.removeItem('cached_msgs');
     localStorage.removeItem('hidden_msgs');
     localStorage.removeItem('cached_users');
     setUser(null);
-    
-    // 3. Disconnect Socket
-    /* socket call removed */
+    setIsPartner(false);
+    setIsOwner(false);
+    setSocketOnlineUsers([]);
 
     try {
-      // 4. Perform actual signout
+      // 3. Perform actual signout
       await supabase.auth.signOut();
     } catch (err) {
       console.error("Logout error:", err);
@@ -779,27 +831,27 @@ export default function App() {
   };
 
   const formatLastSeen = (timestamp: any, uid?: string) => {
-    // Priority 1: Instant Socket Status
+    // 1. Instant Realtime Presence check
     if (uid && socketOnlineUsers.includes(uid)) return "Online";
+    if (socketOnlineUsers.some(id => id !== user?.id)) return "Online";
 
     if (!timestamp) return "Offline";
     
-    // Handle Supabase ISO strings or numbers or Firestore dates
-    let last: Date;
-    if (typeof timestamp === 'string') {
-      last = new Date(timestamp);
-    } else if (typeof timestamp === 'number') {
-      last = new Date(timestamp);
-    } else if (timestamp && typeof timestamp.toDate === 'function') {
-      last = timestamp.toDate();
-    } else {
-      last = new Date(timestamp);
+    // Handle ISO string, timestamp numbers, or objects
+    const lastMillis = getMillis(timestamp);
+    if (lastMillis <= 0) return "Offline";
+
+    const now = Date.now();
+    const diffSeconds = (now - lastMillis) / 1000;
+
+    // Active within 45 seconds (tolerance for heartbeat/network transitions)
+    if (diffSeconds < 45) {
+      return "Online";
     }
 
-    if (isNaN(last.getTime())) return "Offline";
-
-    const now = new Date();
-    const isToday = last.toDateString() === now.toDateString();
+    const last = new Date(lastMillis);
+    const nowDate = new Date();
+    const isToday = last.toDateString() === nowDate.toDateString();
     if (isToday) {
       return `Last seen today at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
@@ -1407,15 +1459,6 @@ function QuotaBanner() {
     </motion.div>
   );
 }
-
-const getMillis = (ts: any) => {
-  if (!ts) return 0;
-  if (typeof ts === 'number') return ts;
-  if (ts.toMillis) return ts.toMillis();
-  if (ts instanceof Date) return ts.getTime();
-  if (typeof ts === 'string') return new Date(ts).getTime();
-  return 0;
-};
 
 function ChatView({ 
   role, 
