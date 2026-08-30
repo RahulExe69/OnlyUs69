@@ -53,29 +53,34 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   const isPartnerOnline = formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online';
 
   const handleTabClick = (tab: 'chat' | 'instagram' | 'whatsapp') => {
-    // 1. If running inside Android Native APK Shell, notify AndroidBridge
-    if (typeof window !== 'undefined' && window.AndroidBridge?.openTab) {
+    const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
+
+    // 1. Notify Android native shell if present
+    if (hasAndroidBridge) {
       try {
-        window.AndroidBridge.openTab(tab);
-        return;
+        window.AndroidBridge!.openTab!(tab);
       } catch (err) {
         console.warn('AndroidBridge call error:', err);
       }
     }
 
-    // 2. Direct opening without intermediary screen
-    if (tab === 'instagram') {
-      window.location.href = 'https://www.instagram.com';
+    // 2. Chat navigation: ALWAYS switch React view to 'chat'
+    if (tab === 'chat') {
+      onSelectTab('chat');
       return;
     }
 
-    if (tab === 'whatsapp') {
-      window.location.href = 'https://web.whatsapp.com';
-      return;
+    // 3. External tabs in pure browser mode (fallback when not inside Android APK)
+    if (!hasAndroidBridge) {
+      if (tab === 'instagram') {
+        window.location.href = 'https://www.instagram.com';
+        return;
+      }
+      if (tab === 'whatsapp') {
+        window.location.href = 'https://web.whatsapp.com';
+        return;
+      }
     }
-
-    // 3. Chat navigation
-    onSelectTab(tab);
   };
 
   return (

@@ -9,6 +9,7 @@ export interface AppConfig {
 
 export interface UserProfile {
   uid: string;
+  id?: string;
   email: string;
   role: UserRole;
   display_name?: string;

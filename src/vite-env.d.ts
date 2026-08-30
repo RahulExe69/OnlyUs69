@@ -9,4 +9,7 @@ interface Window {
     openTab?: (tabName: string) => void;
     onBackPress?: () => void;
   };
+  setHubTab?: (tabName: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => void;
+  getCurrentHubTab?: () => string;
+  handleAndroidBack?: () => boolean;
 }

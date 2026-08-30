@@ -181,27 +181,53 @@ export default function App() {
   const mainChannelRef = useRef<any>(null);
 
   const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
-    if (typeof window !== 'undefined' && window.AndroidBridge?.openTab) {
+    const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
+
+    if (hasAndroidBridge) {
       try {
-        window.AndroidBridge.openTab(tab);
-        return;
+        window.AndroidBridge!.openTab!(tab);
       } catch (err) {
         console.warn('AndroidBridge call error:', err);
       }
     }
 
-    if (tab === 'instagram') {
-      window.location.href = 'https://www.instagram.com';
+    // Always update React internal state for dashboard and chat
+    if (tab === 'chat' || tab === 'dashboard') {
+      setActiveHubTab(tab);
       return;
     }
 
-    if (tab === 'whatsapp') {
-      window.location.href = 'https://web.whatsapp.com';
-      return;
+    // External tabs in regular browser fallback
+    if (!hasAndroidBridge) {
+      if (tab === 'instagram') {
+        window.location.href = 'https://www.instagram.com';
+        return;
+      }
+      if (tab === 'whatsapp') {
+        window.location.href = 'https://web.whatsapp.com';
+        return;
+      }
     }
-
-    setActiveHubTab(tab);
   };
+
+  // Two-way bridge hooks so Android APK can seamlessly interact with the web app
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.setHubTab = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+        setActiveHubTab(tab);
+      };
+      window.getCurrentHubTab = () => {
+        return activeHubTab;
+      };
+      window.handleAndroidBack = () => {
+        if (activeHubTab === 'chat') {
+          setActiveHubTab('dashboard');
+          return true; // handled, don't exit app
+        }
+        return false; // on dashboard, allow Android to minimize/exit
+      };
+    }
+  }, [activeHubTab]);
 
   useEffect(() => {
     if (messages.length > 0) {
