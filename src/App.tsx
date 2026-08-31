@@ -1352,18 +1352,18 @@ export default function App() {
 
                   <div className="flex items-center gap-2">
                     <div 
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 border border-gray-100 mr-1 cursor-help" 
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[var(--theme-surface)] border border-[var(--theme-border)] mr-1 cursor-help shadow-xs" 
                       title={`${isSocketConnected ? 'Connected' : 'Offline'} | ${socketOnlineUsers.length} in room | Partner: ${partnerProfile?.uid || 'Unknown'}`}
                     >
                       <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-                      {isSocketConnected ? <Wifi className="w-3 h-3 text-green-600" /> : <WifiOff className="w-3 h-3 text-gray-400" />}
+                      {isSocketConnected ? <Wifi className="w-3 h-3 text-green-600" /> : <WifiOff className="w-3 h-3 text-[var(--theme-text)]/40" />}
                     </div>
 
                     <div className="relative">
                       <button 
                         ref={menuBtnRef}
                         onClick={() => setShowMenu(!showMenu)}
-                        className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[#FF8FA3]/10 text-[#FF8FA3]' : 'text-[#6E6E6E]/40 hover:text-[#FF8FA3]'}`}
+                        className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[var(--theme-accent)]/15 text-[var(--theme-accent)]' : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10'}`}
                       >
                         <MoreVertical className="w-5 h-5 lg:w-6 lg:h-6" />
                       </button>
@@ -1377,27 +1377,27 @@ export default function App() {
                               initial={{ opacity: 0, scale: 0.95, y: -10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                              className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] border border-black/5 z-50 overflow-hidden py-1"
+                              className="absolute right-0 mt-2 w-52 bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] border border-[var(--theme-border)] z-50 overflow-hidden py-1 backdrop-blur-md"
                             >
                               <button 
                                 onClick={() => { setShowProfileModal(true); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
-                                <UserIcon className="w-4 h-4 text-[#FF8FA3]" />
+                                <UserIcon className="w-4 h-4 text-[var(--theme-accent)]" />
                                 My Profile
                               </button>
                               <button 
                                 onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
-                                <Sparkles className="w-4 h-4 text-[#FF8FA3]" />
+                                <Sparkles className="w-4 h-4 text-[var(--theme-accent)]" />
                                 Customize
                               </button>
                               <button 
                                 onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
-                                <Gamepad2 className="w-4 h-4 text-[#FF8FA3]" />
+                                <Gamepad2 className="w-4 h-4 text-[var(--theme-accent)]" />
                                 Play Games
                               </button>
                             </motion.div>
@@ -2126,26 +2126,26 @@ function ChatView({
         )}
       </AnimatePresence>
 
-      <div className="mt-4 lg:mt-6 pt-4 lg:pt-6 border-t border-[#FF8FA3]/5 bg-white/20 backdrop-blur-md">
+      <div className="mt-4 lg:mt-6 pt-4 lg:pt-6 border-t border-[var(--theme-border)] bg-[var(--theme-bg)]/80 backdrop-blur-md">
         <AnimatePresence>
           {replyingTo && (
             <motion.div 
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="px-4 py-2 bg-[#FFD6C9]/30 rounded-t-2xl border-l-4 border-[#FF8FA3] flex items-center justify-between mb-1 mx-2"
+              className="px-4 py-2 bg-[var(--theme-accent)]/10 rounded-t-2xl border-l-4 border-[var(--theme-accent)] flex items-center justify-between mb-1 mx-2"
             >
               <div className="flex-1 min-w-0 pr-4">
-                <p className="text-[10px] font-bold text-[#FF8FA3] uppercase tracking-wider mb-0.5">
+                <p className="text-[10px] font-bold text-[var(--theme-accent)] uppercase tracking-wider mb-0.5">
                   Replying to {replyingTo.sender_role === 'owner' ? 'Rahul' : 'Nusrat'}
                 </p>
-                <p className="text-xs text-[#6E6E6E] truncate italic opacity-80">"{replyingTo.text}"</p>
+                <p className="text-xs text-[var(--theme-text)] truncate italic opacity-80">"{replyingTo.text}"</p>
               </div>
               <button 
                 onClick={() => onSetReplyingTo(null)}
-                className="p-1 hover:bg-black/5 rounded-full transition-colors"
+                className="p-1 hover:bg-[var(--theme-accent)]/10 rounded-full transition-colors"
               >
-                <X className="w-4 h-4 text-[#6E6E6E]/40" />
+                <X className="w-4 h-4 text-[var(--theme-text)]/40" />
               </button>
             </motion.div>
           )}
@@ -2154,17 +2154,17 @@ function ChatView({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="px-4 py-2 bg-[#FF8FA3]/10 rounded-t-2xl border-l-4 border-[#FF8FA3] flex items-center justify-between mb-1 mx-2"
+              className="px-4 py-2 bg-[var(--theme-accent)]/10 rounded-t-2xl border-l-4 border-[var(--theme-accent)] flex items-center justify-between mb-1 mx-2"
             >
-              <div className="flex-1 min-w-0 pr-4 text-[#FF8FA3]">
+              <div className="flex-1 min-w-0 pr-4 text-[var(--theme-accent)]">
                 <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5">Editing Private Message</p>
-                <p className="text-xs truncate italic opacity-80">"{editingMessage.text}"</p>
+                <p className="text-xs truncate italic opacity-80 text-[var(--theme-text)]">"{editingMessage.text}"</p>
               </div>
               <button 
                 onClick={() => onSetEditingMessage(null)}
-                className="p-1 hover:bg-[#FF8FA3]/10 rounded-full transition-colors"
+                className="p-1 hover:bg-[var(--theme-accent)]/10 rounded-full transition-colors"
               >
-                <X className="w-4 h-4 text-[#FF8FA3]/40" />
+                <X className="w-4 h-4 text-[var(--theme-accent)]/40" />
               </button>
             </motion.div>
           )}
@@ -2176,7 +2176,8 @@ function ChatView({
           <button 
             type="button"
             onClick={() => onSetShowAttachmentMenu(true)}
-            className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-white border border-[#FF8FA3]/20 text-[#FF8FA3] rounded-full hover:bg-[#FF8FA3]/5 transition-all active:scale-95 shadow-sm"
+            className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-[var(--theme-surface)] border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/10 transition-all active:scale-95 shadow-sm"
+            aria-label="Open attachments menu"
           >
             <Plus className="w-5 h-5" />
           </button>
@@ -2187,13 +2188,14 @@ function ChatView({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[#FF8FA3]/10 rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[#FF8FA3]/5 transition-all shadow-sm pr-12 placeholder-[#6E6E6E]/40"
+              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-all shadow-sm pr-12 placeholder-[var(--theme-text)]/40"
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
                <button 
                 type="button"
                 onClick={() => onSetShowNudgeMenu(true)}
-                className="p-1 text-[#FF8FA3]/60 hover:text-[#FF8FA3] transition-colors active:scale-90"
+                className="p-1 text-[var(--theme-accent)]/70 hover:text-[var(--theme-accent)] transition-colors active:scale-90"
+                aria-label="Send a feeling"
               >
                 <Heart className="w-5 h-5 fill-current" />
               </button>
@@ -2203,7 +2205,8 @@ function ChatView({
           <button 
             type="submit"
             disabled={!inputText.trim()}
-            className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center bg-[#FF8FA3] text-white rounded-full hover:bg-[#FF8FA3]/90 disabled:opacity-30 transition-all active:scale-95 shadow-lg shadow-[#FF8FA3]/30"
+            className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white rounded-full hover:opacity-90 disabled:opacity-30 transition-all active:scale-95 shadow-lg"
+            style={{ background: 'var(--theme-accent)', boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)' }}
           >
             <Send className="w-4 h-4 lg:w-5 lg:h-5 fill-white" />
           </button>
@@ -2216,9 +2219,9 @@ function ChatView({
         title="Share with Love"
       >
         <div className="grid grid-cols-4 gap-4 p-4 lg:p-6">
-          <AttachmentOption icon={<Camera className="w-6 h-6" />} label="Camera" color="bg-[#FF8FA3]" onClick={() => onSetShowAttachmentMenu(false)} />
-          <AttachmentOption icon={<ImageIcon className="w-6 h-6" />} label="Gallery" color="bg-[#FFD6C9]" onClick={() => onSetShowAttachmentMenu(false)} />
-          <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[#E9D5FF]" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption icon={<Camera className="w-6 h-6" />} label="Camera" color="bg-[var(--theme-accent)] text-white" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption icon={<ImageIcon className="w-6 h-6" />} label="Gallery" color="bg-[var(--theme-bubble-partner)] text-[var(--theme-bubble-partner-text)]" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[var(--theme-surface)] text-[var(--theme-accent)] border border-[var(--theme-border)]" onClick={() => onSetShowAttachmentMenu(false)} />
         </div>
       </BottomSheet>
 
@@ -2229,14 +2232,14 @@ function ChatView({
       >
         <div className="grid grid-cols-4 gap-3 p-4 lg:p-6 pb-8">
           {[
-            { id: 'hug', label: 'Hug', emoji: '🤗', bg: 'bg-amber-100/90 text-amber-600 hover:bg-amber-200/90' },
-            { id: 'kiss', label: 'Kiss', emoji: '💋', bg: 'bg-rose-100/90 text-rose-600 hover:bg-rose-200/90' },
-            { id: 'love', label: 'Love', emoji: '💖', bg: 'bg-pink-100/90 text-pink-600 hover:bg-pink-200/90' },
-            { id: 'miss', label: 'Miss You', emoji: '🥺', bg: 'bg-blue-100/90 text-blue-600 hover:bg-blue-200/90' },
-            { id: 'cuddle', label: 'Cuddle', emoji: '🫂', bg: 'bg-purple-100/90 text-purple-600 hover:bg-purple-200/90' },
-            { id: 'tickle', label: 'Tickle', emoji: '😂', bg: 'bg-yellow-100/90 text-yellow-600 hover:bg-yellow-200/90' },
-            { id: 'adore', label: 'Adore', emoji: '😍', bg: 'bg-red-100/90 text-red-600 hover:bg-red-200/90' },
-            { id: 'blowkiss', label: 'Blow Kiss', emoji: '😘', bg: 'bg-pink-100/90 text-pink-500 hover:bg-pink-200/90' },
+            { id: 'hug', label: 'Hug', emoji: '🤗' },
+            { id: 'kiss', label: 'Kiss', emoji: '💋' },
+            { id: 'love', label: 'Love', emoji: '💖' },
+            { id: 'miss', label: 'Miss You', emoji: '🥺' },
+            { id: 'cuddle', label: 'Cuddle', emoji: '🫂' },
+            { id: 'tickle', label: 'Tickle', emoji: '😂' },
+            { id: 'adore', label: 'Adore', emoji: '😍' },
+            { id: 'blowkiss', label: 'Blow Kiss', emoji: '😘' },
           ].map((f) => (
             <button
               key={f.id}
@@ -2246,10 +2249,10 @@ function ChatView({
               }}
               className="flex flex-col items-center gap-2 p-2 rounded-2xl transition-all duration-200 hover:scale-105 active:scale-95 group"
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-transform duration-200 group-hover:rotate-6 ${f.bg}`}>
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-all duration-200 group-hover:rotate-6 bg-[var(--theme-bg)] border border-[var(--theme-border)] group-hover:border-[var(--theme-accent)]/40 group-hover:shadow-[0_4px_16px_color-mix(in_srgb,var(--theme-accent)_20%,transparent)]">
                 <span className="select-none leading-none">{f.emoji}</span>
               </div>
-              <span className="text-[12px] font-bold text-[#1a1a1a]/80 tracking-tight text-center whitespace-nowrap">
+              <span className="text-[12px] font-bold text-[var(--theme-text)] opacity-85 group-hover:opacity-100 tracking-tight text-center whitespace-nowrap">
                 {f.label}
               </span>
             </button>
@@ -2267,7 +2270,7 @@ function ChatView({
             title="Tic Tac Toe"
             subtitle={`Play with ${role === 'owner' ? 'Nusrat' : 'Rahul'} 💖`}
             icon={<Gamepad2 className="w-5 h-5" />}
-            color="bg-[#FF8FA3]"
+            color="bg-[var(--theme-accent)]"
             isActive={true}
             onClick={() => sendGameInvite('tictactoe')}
           />
@@ -2415,28 +2418,30 @@ function GameCard({ title, subtitle, icon, color, isActive, onClick, label }: { 
       disabled={!isActive}
       className={`w-full flex items-center justify-between p-4 rounded-[1.5rem] border transition-all active:scale-[0.97] text-left group
         ${isActive 
-          ? 'bg-white border-[#FF8FA3]/5 hover:border-[#FF8FA3]/20 shadow-[0_4px_12px_rgba(255,143,163,0.05)] hover:shadow-[0_8px_20px_rgba(255,143,163,0.1)]' 
+          ? 'bg-[var(--theme-bg)] border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40 shadow-[0_4px_12px_color-mix(in_srgb,var(--theme-accent)_6%,transparent)] hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--theme-accent)_12%,transparent)]' 
           : 'bg-gray-50/50 border-gray-100 opacity-60 cursor-not-allowed filter grayscale'
         }`}
     >
       <div className="flex items-center gap-4">
-        <div className={`w-12 h-12 flex-shrink-0 ${isActive ? color : 'bg-gray-200'} text-white rounded-2xl flex items-center justify-center shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:rotate-3`}>
+        <div 
+          className={`w-12 h-12 flex-shrink-0 ${isActive ? color : 'bg-gray-200'} text-white rounded-2xl flex items-center justify-center shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:rotate-3`}
+        >
           {icon}
         </div>
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <h4 className={`font-black uppercase tracking-tight text-[13px] ${isActive ? 'text-[#1a1a1a]' : 'text-gray-400'}`}>{title}</h4>
+            <h4 className={`font-black uppercase tracking-tight text-[13px] ${isActive ? 'text-[var(--theme-text)]' : 'text-gray-400'}`}>{title}</h4>
             {isActive && (
-              <span className="text-[7px] bg-[#FF8FA3]/10 text-[#FF8FA3] px-2 py-0.5 rounded-full font-black uppercase tracking-widest whitespace-nowrap">
+              <span className="text-[7px] bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] px-2 py-0.5 rounded-full font-black uppercase tracking-widest whitespace-nowrap">
                 {label || 'Available 🎮'}
               </span>
             )}
           </div>
-          <p className={`text-[10px] font-bold uppercase tracking-widest leading-none ${isActive ? 'text-[#6E6E6E] opacity-40' : 'text-gray-300'}`}>{subtitle}</p>
+          <p className={`text-[10px] font-bold uppercase tracking-widest leading-none ${isActive ? 'text-[var(--theme-text)] opacity-50' : 'text-gray-300'}`}>{subtitle}</p>
         </div>
       </div>
       {isActive && (
-        <ChevronRight className="w-5 h-5 text-[#FF8FA3] transition-all -translate-x-2 group-hover:translate-x-0 group-hover:drop-shadow-sm opacity-20 group-hover:opacity-100" />
+        <ChevronRight className="w-5 h-5 text-[var(--theme-accent)] transition-all -translate-x-2 group-hover:translate-x-0 group-hover:drop-shadow-sm opacity-40 group-hover:opacity-100" />
       )}
     </button>
   );
@@ -2459,10 +2464,10 @@ function AttachmentOption({ icon, label, color, onClick }: { icon: React.ReactNo
       onClick={onClick}
       className="flex flex-col items-center gap-2 group"
     >
-      <div className={`w-14 h-14 ${color} text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all group-hover:shadow-[#FF8FA3]/10`}>
+      <div className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all group-hover:shadow-[0_4px_16px_color-mix(in_srgb,var(--theme-accent)_20%,transparent)]`}>
         {icon}
       </div>
-      <span className="text-[10px] font-bold text-[#6E6E6E] uppercase tracking-wider opacity-60 group-hover:opacity-100 transition-opacity">{label}</span>
+      <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-65 group-hover:opacity-100 transition-opacity">{label}</span>
     </button>
   );
 }
@@ -2477,18 +2482,21 @@ function BottomSheet({ isOpen, onClose, title, children }: { isOpen: boolean, on
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/30 backdrop-blur-[2px]"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[4px]"
           />
           <motion.div 
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-lg bg-[#FFF8F6] rounded-[2.5rem] overflow-hidden shadow-2xl pt-2 pb-6 lg:pb-8"
+            className="relative w-full max-w-lg bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2.5rem] overflow-hidden shadow-2xl pt-2 pb-6 lg:pb-8 backdrop-blur-xl"
+            style={{
+              boxShadow: '0 24px 80px color-mix(in srgb, var(--theme-text) 25%, transparent)',
+            }}
           >
-            <div className="w-12 h-1 bg-[#6E6E6E]/10 rounded-full mx-auto my-3" />
+            <div className="w-12 h-1 bg-[var(--theme-text)]/15 rounded-full mx-auto my-3" />
             <div className="px-6 pb-2">
-              <h3 className="text-sm font-black text-[#FF8FA3] uppercase tracking-[0.3em] text-center">{title}</h3>
+              <h3 className="text-sm font-black text-[var(--theme-accent)] uppercase tracking-[0.3em] text-center">{title}</h3>
             </div>
             {children}
           </motion.div>
