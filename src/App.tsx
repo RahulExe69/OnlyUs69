@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
 
 // Firestore mocks for migration
@@ -255,11 +255,35 @@ export default function App() {
       if (msgErr) {
         console.error("Error loading messages from Supabase:", msgErr);
       } else if (data) {
-        const mappedData = data.map((m: any) => ({
-          ...m,
-          timestamp: m.created_at || m.timestamp || new Date().toISOString(),
-          replyTo: m.reply_to ? { id: m.reply_to, text: 'Replied Message', sender_role: m.sender_role || 'owner' } : null
-        }));
+        const msgMap = new Map<string, any>();
+        data.forEach((m: any) => msgMap.set(m.id, m));
+
+        const mappedData = data.map((m: any) => {
+          let replyToObj = null;
+          if (m.reply_to) {
+            const orig = msgMap.get(m.reply_to);
+            if (orig) {
+              replyToObj = {
+                id: orig.id,
+                text: orig.deleted 
+                  ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                  : orig.text,
+                sender_role: orig.sender_role
+              };
+            } else {
+              replyToObj = {
+                id: m.reply_to,
+                text: m.reply_text || 'Original message',
+                sender_role: m.reply_sender_role || (m.sender_role === 'owner' ? 'partner' : 'owner')
+              };
+            }
+          }
+          return {
+            ...m,
+            timestamp: m.created_at || m.timestamp || new Date().toISOString(),
+            replyTo: replyToObj
+          };
+        });
         setMessages(mappedData as Message[]);
         localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
       }
@@ -272,13 +296,33 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const raw = payload.new;
-          const msg = {
-            ...raw,
-            timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
-            replyTo: raw.reply_to ? { id: raw.reply_to, text: 'Replied Message', sender_role: raw.sender_role || 'owner' } : null
-          } as Message;
-
           setMessages(prev => {
+            let replyToObj = null;
+            if (raw.reply_to) {
+              const orig = prev.find(m => m.id === raw.reply_to);
+              if (orig) {
+                replyToObj = {
+                  id: orig.id,
+                  text: orig.deleted 
+                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    : orig.text,
+                  sender_role: orig.sender_role
+                };
+              } else {
+                replyToObj = {
+                  id: raw.reply_to,
+                  text: raw.reply_text || 'Original message',
+                  sender_role: raw.reply_sender_role || (raw.sender_role === 'owner' ? 'partner' : 'owner')
+                };
+              }
+            }
+
+            const msg = {
+              ...raw,
+              timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
+              replyTo: replyToObj
+            } as Message;
+
             const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === msg.text && m.sender_role === msg.sender_role));
             const isDuplicate = filtered.some(m => m.id === msg.id);
             if (isDuplicate) return filtered;
@@ -286,12 +330,35 @@ export default function App() {
           });
         } else if (payload.eventType === 'UPDATE') {
           const raw = payload.new;
-          const msg = {
-            ...raw,
-            timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
-            replyTo: raw.reply_to ? { id: raw.reply_to, text: 'Replied Message', sender_role: raw.sender_role || 'owner' } : null
-          } as Message;
-          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
+          setMessages(prev => {
+            let replyToObj = null;
+            if (raw.reply_to) {
+              const orig = prev.find(m => m.id === raw.reply_to);
+              if (orig) {
+                replyToObj = {
+                  id: orig.id,
+                  text: orig.deleted 
+                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    : orig.text,
+                  sender_role: orig.sender_role
+                };
+              } else {
+                replyToObj = {
+                  id: raw.reply_to,
+                  text: raw.reply_text || 'Original message',
+                  sender_role: raw.reply_sender_role || (raw.sender_role === 'owner' ? 'partner' : 'owner')
+                };
+              }
+            }
+
+            const msg = {
+              ...raw,
+              timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
+              replyTo: replyToObj
+            } as Message;
+
+            return prev.map(m => m.id === msg.id ? { ...m, ...msg } : m);
+          });
         } else if (payload.eventType === 'DELETE') {
           const deletedId = payload.old?.id;
           if (deletedId) {
@@ -603,12 +670,17 @@ export default function App() {
       })
       .on('broadcast', { event: 'nudge' }, ({ payload }) => {
         const { senderId, senderName, type } = payload;
-        if (senderId !== user.id) {
-          setActiveNudge({ type, sender: senderName });
+        const myId = user?.id || '';
+        const myName = (userProfile?.role === 'owner' || isOwner) ? 'Rahul' : 'Nusrat';
+        
+        if (senderId !== myId && senderName !== myName) {
+          setActiveNudge({ type: type || 'hug', sender: senderName || 'Your Love' });
           // Auto-clear nudge after 4 seconds
           setTimeout(() => setActiveNudge(null), 4000);
-          // Haptic feedback if supported
-          if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200]);
+          // WhatsApp style double vibration pulse for feeling
+          if (typeof window !== 'undefined' && window.navigator?.vibrate) {
+            try { window.navigator.vibrate([150, 80, 150]); } catch (_) {}
+          }
         }
       })
       .subscribe(async (status) => {
@@ -667,21 +739,57 @@ export default function App() {
     });
   }, [user, isTabActive]);
 
-  const sendNudge = (type: string = 'hug') => {
-    if (mainChannelRef.current && user && userProfile) {
-      const senderName = userProfile.role === 'owner' ? 'Rahul' : 'Nusrat';
-      mainChannelRef.current.send({
-        type: 'broadcast',
-        event: 'nudge',
-        payload: { 
-          senderId: user.id, 
-          senderName,
-          type 
-        }
-      });
-      // Show locally too
-      setActiveNudge({ type, sender: 'You' });
-      setTimeout(() => setActiveNudge(null), 4000);
+  const sendNudge = async (type: string = 'hug') => {
+    const currentRole: UserRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+    const senderName = currentRole === 'owner' ? 'Rahul' : 'Nusrat';
+    const senderId = user?.id || (isOwner ? '770c6ecc-e7ed-46ce-b37e-14caae961bb7' : '625ede11-c534-4475-be39-63554fdbb7a7');
+
+    // 1. Instant local visual celebration
+    setActiveNudge({ type, sender: 'You' });
+    setTimeout(() => setActiveNudge(null), 4000);
+
+    // Haptic feedback
+    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
+      try { window.navigator.vibrate([100, 50, 100]); } catch (_) {}
+    }
+
+    // 2. Real-time broadcast
+    if (mainChannelRef.current) {
+      try {
+        await mainChannelRef.current.send({
+          type: 'broadcast',
+          event: 'nudge',
+          payload: { 
+            senderId, 
+            senderName,
+            type 
+          }
+        });
+      } catch (err) {
+        console.warn("Nudge broadcast notice:", err);
+      }
+    }
+
+    // 3. Insert feeling into chat messages so partner can see it in history
+    const feelingLabels: Record<string, string> = {
+      hug: '🤗 Sent you a warm virtual hug 💖',
+      kiss: '💋 Sent you a sweet kiss ❤️',
+      tickle: '😂 Tickled you! 🤭',
+      miss: '🥺 Miss you so much 💙'
+    };
+    const feelingText = feelingLabels[type] || `💖 Sent you a ${type}`;
+
+    try {
+      await supabase.from('messages').insert([{
+        sender_role: currentRole,
+        text: feelingText,
+        created_at: new Date().toISOString(),
+        reactions: {},
+        reply_to: null,
+        attachment_url: null
+      }]);
+    } catch (err) {
+      console.error("Failed to insert feeling message:", err);
     }
   };
 
@@ -1301,7 +1409,7 @@ export default function App() {
 
       <AnimatePresence>
         {activeNudge && (
-          <NudgeOverlay nudge={activeNudge} />
+          <NudgeOverlay nudge={activeNudge} onDismiss={() => setActiveNudge(null)} />
         )}
       </AnimatePresence>
 
@@ -1978,6 +2086,7 @@ function ChatView({
               key={msg.id} 
               msg={msg} 
               role={role} 
+              allMessages={visibleMessages}
               onReact={toggleReaction} 
               isSelected={!!selectedMessages.find(m => m.id === msg.id)}
               selectionCount={selectedMessages.length}
@@ -1991,6 +2100,7 @@ function ChatView({
               showSeenText={msg.id === interactionId && showIndicatorSeenText}
               partnerLastReadAt={partnerLastReadMillis}
               onJoinGame={(game) => onSetActiveGame(game)}
+              onTriggerNudge={onSendNudge}
             />
           ))
         )}
@@ -2181,9 +2291,9 @@ function ChatView({
   );
 }
 
-function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
+function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: string }, onDismiss?: () => void }) {
   const configs: Record<string, { label: string, emoji: string, color: string, secondaryEmoji: string }> = {
-    hug: { label: 'Virtual Hug', emoji: '💖', color: 'text-pink-500', secondaryEmoji: '❤️' },
+    hug: { label: 'Virtual Hug', emoji: '💖', color: 'text-pink-500', secondaryEmoji: '🤗' },
     kiss: { label: 'Sweet Kiss', emoji: '💋', color: 'text-red-500', secondaryEmoji: '😘' },
     tickle: { label: 'Tickle!', emoji: '😂', color: 'text-yellow-500', secondaryEmoji: '🤭' },
     miss: { label: 'Miss You', emoji: '🥺', color: 'text-blue-500', secondaryEmoji: '💙' },
@@ -2191,15 +2301,29 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
 
   const config = configs[nudge.type] || configs.hug;
 
+  const particles = [
+    { x: 120, y: -110, scale: 1.3, delay: 0 },
+    { x: -130, y: -90, scale: 1.1, delay: 0.1 },
+    { x: 140, y: 70, scale: 1.4, delay: 0.2 },
+    { x: -110, y: 110, scale: 1.2, delay: 0.15 },
+    { x: 0, y: -150, scale: 1.5, delay: 0.05 },
+    { x: -10, y: 150, scale: 1.2, delay: 0.25 },
+    { x: 80, y: 130, scale: 1.1, delay: 0.1 },
+    { x: -90, y: -130, scale: 1.3, delay: 0.2 },
+    { x: 160, y: -30, scale: 1.2, delay: 0.3 },
+    { x: -150, y: 20, scale: 1.4, delay: 0.05 }
+  ];
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className={`fixed inset-0 z-[200] pointer-events-none flex items-center justify-center backdrop-blur-[2px] transition-colors duration-500 ${
-        nudge.type === 'kiss' ? 'bg-red-500/10' : 
-        nudge.type === 'tickle' ? 'bg-yellow-500/10' : 
-        nudge.type === 'miss' ? 'bg-blue-500/10' : 'bg-pink-400/10'
+      onClick={onDismiss}
+      className={`fixed inset-0 z-[200] cursor-pointer flex items-center justify-center backdrop-blur-[4px] transition-colors duration-500 ${
+        nudge.type === 'kiss' ? 'bg-red-500/15' : 
+        nudge.type === 'tickle' ? 'bg-yellow-500/15' : 
+        nudge.type === 'miss' ? 'bg-blue-500/15' : 'bg-pink-400/15'
       }`}
     >
       <div className="relative flex flex-col items-center">
@@ -2210,54 +2334,58 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
              rotate: [20, -10, 0],
              y: [0, -20, 0]
            }}
-           transition={{ duration: 1, ease: "easeOut" }}
+           transition={{ duration: 0.8, ease: "easeOut" }}
            className="relative flex items-center justify-center"
         >
           {nudge.type === 'kiss' ? (
              <motion.div 
-              animate={{ scale: [1, 1.2, 1], rotate: [-10, 10, -10] }}
-              transition={{ repeat: Infinity, duration: 2 }}
+              animate={{ scale: [1, 1.25, 1], rotate: [-10, 10, -10] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
              >
-                <div className="text-[120px] drop-shadow-2xl">💋</div>
+                <div className="text-[120px] drop-shadow-2xl select-none">💋</div>
              </motion.div>
           ) : nudge.type === 'tickle' ? (
              <motion.div 
-              animate={{ x: [-10, 10, -10], y: [-5, 5, -5] }}
+              animate={{ x: [-12, 12, -12], y: [-6, 6, -6], rotate: [-5, 5, -5] }}
               transition={{ repeat: Infinity, duration: 0.2 }}
              >
-                <div className="text-[120px] drop-shadow-2xl">😂</div>
+                <div className="text-[120px] drop-shadow-2xl select-none">😂</div>
              </motion.div>
           ) : nudge.type === 'miss' ? (
             <motion.div 
-              animate={{ opacity: [0.7, 1, 0.7], y: [0, -10, 0] }}
-              transition={{ repeat: Infinity, duration: 3 }}
+              animate={{ opacity: [0.75, 1, 0.75], y: [0, -12, 0], scale: [1, 1.05, 1] }}
+              transition={{ repeat: Infinity, duration: 2.5 }}
              >
-                <div className="text-[120px] drop-shadow-2xl">🥺</div>
+                <div className="text-[120px] drop-shadow-2xl select-none">🥺</div>
              </motion.div>
           ) : (
-            <Heart className={`w-40 h-40 ${config.color} fill-current drop-shadow-2xl`} />
+            <motion.div
+              animate={{ scale: [1, 1.15, 1] }}
+              transition={{ repeat: Infinity, duration: 1.2 }}
+            >
+              <Heart className={`w-36 h-36 ${config.color} fill-current drop-shadow-2xl`} />
+            </motion.div>
           )}
           
-          {/* Floating mini items */}
-          {[...Array(12)].map((_, i) => (
+          {/* Floating mini celebration items */}
+          {particles.map((p, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, scale: 0 }}
+              initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
               animate={{ 
                 opacity: [0, 1, 0],
-                scale: [0.5, 1.5, 0.5],
-                x: (Math.random() - 0.5) * 400,
-                y: (Math.random() - 0.5) * 400,
-                rotate: Math.random() * 360
+                scale: [0.5, p.scale, 0.5],
+                x: p.x,
+                y: p.y,
               }}
               transition={{ 
-                duration: 2 + Math.random() * 2,
+                duration: 2.2,
                 repeat: Infinity,
-                delay: Math.random() * 0.5
+                delay: p.delay
               }}
-              className="absolute top-1/2 left-1/2"
+              className="absolute top-1/2 left-1/2 -ml-3 -mt-3 select-none pointer-events-none"
             >
-              <div className="text-2xl">{config.secondaryEmoji}</div>
+              <div className="text-3xl">{config.secondaryEmoji}</div>
             </motion.div>
           ))}
         </motion.div>
@@ -2265,11 +2393,11 @@ function NudgeOverlay({ nudge }: { nudge: { type: string, sender: string } }) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-12 bg-white/90 backdrop-blur-md px-8 py-4 rounded-[2rem] shadow-2xl border border-pink-100 flex flex-col items-center gap-1"
+          transition={{ delay: 0.3 }}
+          className="mt-12 bg-white/95 backdrop-blur-md px-8 py-4 rounded-[2rem] shadow-2xl border border-pink-100/80 flex flex-col items-center gap-1"
         >
           <span className={`text-sm font-black uppercase tracking-[0.2em] ${config.color}`}>{config.label}</span>
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-60">From {nudge.sender} {config.emoji}</span>
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-70">From {nudge.sender} {config.emoji}</span>
         </motion.div>
       </div>
     </motion.div>
@@ -2369,6 +2497,7 @@ function BottomSheet({ isOpen, onClose, title, children }: { isOpen: boolean, on
 const MessageItem = React.memo(function MessageItem({ 
   msg, 
   role, 
+  allMessages,
   onReact, 
   isSelected, 
   selectionCount,
@@ -2381,10 +2510,12 @@ const MessageItem = React.memo(function MessageItem({
   isInteractionPoint,
   showSeenText,
   partnerLastReadAt,
-  onJoinGame
+  onJoinGame,
+  onTriggerNudge
 }: { 
   msg: Message, 
   role: UserRole, 
+  allMessages?: Message[],
   onReact: (id: string, emoji: string) => Promise<void>,
   isSelected: boolean,
   selectionCount: number,
@@ -2398,6 +2529,7 @@ const MessageItem = React.memo(function MessageItem({
   showSeenText?: boolean,
   partnerLastReadAt: number,
   onJoinGame?: (game: { id: string, type: 'tictactoe' }) => void,
+  onTriggerNudge?: (type: string) => void,
   key?: React.Key
 }) {
   const isOwn = msg.sender_role === role;
@@ -2410,6 +2542,40 @@ const MessageItem = React.memo(function MessageItem({
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<'top' | 'bottom'>('top');
   const [isSwiping, setIsSwiping] = useState(false);
+
+  const resolvedReplyTo = useMemo(() => {
+    const replyId = msg.replyTo?.id || (msg as any).reply_to;
+    if (!replyId && !msg.replyTo) return null;
+    
+    // Check if original message is in allMessages
+    if (replyId && allMessages) {
+      const original = allMessages.find(m => m.id === replyId);
+      if (original) {
+        return {
+          id: original.id,
+          text: original.deleted 
+            ? (original.deletedBy === original.sender_role ? 'You deleted this message' : 'This message was deleted') 
+            : original.text,
+          sender_role: original.sender_role
+        };
+      }
+    }
+    
+    if (msg.replyTo && msg.replyTo.text && msg.replyTo.text !== 'Replied Message') {
+      return msg.replyTo;
+    }
+    
+    return msg.replyTo || null;
+  }, [msg.replyTo, (msg as any).reply_to, allMessages]);
+
+  const isFeelingType = useMemo(() => {
+    if (!msg.text || msg.deleted) return null;
+    if (msg.text.includes('warm virtual hug')) return 'hug';
+    if (msg.text.includes('sweet kiss')) return 'kiss';
+    if (msg.text.includes('Tickled you')) return 'tickle';
+    if (msg.text.includes('Miss you so much')) return 'miss';
+    return null;
+  }, [msg.text, msg.deleted]);
 
   // Close picker on outside click release (pointerup) or scroll
   useEffect(() => {
@@ -2551,7 +2717,8 @@ const MessageItem = React.memo(function MessageItem({
   return (
     <div 
       ref={itemRef}
-      className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default ${
+      id={`msg-${msg.id}`}
+      className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default rounded-2xl ${
         isSelected ? 'bg-[#FF8FA3]/20 backdrop-blur-[1px]' : 'hover:bg-romantic-pink/5'
       } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
@@ -2673,20 +2840,39 @@ const MessageItem = React.memo(function MessageItem({
             <div 
               className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none ${
                 isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
-              }`}
+              } ${isFeelingType ? 'cursor-pointer hover:opacity-95' : ''}`}
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+              onClick={(e) => {
+                if (isFeelingType && !selectionActive) {
+                  e.stopPropagation();
+                  onTriggerNudge?.(isFeelingType);
+                }
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
               }}
             >
               {/* Show reply context */}
-              {msg.replyTo && !msg.deleted && (
-                <div className={`mb-2 p-2 rounded-lg text-[11px] border-l-4 ${isOwn ? 'bg-white/10 border-white/50 text-white/90' : 'bg-[#FF8FA3]/5 border-[#FF8FA3]/50 text-[#6E6E6E]/90'}`}>
-                  <p className="font-bold mb-0.5 opacity-60">
-                     {getSenderName(msg.replyTo.sender_role)}
+              {resolvedReplyTo && !msg.deleted && (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const el = document.getElementById(`msg-${resolvedReplyTo.id}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el.classList.add('bg-[#FF8FA3]/25');
+                      setTimeout(() => el.classList.remove('bg-[#FF8FA3]/25'), 1400);
+                    }
+                  }}
+                  className={`mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none ${
+                    isOwn ? 'bg-black/15 border-white text-white/95' : 'bg-[#FF8FA3]/10 border-[#FF8FA3] text-[#1a1a1a]/95'
+                  }`}
+                >
+                  <p className="font-bold mb-0.5 opacity-75">
+                     {getSenderName(resolvedReplyTo.sender_role)}
                   </p>
-                  <p className="italic truncate line-clamp-1 opacity-80">"{msg.replyTo.text}"</p>
+                  <p className="italic truncate line-clamp-1 opacity-90">"{resolvedReplyTo.text}"</p>
                 </div>
               )}
 
