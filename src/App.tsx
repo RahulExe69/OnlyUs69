@@ -137,6 +137,29 @@ export default function App() {
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
   const [showFullImage, setShowFullImage] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Close 3-dot menu on any click outside (including in chat, typing input box, or buttons)
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleOutsideClick = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        menuRef.current && 
+        !menuRef.current.contains(target) &&
+        menuBtnRef.current &&
+        !menuBtnRef.current.contains(target)
+      ) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
+    };
+  }, [showMenu]);
+
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showWallpaperModal, setShowWallpaperModal] = useState(false);
   const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
@@ -911,35 +934,78 @@ export default function App() {
     try {
       if (everyone) {
         // Delete for Everyone (Update Database with placeholder)
-        const messagesToUpdate = messagesToProcess.filter(m => m.sender_role === userProfile?.role && !m.deleted);
+        const messagesToUpdate = messagesToProcess
+          .filter(m => m.sender_role === userProfile?.role && !m.deleted)
+          .map(m => m.id)
+          .filter(id => !id.startsWith('temp-'));
         
-        for (const msg of messagesToUpdate) {
-          const { error: updateError } = await supabase.from('messages').update({
-            text: "",
-            deleted: true,
-            deletedBy: userProfile?.role,
-            reactions: {}
-          }).eq('id', msg.id);
-          
-          if (updateError) throw updateError;
+        // Optimistic UI update
+        setMessages(prev => {
+          const updated = prev.map(m => 
+            messagesToProcess.some(sm => sm.id === m.id && sm.sender_role === userProfile?.role)
+              ? { ...m, deleted: true, deletedBy: userProfile?.role, text: "", reactions: {} }
+              : m
+          );
+          localStorage.setItem('cached_msgs', JSON.stringify(updated.slice(-100)));
+          return updated;
+        });
+
+        if (messagesToUpdate.length > 0) {
+          const chunkSize = 50;
+          const chunks: string[][] = [];
+          for (let i = 0; i < messagesToUpdate.length; i += chunkSize) {
+            chunks.push(messagesToUpdate.slice(i, i + chunkSize));
+          }
+
+          await Promise.all(
+            chunks.map(async (chunk) => {
+              const { error: updateError } = await supabase.from('messages').update({
+                text: "",
+                deleted: true,
+                deletedBy: userProfile?.role,
+                reactions: {}
+              }).in('id', chunk);
+              
+              if (updateError) throw updateError;
+            })
+          );
         }
       } else {
         // Delete for Me (Persist in Database)
         const visibilityField = userProfile?.role === 'owner' ? 'hidden_for_owner' : 'hidden_for_partner';
         
         // Optimistic UI update: hide locally immediately
-        setMessages(prev => prev.map(m => 
-          messagesToProcess.some(sm => sm.id === m.id) 
-            ? { ...m, [visibilityField]: true } 
-            : m
-        ));
+        setMessages(prev => {
+          const updated = prev.map(m => 
+            messagesToProcess.some(sm => sm.id === m.id) 
+              ? { ...m, [visibilityField]: true } 
+              : m
+          );
+          localStorage.setItem('cached_msgs', JSON.stringify(updated.slice(-100)));
+          return updated;
+        });
 
-        for (const msg of messagesToProcess) {
-          const { error: updateError } = await supabase.from('messages')
-            .update({ [visibilityField]: true })
-            .eq('id', msg.id);
-          
-          if (updateError) throw updateError;
+        const idsToUpdate = messagesToProcess
+          .map(m => m.id)
+          .filter(id => !id.startsWith('temp-'));
+
+        if (idsToUpdate.length > 0) {
+          // Batch in chunks of 50 in parallel for instant, bulletproof persistence
+          const chunkSize = 50;
+          const chunks: string[][] = [];
+          for (let i = 0; i < idsToUpdate.length; i += chunkSize) {
+            chunks.push(idsToUpdate.slice(i, i + chunkSize));
+          }
+
+          await Promise.all(
+            chunks.map(async (chunk) => {
+              const { error: updateError } = await supabase.from('messages')
+                .update({ [visibilityField]: true })
+                .in('id', chunk);
+              
+              if (updateError) throw updateError;
+            })
+          );
         }
       }
     } catch (err: any) {
@@ -1121,6 +1187,7 @@ export default function App() {
 
                     <div className="relative">
                       <button 
+                        ref={menuBtnRef}
                         onClick={() => setShowMenu(!showMenu)}
                         className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[#FF8FA3]/10 text-[#FF8FA3]' : 'text-[#6E6E6E]/40 hover:text-[#FF8FA3]'}`}
                       >
@@ -1130,8 +1197,9 @@ export default function App() {
                       <AnimatePresence>
                         {showMenu && (
                           <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                            <div className="fixed inset-0 z-40" onPointerDown={() => setShowMenu(false)} />
                             <motion.div 
+                              ref={menuRef}
                               initial={{ opacity: 0, scale: 0.95, y: -10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -10 }}
@@ -2333,6 +2401,8 @@ const MessageItem = React.memo(function MessageItem({
 }) {
   const isOwn = msg.sender_role === role;
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggeredRef = useRef<boolean>(false);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   const emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
   const [showPicker, setShowPicker] = useState(false);
@@ -2361,20 +2431,53 @@ const MessageItem = React.memo(function MessageItem({
     return r === 'owner' ? 'Rahul' : 'Nusrat';
   };
 
+  const triggerLongPress = () => {
+    if (longPressTriggeredRef.current || isSwiping) return;
+    longPressTriggeredRef.current = true;
+    if (!msg.deleted) setShowPicker(true);
+    if (!isSelected) onToggleSelect(msg);
+    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
+      try { window.navigator.vibrate(40); } catch (_) {}
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSwiping || selectionActive) return;
+    longPressTriggeredRef.current = false;
+    touchStartPos.current = { x: e.clientX, y: e.clientY };
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    
     longPressTimer.current = setTimeout(() => {
-      if (!msg.deleted) setShowPicker(true);
-      if (!isSelected) onToggleSelect(msg);
-      if (window.navigator.vibrate) window.navigator.vibrate(40);
-    }, 400);
+      triggerLongPress();
+    }, 380);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!touchStartPos.current || longPressTriggeredRef.current) return;
+    const dx = Math.abs(e.clientX - touchStartPos.current.x);
+    const dy = Math.abs(e.clientY - touchStartPos.current.y);
+    if (dx > 10 || dy > 10) {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    }
   };
 
   const handlePointerUp = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    touchStartPos.current = null;
   };
 
   const handleClick = (e: React.MouseEvent) => {
+    if (longPressTriggeredRef.current) {
+      // Avoid immediate unselection on pointer release right after long press
+      longPressTriggeredRef.current = false;
+      return;
+    }
     if (selectionActive && !isSwiping) onToggleSelect(msg);
   };
 
@@ -2404,14 +2507,16 @@ const MessageItem = React.memo(function MessageItem({
         isSelected ? 'bg-[#FF8FA3]/20 backdrop-blur-[1px]' : 'hover:bg-romantic-pink/5'
       } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onContextMenu={(e) => {
         e.preventDefault();
         if (isSwiping) return;
-        if (!msg.deleted) setShowPicker(true);
-        if (!isSelected) onToggleSelect(msg);
-        if (window.navigator.vibrate) window.navigator.vibrate(50);
+        if (!longPressTriggeredRef.current) {
+          triggerLongPress();
+        }
       }}
     >
       {/* Absolute Reply Hint behind the message */}
