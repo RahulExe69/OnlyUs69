@@ -140,7 +140,7 @@ export default function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Close 3-dot menu on any click outside (including in chat, typing input box, or buttons)
+  // Close 3-dot menu on click release outside (pointerup)
   useEffect(() => {
     if (!showMenu) return;
     const handleOutsideClick = (e: MouseEvent | TouchEvent | PointerEvent) => {
@@ -154,9 +154,10 @@ export default function App() {
         setShowMenu(false);
       }
     };
-    document.addEventListener('pointerdown', handleOutsideClick, true);
+    // Trigger on click release (pointerup)
+    document.addEventListener('pointerup', handleOutsideClick, true);
     return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick, true);
+      document.removeEventListener('pointerup', handleOutsideClick, true);
     };
   }, [showMenu]);
 
@@ -1197,7 +1198,7 @@ export default function App() {
                       <AnimatePresence>
                         {showMenu && (
                           <>
-                            <div className="fixed inset-0 z-40" onPointerDown={() => setShowMenu(false)} />
+                            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
                             <motion.div 
                               ref={menuRef}
                               initial={{ opacity: 0, scale: 0.95, y: -10 }}
@@ -2400,29 +2401,33 @@ const MessageItem = React.memo(function MessageItem({
   key?: React.Key
 }) {
   const isOwn = msg.sender_role === role;
+  const itemRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const justLongPressedRef = useRef<boolean>(false);
-  const lastLongPressTriggerTimestampRef = useRef<number>(0);
+  const longPressTriggeredTimeRef = useRef<number>(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   const emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
   const [showPicker, setShowPicker] = useState(false);
+  const [pickerPosition, setPickerPosition] = useState<'top' | 'bottom'>('top');
   const [isSwiping, setIsSwiping] = useState(false);
 
-  // Close picker on outside click elsewhere or scroll
+  // Close picker on outside click release (pointerup) or scroll
   useEffect(() => {
-    if (showPicker) {
-      const handleClose = (e: MouseEvent | TouchEvent) => {
-        // If clicking inside the picker itself, let emoji button handle it
-        setShowPicker(false);
-      };
-      window.addEventListener('scroll', handleClose, true);
-      window.addEventListener('pointerdown', handleClose, true);
-      return () => {
-        window.removeEventListener('scroll', handleClose, true);
-        window.removeEventListener('pointerdown', handleClose, true);
-      };
-    }
+    if (!showPicker) return;
+    const handleOutside = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      const target = e.target as Node;
+      // If clicking inside this message item, let handleClick or emoji buttons handle it
+      if (itemRef.current && itemRef.current.contains(target)) {
+        return;
+      }
+      setShowPicker(false);
+    };
+    window.addEventListener('scroll', () => setShowPicker(false), true);
+    document.addEventListener('pointerup', handleOutside, true);
+    return () => {
+      window.removeEventListener('scroll', () => setShowPicker(false), true);
+      document.removeEventListener('pointerup', handleOutside, true);
+    };
   }, [showPicker]);
 
   const getSenderName = (r: UserRole) => {
@@ -2439,14 +2444,32 @@ const MessageItem = React.memo(function MessageItem({
     if (isSwiping) return;
     const now = Date.now();
     // Guard against multiple triggers within 800ms
-    if (now - lastLongPressTriggerTimestampRef.current < 800) return;
-    
-    lastLongPressTriggerTimestampRef.current = now;
-    justLongPressedRef.current = true;
+    if (now - longPressTriggeredTimeRef.current < 800) return;
+    longPressTriggeredTimeRef.current = now;
 
-    // Single vibration
+    // Clear any text selection immediately to prevent browser native selection haptics
+    if (typeof window !== 'undefined' && window.getSelection) {
+      try {
+        window.getSelection()?.removeAllRanges();
+      } catch (_) {}
+    }
+
+    // Dynamically choose top vs bottom picker position so it never gets cut off by the top bar
+    if (itemRef.current) {
+      const rect = itemRef.current.getBoundingClientRect();
+      // If the message bubble is within 140px of the viewport top, show the picker below the bubble
+      if (rect.top < 140) {
+        setPickerPosition('bottom');
+      } else {
+        setPickerPosition('top');
+      }
+    }
+
+    // Exactly one crisp WhatsApp-style haptic feedback pulse
     if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-      try { window.navigator.vibrate(35); } catch (_) {}
+      try { 
+        window.navigator.vibrate(30); 
+      } catch (_) {}
     }
 
     if (!msg.deleted) setShowPicker(true);
@@ -2458,12 +2481,12 @@ const MessageItem = React.memo(function MessageItem({
     touchStartPos.current = { x: e.clientX, y: e.clientY };
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
 
-    // If selection mode is already active, don't start long-press timer; simple tap will toggle
+    // If selection mode is already active, simple tap will toggle selection
     if (selectionActive) return;
     
     longPressTimer.current = setTimeout(() => {
       triggerLongPress();
-    }, 380);
+    }, 360);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -2488,15 +2511,14 @@ const MessageItem = React.memo(function MessageItem({
 
   const handleClick = (e: React.MouseEvent) => {
     const now = Date.now();
-    // If this click is just the finger release after a long press, ignore to keep selection/picker
-    if (justLongPressedRef.current || (now - lastLongPressTriggerTimestampRef.current < 450)) {
-      justLongPressedRef.current = false;
+    // If this click is just the finger release immediately after a long press, ignore so it stays selected & open
+    if (now - longPressTriggeredTimeRef.current < 350) {
       return;
     }
 
     if (isSwiping) return;
 
-    // If emoji picker is open or selection is active, clicking on the message simultaneously closes picker and toggles/deselects
+    // Instantly close emoji picker AND toggle/deselect message together in one single click!
     if (showPicker) {
       setShowPicker(false);
     }
@@ -2528,6 +2550,7 @@ const MessageItem = React.memo(function MessageItem({
 
   return (
     <div 
+      ref={itemRef}
       className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default ${
         isSelected ? 'bg-[#FF8FA3]/20 backdrop-blur-[1px]' : 'hover:bg-romantic-pink/5'
       } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
@@ -2537,6 +2560,7 @@ const MessageItem = React.memo(function MessageItem({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onClick={handleClick}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2559,7 +2583,7 @@ const MessageItem = React.memo(function MessageItem({
         dragElastic={0.1}
         dragMomentum={false}
         dragDirectionLock
-        dragListener={!showPicker}
+        dragListener={!showPicker && !selectionActive}
         dragTransition={{ power: 0.1, timeConstant: 200 }}
         style={{ 
           x: swipeX,
@@ -2580,16 +2604,14 @@ const MessageItem = React.memo(function MessageItem({
             if (window.navigator.vibrate) window.navigator.vibrate(30);
           }
         }}
-        onPointerMove={(e) => {
-          // If finger moves more than 10px, cancel long press
-          // Note: we don't have start position here easily, but dragStart will also clear it.
-          // For now, let's rely on dragStart and a slightly more lenient pointermove.
+        className="relative w-full flex items-end px-2 lg:px-4 select-none"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
         }}
-        onClick={handleClick}
-        className="relative w-full flex items-end px-2 lg:px-4"
       >
         {!isOwn && (
-          <div className="flex-shrink-0 mr-2 self-end mb-1 cursor-pointer active:scale-95 transition-transform" onClick={() => partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url)}>
+          <div className="flex-shrink-0 mr-2 self-end mb-1 cursor-pointer active:scale-95 transition-transform" onClick={(e) => { e.stopPropagation(); partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url); }}>
             {partnerProfile?.photo_url ? (
               <img 
                 src={partnerProfile.photo_url} 
@@ -2612,10 +2634,12 @@ const MessageItem = React.memo(function MessageItem({
             <AnimatePresence>
               {showPicker && !isSwiping && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.8, y: pickerPosition === 'bottom' ? -10 : 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                  className={`absolute bottom-full mb-3 z-50 bg-white/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(255,143,163,0.15)] border border-[#FF8FA3]/10 p-1.5 rounded-full flex gap-1 w-max ${
+                  exit={{ opacity: 0, scale: 0.8, y: pickerPosition === 'bottom' ? -10 : 10 }}
+                  className={`absolute ${
+                    pickerPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
+                  } z-50 bg-white/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(255,143,163,0.18)] border border-[#FF8FA3]/15 p-1.5 rounded-full flex gap-1 w-max ${
                     isOwn ? 'right-0' : 'left-0'
                   }`}
                   onClick={(e) => e.stopPropagation()}
@@ -2626,7 +2650,8 @@ const MessageItem = React.memo(function MessageItem({
                       <motion.button 
                         key={e}
                         whileTap={{ scale: 0.8 }}
-                        onClick={() => {
+                        onClick={(eClick) => {
+                          eClick.stopPropagation();
                           onReact(msg.id, e);
                           setShowPicker(false);
                         }}
@@ -2646,9 +2671,14 @@ const MessageItem = React.memo(function MessageItem({
             </AnimatePresence>
 
             <div 
-              className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all ${
+              className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none ${
                 isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
-              } ${msg.deleted ? 'select-none' : ''}`}
+              }`}
+              style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
               {/* Show reply context */}
               {msg.replyTo && !msg.deleted && (
@@ -2660,8 +2690,11 @@ const MessageItem = React.memo(function MessageItem({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px]">
-                <span className={`whitespace-pre-wrap flex-1 break-words ${msg.deleted ? 'italic opacity-60' : ''}`}>
+              <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px] select-none">
+                <span 
+                  className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
+                  style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+                >
                   {msg.deleted ? (
                     msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
                   ) : (
@@ -2671,7 +2704,7 @@ const MessageItem = React.memo(function MessageItem({
                     <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
                   )}
                 </span>
-                <div className={`flex items-center gap-1 opacity-50 text-[10px] ml-auto h-4 mb-[-2px] tracking-tight font-medium`}>
+                <div className={`flex items-center gap-1 opacity-50 text-[10px] ml-auto h-4 mb-[-2px] tracking-tight font-medium select-none`}>
                   <span>{displayTime()}</span>
                   {isOwn && !msg.deleted && <RotateCcw className="w-2.5 h-2.5" />}
                 </div>
