@@ -2401,7 +2401,8 @@ const MessageItem = React.memo(function MessageItem({
 }) {
   const isOwn = msg.sender_role === role;
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const longPressTriggeredRef = useRef<boolean>(false);
+  const justLongPressedRef = useRef<boolean>(false);
+  const lastLongPressTriggerTimestampRef = useRef<number>(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   const emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
@@ -2411,12 +2412,15 @@ const MessageItem = React.memo(function MessageItem({
   // Close picker on outside click elsewhere or scroll
   useEffect(() => {
     if (showPicker) {
-      const handleClose = () => setShowPicker(false);
+      const handleClose = (e: MouseEvent | TouchEvent) => {
+        // If clicking inside the picker itself, let emoji button handle it
+        setShowPicker(false);
+      };
       window.addEventListener('scroll', handleClose, true);
-      window.addEventListener('click', handleClose, true);
+      window.addEventListener('pointerdown', handleClose, true);
       return () => {
         window.removeEventListener('scroll', handleClose, true);
-        window.removeEventListener('click', handleClose, true);
+        window.removeEventListener('pointerdown', handleClose, true);
       };
     }
   }, [showPicker]);
@@ -2432,20 +2436,30 @@ const MessageItem = React.memo(function MessageItem({
   };
 
   const triggerLongPress = () => {
-    if (longPressTriggeredRef.current || isSwiping) return;
-    longPressTriggeredRef.current = true;
+    if (isSwiping) return;
+    const now = Date.now();
+    // Guard against multiple triggers within 800ms
+    if (now - lastLongPressTriggerTimestampRef.current < 800) return;
+    
+    lastLongPressTriggerTimestampRef.current = now;
+    justLongPressedRef.current = true;
+
+    // Single vibration
+    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
+      try { window.navigator.vibrate(35); } catch (_) {}
+    }
+
     if (!msg.deleted) setShowPicker(true);
     if (!isSelected) onToggleSelect(msg);
-    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-      try { window.navigator.vibrate(40); } catch (_) {}
-    }
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isSwiping || selectionActive) return;
-    longPressTriggeredRef.current = false;
+    if (isSwiping) return;
     touchStartPos.current = { x: e.clientX, y: e.clientY };
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
+
+    // If selection mode is already active, don't start long-press timer; simple tap will toggle
+    if (selectionActive) return;
     
     longPressTimer.current = setTimeout(() => {
       triggerLongPress();
@@ -2453,10 +2467,10 @@ const MessageItem = React.memo(function MessageItem({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!touchStartPos.current || longPressTriggeredRef.current) return;
+    if (!touchStartPos.current) return;
     const dx = Math.abs(e.clientX - touchStartPos.current.x);
     const dy = Math.abs(e.clientY - touchStartPos.current.y);
-    if (dx > 10 || dy > 10) {
+    if (dx > 8 || dy > 8) {
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
         longPressTimer.current = null;
@@ -2473,12 +2487,23 @@ const MessageItem = React.memo(function MessageItem({
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (longPressTriggeredRef.current) {
-      // Avoid immediate unselection on pointer release right after long press
-      longPressTriggeredRef.current = false;
+    const now = Date.now();
+    // If this click is just the finger release after a long press, ignore to keep selection/picker
+    if (justLongPressedRef.current || (now - lastLongPressTriggerTimestampRef.current < 450)) {
+      justLongPressedRef.current = false;
       return;
     }
-    if (selectionActive && !isSwiping) onToggleSelect(msg);
+
+    if (isSwiping) return;
+
+    // If emoji picker is open or selection is active, clicking on the message simultaneously closes picker and toggles/deselects
+    if (showPicker) {
+      setShowPicker(false);
+    }
+
+    if (selectionActive || isSelected) {
+      onToggleSelect(msg);
+    }
   };
 
   const swipeX = useMotionValue(0);
@@ -2506,6 +2531,7 @@ const MessageItem = React.memo(function MessageItem({
       className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default ${
         isSelected ? 'bg-[#FF8FA3]/20 backdrop-blur-[1px]' : 'hover:bg-romantic-pink/5'
       } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -2513,10 +2539,7 @@ const MessageItem = React.memo(function MessageItem({
       onPointerLeave={handlePointerUp}
       onContextMenu={(e) => {
         e.preventDefault();
-        if (isSwiping) return;
-        if (!longPressTriggeredRef.current) {
-          triggerLongPress();
-        }
+        e.stopPropagation();
       }}
     >
       {/* Absolute Reply Hint behind the message */}
