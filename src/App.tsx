@@ -507,7 +507,7 @@ export default function App() {
 
     if (isPartnerSession && storedPasscode) {
       if (storedPasscode.trim() !== serverPasscode) {
-        console.warn("Passcode changed by Rahul. Logging partner out immediately.");
+        console.warn("Passcode changed. Logging partner out immediately.");
         localStorage.removeItem('onlyus_partner_session');
         localStorage.removeItem('onlyus_partner_passcode');
         setUser(null);
@@ -516,7 +516,7 @@ export default function App() {
         setIsPartner(false);
         setIsOwner(false);
         setSocketOnlineUsers([]);
-        setError("Rahul updated the login passcode. Please enter the new 6-digit PIN to reconnect.");
+        setError("The login passcode was updated. Please enter the new 6-digit PIN to reconnect.");
         return false;
       }
     }
@@ -930,7 +930,7 @@ export default function App() {
         }
         return true;
       } else {
-        setError("Invalid 6-digit passcode. Please check with Rahul for the active PIN.");
+        setError("Invalid 6-digit passcode. Please enter the active 6-digit PIN.");
         return false;
       }
     } catch (err: any) {
@@ -1601,7 +1601,7 @@ function LoginView({
     try {
       const ok = await onPasscodeLogin(passcode.trim());
       if (!ok) {
-        setLocalError("Invalid 6-digit code. Please verify with Rahul.");
+        setLocalError("Invalid 6-digit passcode. Please enter the active PIN.");
       }
     } catch (err: any) {
       setLocalError(err.message || "Failed to verify passcode.");
