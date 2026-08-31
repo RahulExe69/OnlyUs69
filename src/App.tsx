@@ -185,6 +185,13 @@ export default function App() {
   const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>('dashboard');
   const mainChannelRef = useRef<any>(null);
 
+  // Periodic 10s tick to keep relative "Last seen" and online indicators accurate in realtime
+  const [, setTimeTick] = useState(0);
+  useEffect(() => {
+    const tickInterval = setInterval(() => setTimeTick(t => t + 1), 10000);
+    return () => clearInterval(tickInterval);
+  }, []);
+
   const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
     const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
 
@@ -657,32 +664,40 @@ export default function App() {
         presence: {
           key: user.id,
         },
+        broadcast: {
+          self: false,
+          ack: true,
+        },
       },
     });
     mainChannelRef.current = presenceChannel;
 
+    const updatePresenceState = () => {
+      const state = presenceChannel.presenceState();
+      const presences = Object.values(state).flat() as any[];
+      
+      // Active when is_active is not explicitly false
+      const activePresences = presences.filter(p => p && p.is_active !== false);
+
+      const onlineIds = activePresences
+        .map(p => p.user_id)
+        .filter(Boolean);
+
+      const onlineRoles = activePresences
+        .map(p => p.role)
+        .filter(Boolean);
+
+      setSocketOnlineUsers([...new Set(onlineIds)]);
+      setSocketOnlineRoles([...new Set(onlineRoles)]);
+
+      // Safety: If they are not active/online, they are definitely not typing
+      setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
+    };
+
     presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const presences = Object.values(state).flat() as any[];
-        
-        // Active when is_active is not explicitly false
-        const activePresences = presences.filter(p => p.is_active !== false);
-
-        const onlineIds = activePresences
-          .map(p => p.user_id)
-          .filter(Boolean);
-
-        const onlineRoles = activePresences
-          .map(p => p.role)
-          .filter(Boolean);
-
-        setSocketOnlineUsers([...new Set(onlineIds)]);
-        setSocketOnlineRoles([...new Set(onlineRoles)]);
-
-        // Safety: If they are not active/online, they are definitely not typing
-        setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
-      })
+      .on('presence', { event: 'sync' }, updatePresenceState)
+      .on('presence', { event: 'join' }, updatePresenceState)
+      .on('presence', { event: 'leave' }, updatePresenceState)
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         const { userId, isTyping } = payload;
         setSocketTypingUsers(prev => {
@@ -694,12 +709,24 @@ export default function App() {
         });
       })
       .on('broadcast', { event: 'nudge' }, ({ payload }) => {
-        const { senderId, senderName, type } = payload;
+        if (!payload) return;
+        const { senderId, senderRole, senderName, type } = payload;
         const myId = user?.id || '';
-        const myName = (userProfile?.role === 'owner' || isOwner) ? 'Rahul' : 'Nusrat';
+        const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+        const myName = myRole === 'owner' ? 'Rahul' : 'Nusrat';
         
-        if (senderId !== myId && senderName !== myName) {
-          setActiveNudge({ type: type || 'hug', sender: senderName || 'Your Love' });
+        // Match if it's sent from the other partner (not self)
+        const isFromPartner = (senderId && senderId !== myId) || 
+                              (senderRole && senderRole !== myRole) || 
+                              (senderName && senderName !== myName);
+
+        if (isFromPartner) {
+          const partnerDisplayName = userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || 
+                                     partnerProfile?.display_name || 
+                                     senderName || 
+                                     (myRole === 'owner' ? 'Nusrat' : 'Rahul');
+
+          setActiveNudge({ type: type || 'hug', sender: partnerDisplayName });
           // Auto-clear nudge after 4 seconds
           setTimeout(() => setActiveNudge(null), 4000);
           // WhatsApp style double vibration pulse for feeling
@@ -719,6 +746,8 @@ export default function App() {
             role: myRole
           });
           setIsSocketConnected(true);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setIsSocketConnected(false);
         }
       });
 
@@ -769,6 +798,7 @@ export default function App() {
     const currentRole: UserRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
     const senderName = currentRole === 'owner' ? 'Rahul' : 'Nusrat';
     const senderId = user?.id || (isOwner ? '770c6ecc-e7ed-46ce-b37e-14caae961bb7' : '625ede11-c534-4475-be39-63554fdbb7a7');
+    const nudgeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // 1. Instant local visual celebration
     setActiveNudge({ type, sender: 'You' });
@@ -786,9 +816,12 @@ export default function App() {
           type: 'broadcast',
           event: 'nudge',
           payload: { 
+            nudgeId,
             senderId, 
+            senderRole: currentRole,
             senderName,
-            type 
+            type,
+            sentAt: Date.now()
           }
         });
       } catch (err) {
@@ -1129,10 +1162,13 @@ export default function App() {
     const partnerRole = currentRole === 'owner' ? 'partner' : 'owner';
     const targetId = uid || partnerProfile?.uid || partnerProfile?.id;
     
-    if (
+    // Check if realtime presence channel has them listed as active
+    const isSocketOnline = Boolean(
       (targetId && socketOnlineUsers.includes(targetId)) ||
       socketOnlineRoles.includes(partnerRole)
-    ) {
+    );
+
+    if (isSocketOnline) {
       return "Online";
     }
 
@@ -1147,13 +1183,36 @@ export default function App() {
     const isToday = last.toDateString() === now.toDateString();
     const diffSeconds = Math.max(0, Math.floor((now.getTime() - lastMillis) / 1000));
 
+    // 2. Active Heartbeat Window:
+    // If the database last_seen timestamp was updated within the last 30 seconds,
+    // the user is actively connected and heartbeat is pulsing.
+    if (diffSeconds <= 30) {
+      return "Online";
+    }
+
+    // 3. Human-readable WhatsApp / Instagram-grade formatting
     if (isToday) {
       if (diffSeconds < 60) {
         return "Last seen just now";
       }
+      if (diffSeconds < 120) {
+        return "Last seen 1 minute ago";
+      }
+      if (diffSeconds < 3600) {
+        const mins = Math.floor(diffSeconds / 60);
+        return `Last seen ${mins} minutes ago`;
+      }
       return `Last seen today at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
-    return `Last seen on ${last.toLocaleDateString()} at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    // Check if yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (last.toDateString() === yesterday.toDateString()) {
+      return `Last seen yesterday at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    return `Last seen on ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
   if (loading) {
