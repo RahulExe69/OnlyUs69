@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2 } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -176,6 +176,7 @@ export default function App() {
   const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' } | null>(null);
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
+  const [socketOnlineRoles, setSocketOnlineRoles] = useState<string[]>([]);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -665,13 +666,19 @@ export default function App() {
         const state = presenceChannel.presenceState();
         const presences = Object.values(state).flat() as any[];
         
-        // WhatsApp style: Online ONLY if is_active is true (unminimized, foreground tab)
-        const onlineIds = presences
-          .filter(p => p.is_active === true)
+        // Active when is_active is not explicitly false
+        const activePresences = presences.filter(p => p.is_active !== false);
+
+        const onlineIds = activePresences
           .map(p => p.user_id)
           .filter(Boolean);
 
+        const onlineRoles = activePresences
+          .map(p => p.role)
+          .filter(Boolean);
+
         setSocketOnlineUsers([...new Set(onlineIds)]);
+        setSocketOnlineRoles([...new Set(onlineRoles)]);
 
         // Safety: If they are not active/online, they are definitely not typing
         setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
@@ -703,12 +710,13 @@ export default function App() {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          const currentVisible = document.visibilityState === 'visible' && !document.hidden;
+          const currentVisible = !document.hidden && document.visibilityState === 'visible';
+          const myRole = userProfile?.role || role;
           await presenceChannel.track({ 
             user_id: user.id, 
             online_at: new Date().toISOString(),
             is_active: currentVisible,
-            role: role
+            role: myRole
           });
           setIsSocketConnected(true);
         }
@@ -789,7 +797,7 @@ export default function App() {
     }
   };
 
-  // Track Tab Visibility & Minimize/Focus events (WhatsApp-style instant hide/show)
+  // Track Tab Visibility & Minimize events (WhatsApp-style hide on backgrounding)
   useEffect(() => {
     const handleHide = () => {
       setIsTabActive(false);
@@ -836,15 +844,11 @@ export default function App() {
     window.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', handleHide);
     window.addEventListener('beforeunload', handleHide);
-    window.addEventListener('blur', handleHide);
-    window.addEventListener('focus', handleShow);
 
     return () => {
       window.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', handleHide);
       window.removeEventListener('beforeunload', handleHide);
-      window.removeEventListener('blur', handleHide);
-      window.removeEventListener('focus', handleShow);
     };
   }, [userProfile?.uid, user?.id, isOwner]);
 
@@ -1120,9 +1124,15 @@ export default function App() {
   };
 
   const formatLastSeen = (timestamp: any, uid?: string) => {
-    // 1. Instant Realtime Presence check
+    // 1. Instant Realtime Presence check (by ID or partner role)
+    const currentRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+    const partnerRole = currentRole === 'owner' ? 'partner' : 'owner';
     const targetId = uid || partnerProfile?.uid || partnerProfile?.id;
-    if (targetId && socketOnlineUsers.includes(targetId)) {
+    
+    if (
+      (targetId && socketOnlineUsers.includes(targetId)) ||
+      socketOnlineRoles.includes(partnerRole)
+    ) {
       return "Online";
     }
 
@@ -1413,10 +1423,12 @@ export default function App() {
         {showProfileModal && userProfile && (
           <ProfileModal 
             profile={userProfile} 
+            partnerProfile={partnerProfile}
             onClose={() => setShowProfileModal(false)}
             config={appConfig}
             isOwner={isOwner}
             onLogout={handleLogout}
+            onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
           />
         )}
       </AnimatePresence>
@@ -1428,6 +1440,10 @@ export default function App() {
             myProfile={userProfile}
             onClose={() => setShowPartnerInfo(false)}
             onViewImage={(url) => setShowFullImage(url)}
+            onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
+            onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
+            messages={messages}
+            isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
           />
         )}
       </AnimatePresence>
@@ -2981,14 +2997,43 @@ function HeartFloating({ active }: { active?: boolean }) {
   );
 }
 
-function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile: UserProfile, onClose: () => void, config: AppConfig | null, isOwner: boolean, onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<'me' | 'partner'>('me');
+function ProfileModal({ 
+  profile, 
+  partnerProfile,
+  onClose, 
+  config, 
+  isOwner, 
+  onLogout,
+  onPartnerUpdated
+}: { 
+  profile: UserProfile, 
+  partnerProfile: UserProfile | null,
+  onClose: () => void, 
+  config: AppConfig | null, 
+  isOwner: boolean, 
+  onLogout: () => void,
+  onPartnerUpdated?: (partner: UserProfile) => void
+}) {
+  const [activeTab, setActiveTab] = useState<'me' | 'partner' | 'access'>('me');
+  
+  // My profile state
   const [name, setName] = useState(profile.display_name || "");
   const [photo, setPhoto] = useState(profile.photo_url || "");
+  
+  // Partner profile state
+  const partnerRole = profile.role === 'owner' ? 'partner' : 'owner';
+  const [partnerName, setPartnerName] = useState(partnerProfile?.display_name || (partnerRole === 'owner' ? 'Rahul' : 'Nusrat'));
+  const [partnerPhoto, setPartnerPhoto] = useState(partnerProfile?.photo_url || "");
+  const [partnerNickname, setPartnerNickname] = useState(profile.partnerNicknames?.[partnerProfile?.uid || ''] || "");
+
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
+  const [croppingTarget, setCroppingTarget] = useState<'me' | 'partner'>('me');
   const [tempImage, setTempImage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const myFileInputRef = useRef<HTMLInputElement>(null);
+  const partnerFileInputRef = useRef<HTMLInputElement>(null);
 
   // Partner Management Logic (6-Digit Code + Email backup)
   const [partnerPasscode, setPartnerPasscode] = useState(config?.partner_passcode || '123456');
@@ -3019,9 +3064,10 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
     setEmails(emails.filter(e => e !== email));
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'me' | 'partner') => {
     const file = e.target.files?.[0];
     if (file) {
+      setCroppingTarget(target);
       const reader = new FileReader();
       reader.onload = () => {
         setTempImage(reader.result as string);
@@ -3029,6 +3075,8 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
       };
       reader.readAsDataURL(file);
     }
+    // Reset file input value so re-selecting same file triggers onChange
+    e.target.value = '';
   };
 
   const onCropComplete = async (croppedImage: string) => {
@@ -3042,7 +3090,12 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
       });
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhoto(reader.result as string);
+        const compressedBase64 = reader.result as string;
+        if (croppingTarget === 'me') {
+          setPhoto(compressedBase64);
+        } else {
+          setPartnerPhoto(compressedBase64);
+        }
         setShowCropper(false);
       };
       reader.readAsDataURL(compressedFile);
@@ -3052,26 +3105,83 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
     }
   };
 
-  const save = async () => {
+  const saveMyProfile = async () => {
     setIsSaving(true);
     try {
-      // Save Profile across all accounts with same role to keep identity consistent
       await supabase.from('users').update({
-        display_name: name,
+        display_name: name.trim(),
         photo_url: photo
       }).eq('role', profile.role);
       
-      // Save Partner Config if Owner
+      setSaveSuccessMsg("My Profile updated!");
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+        onClose();
+      }, 800);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const savePartnerProfile = async () => {
+    setIsSaving(true);
+    try {
+      // 1. Update Partner's Global Profile in DB
+      await supabase.from('users').update({
+        display_name: partnerName.trim(),
+        photo_url: partnerPhoto
+      }).eq('role', partnerRole);
+
+      // 2. Update Custom Nickname on My User Record
+      const partnerUid = partnerProfile?.uid || partnerProfile?.id;
+      if (partnerUid) {
+        const updatedNicknames = { ...(profile.partnerNicknames || {}), [partnerUid]: partnerNickname.trim() };
+        await supabase.from('users').update({
+          partnerNicknames: updatedNicknames
+        }).eq('id', profile.uid);
+      }
+
+      if (onPartnerUpdated && partnerProfile) {
+        onPartnerUpdated({
+          ...partnerProfile,
+          display_name: partnerName.trim(),
+          photo_url: partnerPhoto
+        });
+      }
+
+      setSaveSuccessMsg("Partner Profile updated!");
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+        onClose();
+      }, 800);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save partner profile.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const savePasscodeAndAccess = async () => {
+    setIsSaving(true);
+    try {
       if (isOwner) {
         await supabase.from('app_config').update({
           partner_allowed_emails: emails,
           partner_passcode: partnerPasscode.trim()
         }).eq('id', 'main');
       }
-      onClose();
+      setSaveSuccessMsg("Access settings saved!");
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+        onClose();
+      }, 800);
     } catch (err) {
       console.error(err);
-      alert("Failed to save.");
+      alert("Failed to save passcode.");
     } finally {
       setIsSaving(false);
     }
@@ -3083,36 +3193,49 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
       className="fixed inset-0 z-[100] flex flex-col bg-white"
     >
-      <div className="h-20 flex-shrink-0 border-b border-[#FF8FA3]/10 flex items-center px-6 gap-4 bg-[#FFF8F6]/50">
-        <button onClick={onClose} className="p-2 -ml-2 text-[#6E6E6E]">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h2 className="text-xl font-bold text-[#1a1a1a]">Settings</h2>
+      <div className="h-20 flex-shrink-0 border-b border-[#FF8FA3]/10 flex items-center justify-between px-6 bg-[#FFF8F6]/50">
+        <div className="flex items-center gap-4">
+          <button onClick={onClose} className="p-2 -ml-2 text-[#6E6E6E]">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h2 className="text-xl font-bold text-[#1a1a1a]">Settings & Profiles</h2>
+        </div>
+        {saveSuccessMsg && (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 animate-pulse">
+            {saveSuccessMsg}
+          </span>
+        )}
       </div>
 
-      <div className="flex border-b border-[#FF8FA3]/5 px-6 pt-2 bg-white flex-shrink-0">
+      <div className="flex border-b border-[#FF8FA3]/10 px-4 pt-2 bg-white flex-shrink-0 gap-2">
         <button 
           onClick={() => setActiveTab('me')}
-          className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === 'me' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/40'}`}
+          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
         >
           My Profile
         </button>
+        <button 
+          onClick={() => setActiveTab('partner')}
+          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'partner' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
+        >
+          Partner's Profile
+        </button>
         {isOwner && (
           <button 
-            onClick={() => setActiveTab('partner')}
-            className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === 'partner' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/40'}`}
+            onClick={() => setActiveTab('access')}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'access' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
           >
-            Partner Access
+            PIN Access
           </button>
         )}
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-        {activeTab === 'me' ? (
+        {activeTab === 'me' && (
           <div className="max-w-md mx-auto space-y-8">
             <div className="flex flex-col items-center">
               <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-[#FFD6C9] overflow-hidden border-4 border-[#FF8FA3]/10 relative">
+                <div className="w-32 h-32 rounded-full bg-[#FFD6C9] overflow-hidden border-4 border-[#FF8FA3]/20 shadow-md relative">
                   {photo ? (
                     <img src={photo} alt="Me" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
@@ -3122,40 +3245,43 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
                   )}
                 </div>
                 <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 bg-[#FF8FA3] p-2.5 rounded-full text-white shadow-lg border-2 border-white group-hover:scale-110 transition-transform"
+                  type="button"
+                  onClick={() => myFileInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 bg-[#FF8FA3] p-2.5 rounded-full text-white shadow-lg border-2 border-white hover:scale-110 active:scale-95 transition-transform"
                 >
                   <Camera className="w-5 h-5" />
                 </button>
                 <input 
-                  type="file" ref={fileInputRef} onChange={handleFileChange} 
+                  type="file" ref={myFileInputRef} onChange={(e) => handleFileChange(e, 'me')} 
                   accept="image/*" className="hidden" 
                 />
               </div>
-              <p className="mt-4 text-[10px] font-bold text-[#6E6E6E] uppercase tracking-widest opacity-40">Tap camera to change photo</p>
+              <p className="mt-4 text-[11px] font-bold text-[#6E6E6E] uppercase tracking-widest opacity-60">Tap camera to change your photo</p>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Display Name</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Your Display Name</label>
                 <input 
                   value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="How your partner sees you..."
-                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/10 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/10"
+                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
                 />
               </div>
               
-              <div className="pt-8 border-t border-[#FF8FA3]/5 flex flex-col gap-4">
+              <div className="pt-6 border-t border-[#FF8FA3]/10 flex flex-col gap-4">
                 <button 
-                  onClick={save}
+                  type="button"
+                  onClick={saveMyProfile}
                   disabled={isSaving}
-                  className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/10 active:scale-95 transition-all disabled:opacity-50"
+                  className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  {isSaving ? "Synchronizing..." : "Apply Changes"}
+                  {isSaving ? "Saving..." : "Save My Profile"}
                 </button>
                 <button 
+                  type="button"
                   onClick={onLogout}
-                  className="w-full h-14 bg-[#FFF8F6] text-red-400 border border-red-100 rounded-2xl text-[13px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                  className="w-full h-14 bg-[#FFF8F6] text-red-400 border border-red-100 rounded-2xl text-[13px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-50 active:scale-95 transition-all"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout Session
@@ -3163,7 +3289,75 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
               </div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'partner' && (
+          <div className="max-w-md mx-auto space-y-8">
+            <div className="flex flex-col items-center">
+              <div className="relative group">
+                <div className="w-32 h-32 rounded-full bg-[#FFD6C9] overflow-hidden border-4 border-[#FF8FA3]/20 shadow-md relative">
+                  {partnerPhoto ? (
+                    <img src={partnerPhoto} alt="Partner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[#FF8FA3]">
+                      {partnerName?.[0] || '?'}
+                    </div>
+                  )}
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => partnerFileInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 bg-[#FF8FA3] p-2.5 rounded-full text-white shadow-lg border-2 border-white hover:scale-110 active:scale-95 transition-transform"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+                <input 
+                  type="file" ref={partnerFileInputRef} onChange={(e) => handleFileChange(e, 'partner')} 
+                  accept="image/*" className="hidden" 
+                />
+              </div>
+              <p className="mt-4 text-[11px] font-bold text-[#FF8FA3] uppercase tracking-widest">
+                Edit {partnerName}'s Photo & Profile
+              </p>
+              <p className="mt-1 text-[10px] text-[#6E6E6E] opacity-60 text-center">
+                Both of you can update each other's photo anytime!
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Partner's Display Name</label>
+                <input 
+                  value={partnerName} onChange={(e) => setPartnerName(e.target.value)}
+                  placeholder="Partner's display name..."
+                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Custom Nickname (Only visible to you)</label>
+                <input 
+                  value={partnerNickname} onChange={(e) => setPartnerNickname(e.target.value)}
+                  placeholder="e.g. My Queen, My Love..."
+                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
+                />
+              </div>
+              
+              <div className="pt-6 border-t border-[#FF8FA3]/10">
+                <button 
+                  type="button"
+                  onClick={savePartnerProfile}
+                  disabled={isSaving}
+                  className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isSaving ? "Updating Partner..." : `Save ${partnerName}'s Profile`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'access' && isOwner && (
           <div className="max-w-md mx-auto space-y-8">
             {/* 6-Digit Passcode Section */}
             <section className="bg-gradient-to-br from-[#FFF0F3] to-[#FFF8F6] p-6 rounded-3xl border border-[#FF8FA3]/20 shadow-sm space-y-5">
@@ -3258,7 +3452,8 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
             </section>
             
             <button 
-              onClick={save}
+              type="button"
+              onClick={savePasscodeAndAccess}
               disabled={isSaving || partnerPasscode.length !== 6}
               className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50 mt-6"
             >
@@ -3281,94 +3476,656 @@ function ProfileModal({ profile, onClose, config, isOwner, onLogout }: { profile
   );
 }
 
-function PartnerInfoModal({ partner, myProfile, onClose, onViewImage }: { partner: UserProfile, myProfile: UserProfile | null, onClose: () => void, onViewImage: (url: string) => void }) {
-  const [nickname, setNickname] = useState(myProfile?.partnerNicknames?.[partner.uid] || "");
+function PartnerInfoModal({ 
+  partner, 
+  myProfile, 
+  onClose, 
+  onViewImage,
+  onPartnerUpdated,
+  onMyProfileUpdated,
+  messages = [],
+  isPartnerOnline = false
+}: { 
+  partner: UserProfile, 
+  myProfile: UserProfile | null, 
+  onClose: () => void, 
+  onViewImage: (url: string) => void,
+  onPartnerUpdated?: (partner: UserProfile) => void,
+  onMyProfileUpdated?: (me: UserProfile) => void,
+  messages?: Message[],
+  isPartnerOnline?: boolean
+}) {
+  const [view, setView] = useState<'main' | 'nicknames'>('main');
+  const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'reels' | 'links'>('media');
+  
+  // Custom Nicknames state
+  const currentPartnerNickname = myProfile?.partnerNicknames?.[partner.uid] || partner.display_name || "";
+  const currentMyNickname = myProfile?.display_name || "";
+  
+  const [editingTarget, setEditingTarget] = useState<'partner' | 'me' | null>(null);
+  const [nicknameInput, setNicknameInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  
+  // Dummy options & modals
+  const [showCustomiseModal, setShowCustomiseModal] = useState(false);
+  const [showWhoCanEditModal, setShowWhoCanEditModal] = useState(false);
+
+  // Photo change logic
+  const [showCropper, setShowCropper] = useState(false);
+  const [tempImage, setTempImage] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<'partner' | 'me'>('partner');
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2500);
+  };
+
+  const handlePhotoSelect = (target: 'partner' | 'me') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCropTarget(target);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTempImage(reader.result as string);
+        setShowCropper(true);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
+  const onCropComplete = async (croppedImage: string) => {
+    try {
+      const response = await fetch(croppedImage);
+      const blob = await response.blob();
+      const compressedFile = await imageCompression(blob as File, {
+        maxSizeMB: 0.1,
+        maxWidthOrHeight: 400,
+        useWebWorker: true,
+      });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const compressedBase64 = reader.result as string;
+        setShowCropper(false);
+        setIsSaving(true);
+        try {
+          if (cropTarget === 'partner') {
+            await supabase.from('users').update({
+              photo_url: compressedBase64
+            }).eq('role', partner.role);
+
+            if (onPartnerUpdated) {
+              onPartnerUpdated({ ...partner, photo_url: compressedBase64 });
+            }
+            showToast("Partner photo updated!");
+          } else if (myProfile) {
+            await supabase.from('users').update({
+              photo_url: compressedBase64
+            }).eq('id', myProfile.uid);
+
+            if (onMyProfileUpdated) {
+              onMyProfileUpdated({ ...myProfile, photo_url: compressedBase64 });
+            }
+            showToast("Profile photo updated!");
+          }
+        } catch (err) {
+          console.error("Error updating photo:", err);
+          showToast("Failed to save photo.");
+        } finally {
+          setIsSaving(false);
+        }
+      };
+      reader.readAsDataURL(compressedFile);
+    } catch (error) {
+      console.error(error);
+      showToast("Failed to crop image.");
+    }
+  };
+
+  const openEditNickname = (target: 'partner' | 'me') => {
+    setEditingTarget(target);
+    if (target === 'partner') {
+      setNicknameInput(currentPartnerNickname);
+    } else {
+      setNicknameInput(currentMyNickname);
+    }
+  };
 
   const saveNickname = async () => {
-    if (!myProfile) return;
+    if (!editingTarget || !myProfile) return;
     setIsSaving(true);
+    const newName = nicknameInput.trim();
     try {
-      const updatedNicknames = { ...(myProfile.partnerNicknames || {}), [partner.uid]: nickname };
-      await supabase.from('users').update({
-        partnerNicknames: updatedNicknames
-      }).eq('id', myProfile.uid);
-      onClose();
+      if (editingTarget === 'partner') {
+        // Save to my custom partnerNicknames & update partner display name
+        const updatedNicknames = { ...(myProfile.partnerNicknames || {}), [partner.uid]: newName };
+        await supabase.from('users').update({
+          partnerNicknames: updatedNicknames
+        }).eq('id', myProfile.uid);
+
+        await supabase.from('users').update({
+          display_name: newName
+        }).eq('role', partner.role);
+
+        if (onPartnerUpdated) {
+          onPartnerUpdated({ ...partner, display_name: newName });
+        }
+        showToast("Partner's nickname saved!");
+      } else {
+        // Save my own display name
+        await supabase.from('users').update({
+          display_name: newName
+        }).eq('id', myProfile.uid);
+
+        if (onMyProfileUpdated) {
+          onMyProfileUpdated({ ...myProfile, display_name: newName });
+        }
+        showToast("Your name updated!");
+      }
+      setEditingTarget(null);
     } catch (err) {
-      console.error(err);
+      console.error("Error saving nickname:", err);
+      showToast("Failed to save nickname.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Shared chat photos
+  const sharedPhotos = useMemo(() => {
+    const photos: string[] = [];
+    messages.forEach((m: any) => {
+      if (m.attachment_url && (typeof m.attachment_url === 'string') && (m.attachment_url.startsWith('data:image') || m.attachment_url.startsWith('http'))) {
+        photos.push(m.attachment_url);
+      }
+      if (m.image_url && typeof m.image_url === 'string') {
+        photos.push(m.image_url);
+      }
+    });
+    return photos;
+  }, [messages]);
+
+  const partnerHandle = partner.email ? partner.email.split('@')[0] : '_btw.nusrat_';
+  const myHandle = myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey';
+
   return (
     <motion.div 
-      initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="fixed inset-0 z-[110] flex flex-col bg-white"
+      initial={{ x: '100%' }} 
+      animate={{ x: 0 }} 
+      exit={{ x: '100%' }}
+      transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+      className="fixed inset-0 z-[110] flex flex-col bg-white text-[#111111] overflow-hidden"
     >
-      <div className="h-20 flex-shrink-0 border-b border-[#FF8FA3]/10 flex items-center px-6 gap-4 bg-[#FFF8F6]/50">
-        <button onClick={onClose} className="p-2 -ml-2 text-[#6E6E6E]">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h2 className="text-xl font-bold text-[#1a1a1a]">Contact Details</h2>
-      </div>
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toastMsg && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a1a]/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg pointer-events-none"
+          >
+            {toastMsg}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-        <div className="max-w-md mx-auto flex flex-col items-center">
-      <div 
-        className="w-48 h-48 rounded-full bg-[#FFD6C9] overflow-hidden border-8 border-[#FF8FA3]/5 shadow-xl cursor-pointer active:scale-95 transition-transform"
-        onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {partner.photo_url ? (
-          <img 
-            src={partner.photo_url} 
-            alt={partner.display_name} 
-            className="w-full h-full object-cover" 
-            referrerPolicy="no-referrer" 
-            style={{ WebkitTouchCallout: 'none' }}
-          />
-        ) : (
-              <div className="w-full h-full flex items-center justify-center text-7xl font-bold text-[#FF8FA3]">
-                {partner.display_name?.[0] || '?'}
+      {view === 'main' ? (
+        /* ==================== INSTAGRAM PARTNER PROFILE VIEW ==================== */
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Instagram Top Bar */}
+          <div className="h-14 flex-shrink-0 flex items-center px-4">
+            <button 
+              onClick={onClose} 
+              className="p-1 -ml-1 text-[#111111] hover:opacity-70 transition-opacity active:scale-95"
+            >
+              <ArrowLeft className="w-6 h-6 stroke-[2]" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {/* Centered Avatar and Name */}
+            <div className="flex flex-col items-center pt-2 pb-6 px-4">
+              <div className="relative group">
+                <div 
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border border-black/10 shadow-sm cursor-pointer active:scale-95 transition-transform bg-neutral-100"
+                  onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
+                >
+                  {partner.photo_url ? (
+                    <img 
+                      src={partner.photo_url} 
+                      alt={currentPartnerNickname} 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-neutral-400 bg-neutral-100">
+                      {currentPartnerNickname?.[0] || 'P'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Direct Camera Button to update photo */}
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    photoInputRef.current?.click();
+                  }}
+                  title="Change partner's photo"
+                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center border-2 border-white shadow-md hover:scale-105 active:scale-90 transition-transform"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+                <input 
+                  type="file" 
+                  ref={photoInputRef} 
+                  onChange={handlePhotoSelect('partner')} 
+                  accept="image/*" 
+                  className="hidden" 
+                />
               </div>
-            )}
+
+              {/* Display Name directly below avatar */}
+              <h2 className="text-[20px] sm:text-[22px] font-bold text-[#111111] mt-3.5 text-center px-4 tracking-tight leading-snug break-words">
+                {currentPartnerNickname}
+              </h2>
+            </div>
+
+            {/* Instagram Options List */}
+            <div className="border-t border-b border-neutral-100 py-1">
+              {/* Option 1: Customise (Dummy) */}
+              <button 
+                type="button"
+                onClick={() => setShowCustomiseModal(true)}
+                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+                  <Heart className="w-4 h-4 fill-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Customise</p>
+                  <p className="text-[12px] text-[#737373] mt-0.5 leading-tight">Theme and font</p>
+                </div>
+              </button>
+
+              {/* Option 2: Nicknames (Opens Nicknames Screen) */}
+              <button 
+                type="button"
+                onClick={() => setView('nicknames')}
+                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-neutral-100 flex items-center justify-center text-[#111111] flex-shrink-0">
+                  <UserCheck className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Nicknames</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Media Tabs Section */}
+            <div className="mt-2">
+              <div className="grid grid-cols-3 border-b border-neutral-200 text-neutral-400">
+                <button 
+                  onClick={() => setActiveMediaTab('media')}
+                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'media' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                >
+                  <LayoutGrid className="w-5 h-5 stroke-[1.75]" />
+                  {activeMediaTab === 'media' && (
+                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
+                  )}
+                </button>
+                <button 
+                  onClick={() => setActiveMediaTab('reels')}
+                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'reels' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                >
+                  <Repeat className="w-5 h-5 stroke-[1.75]" />
+                  {activeMediaTab === 'reels' && (
+                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
+                  )}
+                </button>
+                <button 
+                  onClick={() => setActiveMediaTab('links')}
+                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'links' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                >
+                  <Link2 className="w-5 h-5 stroke-[1.75]" />
+                  {activeMediaTab === 'links' && (
+                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
+                  )}
+                </button>
+              </div>
+
+              {/* Media Grid Tab Content */}
+              {activeMediaTab === 'media' && (
+                <div className="p-1">
+                  {sharedPhotos.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-1">
+                      {sharedPhotos.map((imgUrl, idx) => (
+                        <div 
+                          key={idx}
+                          onClick={() => onViewImage(imgUrl)}
+                          className="aspect-square bg-neutral-100 overflow-hidden cursor-pointer hover:opacity-90 active:scale-98 transition-all"
+                        >
+                          <img 
+                            src={imgUrl} 
+                            alt={`Media ${idx}`} 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-16 text-center text-neutral-400">
+                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                        <Camera className="w-5 h-5 stroke-[1.5]" />
+                      </div>
+                      <p className="text-[14px] font-semibold text-neutral-700">No photos shared yet</p>
+                      <p className="text-[12px] text-neutral-400 mt-1">Photos you share in this chat will appear here.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeMediaTab === 'reels' && (
+                <div className="py-16 text-center text-neutral-400">
+                  <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                    <Film className="w-5 h-5 stroke-[1.5]" />
+                  </div>
+                  <p className="text-[14px] font-semibold text-neutral-700">No clips or voice notes</p>
+                  <p className="text-[12px] text-neutral-400 mt-1">Audio memories and clips will show here.</p>
+                </div>
+              )}
+
+              {activeMediaTab === 'links' && (
+                <div className="py-16 text-center text-neutral-400">
+                  <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                    <Link2 className="w-5 h-5 stroke-[1.5]" />
+                  </div>
+                  <p className="text-[14px] font-semibold text-neutral-700">No links shared</p>
+                  <p className="text-[12px] text-neutral-400 mt-1">Shared web links in your chat will appear here.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ==================== NICKNAMES SUB-VIEW ==================== */
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+          {/* Top Bar with Title */}
+          <div className="h-14 flex-shrink-0 flex items-center px-4 border-b border-neutral-100">
+            <button 
+              onClick={() => setView('main')} 
+              className="p-1 -ml-1 text-[#111111] hover:opacity-70 transition-opacity active:scale-95"
+            >
+              <ArrowLeft className="w-6 h-6 stroke-[2]" />
+            </button>
+            <h1 className="text-[18px] font-bold text-[#111111] ml-4">
+              Nicknames
+            </h1>
           </div>
 
-          <div className="mt-8 text-center space-y-1 w-full">
-            <h3 className="text-2xl font-bold text-[#1a1a1a]">{partner.display_name}</h3>
-            <p className="text-sm font-mono text-[#6E6E6E] opacity-40">{partner.email}</p>
-          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-3">
+            {/* Subtitle Info Box */}
+            <div className="py-2 text-center">
+              <p className="text-[13px] text-[#737373]">
+                Nicknames are only displayed in this chat.
+              </p>
+              <button 
+                type="button"
+                onClick={() => setShowWhoCanEditModal(true)}
+                className="text-[13px] text-[#0095F6] font-semibold mt-1 hover:underline active:opacity-70 transition-opacity"
+              >
+                Change who can edit your nickname
+              </button>
+            </div>
 
-          <div className="w-full mt-12 space-y-6">
-            <div className="bg-[#FFF8F6] p-6 rounded-3xl border border-[#FF8FA3]/10 space-y-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block opacity-60">Custom Nickname</label>
-                <div className="relative">
-                  <input 
-                    value={nickname} onChange={(e) => setNickname(e.target.value)}
-                    placeholder="Enter nickname..."
-                    className="w-full bg-white border border-[#FF8FA3]/10 rounded-2xl px-5 py-4 text-[16px] focus:outline-none shadow-sm"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 p-2">
-                    <Pencil className="w-4 h-4 text-[#FF8FA3]/40" />
+            {/* Member Nickname List */}
+            <div className="mt-4 space-y-1">
+              {/* Member 1: Rahul / Owner / Me */}
+              <button 
+                type="button"
+                onClick={() => openEditNickname('me')}
+                className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-13 h-13 rounded-full overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                    {myProfile?.photo_url ? (
+                      <img 
+                        src={myProfile.photo_url} 
+                        alt={currentMyNickname} 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-lg">
+                        {currentMyNickname?.[0] || 'R'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold text-[#111111] leading-snug truncate">
+                      {currentMyNickname || "Rahul"}
+                    </p>
+                    <p className="text-[13px] text-[#737373] leading-tight truncate">
+                      {myHandle}
+                    </p>
                   </div>
                 </div>
-                <p className="mt-3 text-[10px] italic text-[#6E6E6E]/60 text-center">This will only change the name <span className="font-bold underline">you</span> see for them.</p>
-              </div>
+                <ChevronRight className="w-5 h-5 text-neutral-400 flex-shrink-0" />
+              </button>
 
+              {/* Member 2: Partner / Nusrat */}
               <button 
-                onClick={saveNickname}
-                disabled={isSaving}
-                className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-[#FF8FA3]/10 active:scale-95 transition-all mt-4"
+                type="button"
+                onClick={() => openEditNickname('partner')}
+                className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
               >
-                {isSaving ? "Saving..." : "Set Nickname"}
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="relative w-13 h-13 rounded-full overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                    {partner.photo_url ? (
+                      <img 
+                        src={partner.photo_url} 
+                        alt={currentPartnerNickname} 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-lg">
+                        {currentPartnerNickname?.[0] || 'N'}
+                      </div>
+                    )}
+                    {isPartnerOnline && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#4ade80] border-2 border-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold text-[#111111] leading-snug truncate">
+                      {currentPartnerNickname || "Nusrat"}
+                    </p>
+                    <p className="text-[13px] text-[#737373] leading-tight truncate">
+                      {partnerHandle}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-neutral-400 flex-shrink-0" />
               </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Edit Nickname Bottom Sheet / Dialog */}
+      <AnimatePresence>
+        {editingTarget && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingTarget(null)}
+              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-5 pb-8 max-w-md mx-auto shadow-2xl"
+            >
+              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+              
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-[#111111]">
+                  Edit Nickname for {editingTarget === 'partner' ? 'Partner' : 'You'}
+                </h3>
+                <button 
+                  onClick={() => setEditingTarget(null)}
+                  className="p-1 text-neutral-400 hover:text-neutral-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="relative mb-3">
+                <input 
+                  type="text"
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  placeholder="Enter nickname..."
+                  autoFocus
+                  className="w-full bg-neutral-100 border border-neutral-200 rounded-xl px-4 py-3 text-[15px] font-medium text-[#111111] focus:outline-none focus:border-[#0095F6] pr-10"
+                />
+                {nicknameInput && (
+                  <button 
+                    type="button"
+                    onClick={() => setNicknameInput("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-neutral-300 text-white flex items-center justify-center hover:bg-neutral-400"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick emoji bar */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-1 mb-4 no-scrollbar">
+                {['🥺', '🫶🏻', '💋', '💖', '🥰', '🍯', '🧸', '👑', '✨', '🤍'].map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setNicknameInput(prev => prev + emoji)}
+                    className="w-9 h-9 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-lg active:scale-95 transition-transform flex-shrink-0"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+
+              <button 
+                type="button"
+                onClick={saveNickname}
+                disabled={isSaving}
+                className="w-full h-12 bg-[#0095F6] hover:bg-[#1877F2] text-white font-bold rounded-xl text-[15px] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center shadow-md shadow-[#0095F6]/20"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Dummy Customise Bottom Sheet */}
+      <AnimatePresence>
+        {showCustomiseModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCustomiseModal(false)}
+              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl"
+            >
+              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+              <div className="text-center py-2">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white mx-auto mb-3 shadow-md">
+                  <Heart className="w-7 h-7 fill-white" />
+                </div>
+                <h3 className="text-lg font-bold text-[#111111]">Customise Theme & Fonts</h3>
+                <p className="text-[13px] text-neutral-500 mt-1 max-w-xs mx-auto">
+                  Custom chat gradients, romantic themes, and handwriting fonts are ready to customize in settings.
+                </p>
+                <button 
+                  onClick={() => setShowCustomiseModal(false)}
+                  className="mt-6 w-full h-11 bg-neutral-900 text-white font-bold rounded-xl text-sm active:scale-95 transition-all"
+                >
+                  Got it
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* "Change Who Can Edit Nickname" Modal */}
+      <AnimatePresence>
+        {showWhoCanEditModal && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowWhoCanEditModal(false)}
+              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl"
+            >
+              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+              <h3 className="text-base font-bold text-[#111111] mb-2">
+                Who can edit nicknames
+              </h3>
+              <p className="text-[13px] text-neutral-500 mb-4">
+                In OnlyUs, both Rahul and Nusrat have equal permissions to edit nicknames anytime.
+              </p>
+              <div className="p-4 bg-neutral-50 rounded-2xl flex items-center justify-between border border-neutral-200">
+                <span className="text-[14px] font-semibold text-neutral-800">Everyone in this chat</span>
+                <Check className="w-5 h-5 text-[#0095F6]" />
+              </div>
+              <button 
+                onClick={() => setShowWhoCanEditModal(false)}
+                className="mt-5 w-full h-11 bg-[#0095F6] text-white font-bold rounded-xl text-sm active:scale-95 transition-all"
+              >
+                Done
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Image Cropper Modal */}
+      <AnimatePresence>
+        {showCropper && tempImage && (
+          <ImageCropperModal 
+            image={tempImage} 
+            onCancel={() => setShowCropper(false)} 
+            onDone={onCropComplete} 
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
