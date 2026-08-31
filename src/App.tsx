@@ -2540,12 +2540,22 @@ const MessageItem = React.memo(function MessageItem({
   const itemRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredTimeRef = useRef<number>(0);
+  const lastHapticTimeRef = useRef<number>(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   const emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<'top' | 'bottom'>('top');
   const [isSwiping, setIsSwiping] = useState(false);
+
+  const triggerHaptic = (duration: number = 24, minGapMs: number = 140) => {
+    const now = Date.now();
+    if (now - lastHapticTimeRef.current < minGapMs) return;
+    lastHapticTimeRef.current = now;
+    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
+      try { window.navigator.vibrate(duration); } catch (_) {}
+    }
+  };
 
   const resolvedReplyTo = useMemo(() => {
     const replyId = msg.replyTo?.id || (msg as any).reply_to;
@@ -2627,11 +2637,7 @@ const MessageItem = React.memo(function MessageItem({
     }
 
     // Exactly one crisp WhatsApp-style haptic feedback pulse
-    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-      try { 
-        window.navigator.vibrate(30); 
-      } catch (_) {}
-    }
+    triggerHaptic(24, 220);
 
     if (!msg.deleted) setShowPicker(true);
     if (!isSelected) onToggleSelect(msg);
@@ -2639,6 +2645,12 @@ const MessageItem = React.memo(function MessageItem({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSwiping) return;
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+      if (typeof window !== 'undefined' && window.getSelection) {
+        try { window.getSelection()?.removeAllRanges(); } catch (_) {}
+      }
+    }
     touchStartPos.current = { x: e.clientX, y: e.clientY };
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
 
@@ -2690,7 +2702,7 @@ const MessageItem = React.memo(function MessageItem({
   };
 
   const swipeX = useMotionValue(0);
-  const swipeOpacity = useTransform(swipeX, [0, 50], [0, 1]);
+  const swipeOpacity = useTransform(swipeX, [8, 48], [0, 1]);
 
   const formatSeenTime = (timestamp: any) => {
     if (!timestamp) return "Seen";
@@ -2730,7 +2742,7 @@ const MessageItem = React.memo(function MessageItem({
     >
       {/* Absolute Reply Hint behind the message */}
       <motion.div 
-        style={{ opacity: swipeOpacity, x: useTransform(swipeX, [0, 60], [-20, 0]) }}
+        style={{ opacity: swipeOpacity, x: useTransform(swipeX, [8, 48], [-12, 0]) }}
         className="absolute left-6 top-1/2 -translate-y-1/2 z-0"
       >
         <div className="p-2 bg-[#FF8FA3]/10 rounded-full">
@@ -2740,13 +2752,13 @@ const MessageItem = React.memo(function MessageItem({
 
       <motion.div
         drag="x"
-        dragConstraints={{ left: 0, right: 100 }}
+        dragConstraints={{ left: 0, right: 86 }}
         dragSnapToOrigin
-        dragElastic={0.1}
+        dragElastic={0.2}
         dragMomentum={false}
         dragDirectionLock
         dragListener={!showPicker && !selectionActive}
-        dragTransition={{ power: 0.1, timeConstant: 200 }}
+        dragTransition={{ power: 0.25, timeConstant: 150, bounceStiffness: 540, bounceDamping: 34 }}
         style={{ 
           x: swipeX,
           justifyContent: isOwn ? 'flex-end' : 'flex-start',
@@ -2761,9 +2773,11 @@ const MessageItem = React.memo(function MessageItem({
         }}
         onDragEnd={(e, info) => {
           setTimeout(() => setIsSwiping(false), 50);
-          if (info.offset.x > 60) {
+          const passedDistance = info.offset.x > 44;
+          const passedFlick = info.offset.x > 28 && info.velocity.x > 620;
+          if (passedDistance || passedFlick) {
             onReply(msg);
-            if (window.navigator.vibrate) window.navigator.vibrate(30);
+            triggerHaptic(24, 120);
           }
         }}
         className="relative w-full flex items-end px-2 lg:px-4 select-none"
