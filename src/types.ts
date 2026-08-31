@@ -19,7 +19,6 @@ export interface UserProfile {
   partnerNicknames?: { [uid: string]: string };
   last_read_at?: any;
   theme?: 'light' | 'dark' | 'romantic' | 'lavender' | 'ocean' | 'sunset';
-  wallpaper?: string;
 }
 
 export interface Message {

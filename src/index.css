@@ -86,3 +86,83 @@ body {
     animation: float-heart 1s ease-out forwards;
   }
 }
+
+/* A theme is a complete chat experience: surface, typography, decoration, and controls. */
+:root {
+  --theme-surface: #FFFDFD;
+  --theme-accent: #E45F84;
+  --theme-border: rgba(228, 95, 132, .18);
+  --theme-decoration: radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%);
+  --theme-font: "Nunito", "Inter", sans-serif;
+}
+
+.chat-theme,
+.theme-customize-sheet,
+.theme-settings {
+  font-family: var(--theme-font);
+}
+
+.theme-chat-decoration {
+  background: var(--theme-decoration);
+  opacity: .88;
+  transition: background 220ms ease, opacity 220ms ease;
+}
+
+.chat-theme .chat-bubble-owner,
+.chat-theme .chat-bubble-partner {
+  box-shadow: 0 9px 22px color-mix(in srgb, var(--theme-accent) 14%, transparent);
+}
+
+.chat-theme .chat-bubble-owner { border-radius: 22px 22px 6px 22px; }
+.chat-theme .chat-bubble-partner { border-color: var(--theme-border); border-radius: 22px 22px 22px 6px; }
+
+.theme-accent-button,
+.theme-icon-button {
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-surface));
+  border: 1px solid var(--theme-border);
+}
+.theme-accent-button:hover,
+.theme-icon-button:hover { background: color-mix(in srgb, var(--theme-accent) 18%, var(--theme-surface)); }
+
+.theme-modal-backdrop { background: color-mix(in srgb, var(--theme-text) 42%, transparent); backdrop-filter: blur(8px); }
+.theme-customize-sheet {
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  box-shadow: 0 24px 80px color-mix(in srgb, var(--theme-text) 25%, transparent);
+}
+.theme-choice {
+  padding: .55rem;
+  border: 1px solid transparent;
+  border-radius: 1.3rem;
+  background: color-mix(in srgb, var(--theme-bg) 72%, var(--theme-surface));
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.theme-choice:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--theme-border); }
+.theme-choice:disabled { cursor: wait; opacity: .72; }
+.theme-choice-active { border-color: var(--theme-accent); box-shadow: 0 8px 24px color-mix(in srgb, var(--theme-accent) 18%, transparent); }
+.theme-choice-preview { position: relative; height: 7rem; overflow: hidden; border-radius: .95rem; border: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent); }
+.theme-preview-header { position: absolute; inset: 0 0 auto; height: 1.8rem; border-bottom: 1px solid rgba(255,255,255,.28); }
+.theme-preview-bubble { position: absolute; height: 1.25rem; border-radius: 1rem; bottom: 1rem; box-shadow: 0 3px 9px rgba(0,0,0,.1); }
+.theme-preview-partner { width: 52%; left: .75rem; border-bottom-left-radius: .25rem; }
+.theme-preview-owner { width: 45%; right: .75rem; bottom: 2.8rem; border-bottom-right-radius: .25rem; }
+.theme-choice-check { position: absolute; top: .6rem; right: .6rem; display: grid; width: 1.5rem; height: 1.5rem; place-items: center; color: white; background: var(--theme-accent); border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+
+:root[data-chat-theme="dark"] .chat-theme .chat-bubble-owner { border-radius: 10px 18px 10px 18px; }
+:root[data-chat-theme="dark"] .chat-theme .chat-bubble-partner { border-radius: 18px 10px 18px 10px; }
+:root[data-chat-theme="lavender"] .chat-theme .chat-bubble-owner { border-radius: 26px 26px 8px 26px; }
+:root[data-chat-theme="lavender"] .chat-theme .chat-bubble-partner { border-radius: 26px 26px 26px 8px; }
+:root[data-chat-theme="ocean"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="ocean"] .chat-theme .chat-bubble-partner { border-radius: 18px 18px 18px 4px; }
+:root[data-chat-theme="sunset"] .chat-theme .chat-bubble-owner { border-radius: 28px 28px 28px 8px; }
+:root[data-chat-theme="sunset"] .chat-theme .chat-bubble-partner { border-radius: 28px 28px 8px 28px; }
+
+.theme-settings { background: var(--theme-surface); color: var(--theme-text); }
+.theme-settings input { background: var(--theme-input-bg) !important; border-color: var(--theme-border) !important; color: var(--theme-text) !important; }
+.theme-settings .bg-\[\#FFF8F6\],
+.theme-settings .bg-\[\#FFF0F3\] { background-color: color-mix(in srgb, var(--theme-bg) 82%, var(--theme-surface)) !important; }
+.theme-settings .text-\[\#1a1a1a\] { color: var(--theme-text) !important; }
+.theme-settings .text-\[\#FF8FA3\],
+.theme-settings .border-\[\#FF8FA3\] { color: var(--theme-accent) !important; border-color: var(--theme-accent) !important; }
+.theme-settings .bg-\[\#FF8FA3\] { background-color: var(--theme-accent) !important; }

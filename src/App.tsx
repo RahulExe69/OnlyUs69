@@ -54,93 +54,31 @@ import imageCompression from 'browser-image-compression';
 
 const THEMES = {
   light: {
-    bg: '#ffffff',
-    text: '#1a1a1a',
-    header: 'rgba(255, 255, 255, 0.8)',
-    owner: '#FF8FA3',
-    ownerText: '#ffffff',
-    partner: '#FFD6C9',
-    partnerText: '#5D5D5D',
-    input: '#ffffff'
+    name: 'Clean Slate', note: 'Crisp, bright, and quietly minimal.', bg: '#F7F9FC', text: '#172033', header: 'rgba(255, 255, 255, .84)', owner: '#4263EB', ownerText: '#FFFFFF', partner: '#E8EDF6', partnerText: '#263247', input: '#FFFFFF', surface: '#FFFFFF', accent: '#4263EB', border: 'rgba(66, 99, 235, .16)', decoration: 'linear-gradient(135deg, rgba(66,99,235,.08), transparent 38%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
   },
   dark: {
-    bg: '#0F0F0F',
-    text: '#FFFFFF',
-    header: 'rgba(26, 26, 26, 0.8)',
-    owner: '#FF8FA3',
-    ownerText: '#ffffff',
-    partner: '#262626',
-    partnerText: '#E0E0E0',
-    input: '#1A1A1A'
+    name: 'Moonlight', note: 'A cinematic night chat with glowing edges.', bg: '#11121B', text: '#F6F4FF', header: 'rgba(24, 25, 39, .86)', owner: '#B69CFF', ownerText: '#171322', partner: '#28293A', partnerText: '#F0EDFF', input: '#202130', surface: '#1B1C29', accent: '#B69CFF', border: 'rgba(182, 156, 255, .22)', decoration: 'radial-gradient(circle at 16% 8%, rgba(182,156,255,.2), transparent 28%), radial-gradient(circle at 88% 76%, rgba(84,193,255,.12), transparent 24%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
   },
   romantic: {
-    bg: '#FFF8F6',
-    text: '#1a1a1a',
-    header: 'rgba(255, 255, 255, 0.8)',
-    owner: '#FF8FA3',
-    ownerText: '#ffffff',
-    partner: '#FFD6C9',
-    partnerText: '#5D5D5D',
-    input: '#ffffff'
+    name: 'Only Us', note: 'Soft rose curves made for your shared space.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
   },
   lavender: {
-    bg: '#F8F4FF',
-    text: '#302A3D',
-    header: 'rgba(250, 247, 255, 0.88)',
-    owner: '#8F78B8',
-    ownerText: '#ffffff',
-    partner: '#E6DCF3',
-    partnerText: '#4D4260',
-    input: '#FFFDFE'
+    name: 'Lavender Haze', note: 'Velvety violet layers with a handwritten feel.', bg: '#F7F3FF', text: '#332748', header: 'rgba(249, 246, 255, .88)', owner: '#8062C7', ownerText: '#FFFFFF', partner: '#E8DFFF', partnerText: '#51406D', input: '#FEFCFF', surface: '#FCFAFF', accent: '#8062C7', border: 'rgba(128, 98, 199, .18)', decoration: 'radial-gradient(ellipse at 14% 8%, rgba(194,167,255,.38), transparent 30%), radial-gradient(ellipse at 88% 84%, rgba(232,223,255,.9), transparent 32%)', font: '"Georgia", "Times New Roman", serif'
   },
   ocean: {
-    bg: '#F1F8F8',
-    text: '#18383B',
-    header: 'rgba(245, 251, 250, 0.88)',
-    owner: '#397D83',
-    ownerText: '#ffffff',
-    partner: '#D3E9E7',
-    partnerText: '#245156',
-    input: '#FBFEFD'
+    name: 'Ocean Eyes', note: 'Cool blue glass and gentle tidal movement.', bg: '#EDF8F8', text: '#173D43', header: 'rgba(242, 252, 252, .82)', owner: '#247C86', ownerText: '#FFFFFF', partner: '#D4EEEC', partnerText: '#26565C', input: '#FCFFFF', surface: '#F8FFFF', accent: '#247C86', border: 'rgba(36, 124, 134, .18)', decoration: 'radial-gradient(ellipse at 90% 4%, rgba(115,211,221,.34), transparent 34%), repeating-radial-gradient(ellipse at 0 100%, transparent 0 18px, rgba(36,124,134,.06) 19px 21px, transparent 38px)', font: '"Trebuchet MS", "Inter", sans-serif'
   },
   sunset: {
-    bg: '#FFF7EF',
-    text: '#493229',
-    header: 'rgba(255, 250, 245, 0.9)',
-    owner: '#D97868',
-    ownerText: '#ffffff',
-    partner: '#F5D8C4',
-    partnerText: '#67483C',
-    input: '#FFFCF8'
+    name: 'Soft Bloom', note: 'Warm peach layers with a golden hour glow.', bg: '#FFF5EC', text: '#56352C', header: 'rgba(255, 249, 242, .88)', owner: '#CD6C58', ownerText: '#FFFFFF', partner: '#F8DDC8', partnerText: '#70473A', input: '#FFFCF8', surface: '#FFFAF5', accent: '#CD6C58', border: 'rgba(205, 108, 88, .18)', decoration: 'radial-gradient(circle at 12% 8%, rgba(255,201,142,.42), transparent 28%), radial-gradient(circle at 89% 84%, rgba(232,130,112,.2), transparent 30%)', font: '"Palatino Linotype", "Book Antiqua", serif'
   }
 };
 
-const WALLPAPERS = [
-  { id: 'none', name: 'Clean', background: '' },
-  { id: 'dots', name: 'Confetti', background: 'radial-gradient(circle at center, rgba(255,255,255,.8) 0 2px, transparent 2.5px)', size: '22px 22px' },
-  { id: 'hearts', name: 'Sweetheart', background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,.64) 0 5px, transparent 5.5px), radial-gradient(circle at 70% 65%, rgba(255,143,163,.2) 0 7px, transparent 7.5px)', size: '44px 44px' },
-  { id: 'blush', name: 'Soft Bloom', background: 'radial-gradient(circle at 18% 20%, rgba(255,255,255,.72), transparent 24%), radial-gradient(circle at 78% 72%, rgba(214,120,104,.22), transparent 28%), linear-gradient(145deg, rgba(255,223,214,.74), rgba(255,247,239,.34))', size: 'cover' },
-  { id: 'stars', name: 'Starlight', background: 'radial-gradient(circle at 20% 18%, rgba(255,255,255,.75) 0 1px, transparent 1.8px), radial-gradient(circle at 72% 38%, rgba(255,255,255,.5) 0 1.5px, transparent 2px), radial-gradient(circle at 42% 78%, rgba(255,143,163,.55) 0 1px, transparent 2px)', size: '48px 48px' },
-  { id: 'petals', name: 'Lavender Petals', background: 'radial-gradient(ellipse at 25% 28%, rgba(143,120,184,.2) 0 7px, transparent 8px), radial-gradient(ellipse at 75% 68%, rgba(255,255,255,.7) 0 8px, transparent 9px)', size: '52px 52px' },
-  { id: 'waves', name: 'Calm Waves', background: 'repeating-radial-gradient(ellipse at 0 100%, transparent 0 17px, rgba(57,125,131,.14) 18px 20px, transparent 21px 35px)', size: '70px 48px' },
-  { id: 'minimal', name: 'Rose Cloud', background: 'radial-gradient(circle at 20% 25%, rgba(255,255,255,.82), transparent 26%), linear-gradient(145deg, rgba(255,205,210,.68), rgba(255,245,241,.42))', size: 'cover' },
-  { id: 'night', name: 'Night Sky', background: 'radial-gradient(circle at 22% 18%, rgba(255,255,255,.8) 0 1px, transparent 1.7px), radial-gradient(circle at 70% 46%, rgba(255,255,255,.55) 0 1.2px, transparent 1.9px), linear-gradient(155deg, rgba(22,25,48,.88), rgba(64,39,65,.72))', size: '54px 54px, 68px 68px, cover' }
-];
-
 type ThemeName = keyof typeof THEMES;
-
-const CUSTOMIZE_PRESETS: Array<{ id: string; name: string; note: string; theme: ThemeName; wallpaper: string }> = [
-  { id: 'only-us', name: 'Only Us', note: 'Our signature pink', theme: 'romantic', wallpaper: 'hearts' },
-  { id: 'soft-bloom', name: 'Soft Bloom', note: 'Warm and dreamy', theme: 'sunset', wallpaper: 'blush' },
-  { id: 'moonlight', name: 'Moonlight', note: 'Quiet after dark', theme: 'dark', wallpaper: 'stars' },
-  { id: 'lavender-haze', name: 'Lavender Haze', note: 'Soft violet petals', theme: 'lavender', wallpaper: 'petals' },
-  { id: 'ocean-eyes', name: 'Ocean Eyes', note: 'Cool and calm', theme: 'ocean', wallpaper: 'waves' },
-  { id: 'clean-slate', name: 'Clean Slate', note: 'Simple and bright', theme: 'light', wallpaper: 'none' }
-];
 
 const applyTheme = (themeName: ThemeName) => {
   const theme = THEMES[themeName] || THEMES.romantic;
   const root = document.documentElement;
+  root.dataset.chatTheme = themeName;
   root.style.setProperty('--theme-bg', theme.bg);
   root.style.setProperty('--theme-text', theme.text);
   root.style.setProperty('--theme-header-bg', theme.header);
@@ -149,9 +87,12 @@ const applyTheme = (themeName: ThemeName) => {
   root.style.setProperty('--theme-bubble-partner', theme.partner);
   root.style.setProperty('--theme-bubble-partner-text', theme.partnerText);
   root.style.setProperty('--theme-input-bg', theme.input);
+  root.style.setProperty('--theme-surface', theme.surface);
+  root.style.setProperty('--theme-accent', theme.accent);
+  root.style.setProperty('--theme-border', theme.border);
+  root.style.setProperty('--theme-decoration', theme.decoration);
+  root.style.setProperty('--theme-font', theme.font);
 };
-
-const getTheme = (themeName?: string) => THEMES[themeName as ThemeName] || THEMES.romantic;
 
 const getMillis = (ts: any) => {
   if (!ts) return 0;
@@ -209,6 +150,8 @@ export default function App() {
   }, [showMenu]);
 
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [isThemeSaving, setIsThemeSaving] = useState(false);
+  const themeUpdateRequestRef = useRef(0);
   const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +168,6 @@ export default function App() {
   const [socketOnlineRoles, setSocketOnlineRoles] = useState<string[]>([]);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-  const [inputText, setInputText] = useState("");
   const [isTabActive, setIsTabActive] = useState(true);
   const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
   const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>('dashboard');
@@ -496,7 +438,6 @@ export default function App() {
             display_name: 'Nusrat',
             photo_url: '',
             theme: 'romantic',
-            wallpaper: 'none',
             last_seen: new Date().toISOString(),
             last_read_at: new Date().toISOString()
           });
@@ -650,8 +591,7 @@ export default function App() {
           photo_url: user?.user_metadata?.avatar_url || "",
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString(),
-          theme: 'romantic',
-          wallpaper: 'none'
+          theme: 'romantic'
         };
         await supabase.from('users').upsert([newProfile]);
         setUserProfile({ ...newProfile, uid: user.id } as any);
@@ -681,7 +621,6 @@ export default function App() {
           display_name: 'Nusrat',
           photo_url: '',
           theme: 'romantic',
-          wallpaper: 'none',
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString()
         });
@@ -980,7 +919,6 @@ export default function App() {
           display_name: 'Nusrat',
           photo_url: '',
           theme: 'romantic',
-          wallpaper: 'none',
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString()
         });
@@ -1034,14 +972,13 @@ export default function App() {
     }
   };
 
-  const applyCustomizePreset = async (theme: ThemeName, wallpaper: string) => {
+  const selectTheme = async (theme: ThemeName) => {
+    if (!userProfile || userProfile.theme === theme || isThemeSaving) return;
+    const requestId = ++themeUpdateRequestRef.current;
     applyTheme(theme);
-    await updateSettings({ theme, wallpaper });
-  };
-
-  const getWallpaper = () => {
-    if (!userProfile?.wallpaper || userProfile.wallpaper === 'none') return null;
-    return WALLPAPERS.find(w => w.id === userProfile.wallpaper) || null;
+    setIsThemeSaving(true);
+    await updateSettings({ theme });
+    if (requestId === themeUpdateRequestRef.current) setIsThemeSaving(false);
   };
 
   const handleLogout = async () => {
@@ -1288,7 +1225,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300">
+    <div className="chat-theme flex h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300">
       {activeHubTab === 'dashboard' ? (
         <MultiHubDashboard
           userProfile={userProfile}
@@ -1311,7 +1248,7 @@ export default function App() {
         />
       ) : (
         <main className="flex-1 flex flex-col bg-[var(--theme-bg)] overflow-hidden z-30 transition-colors duration-300 w-full relative">
-          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[#FF8FA3]/10 transition-colors duration-300">
+          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
             <AnimatePresence mode="wait">
               {selectedMessages.length > 0 ? (
                 <motion.header 
@@ -1367,7 +1304,7 @@ export default function App() {
                     {/* Back to Multi-Hub button */}
                     <button
                       onClick={() => handleHubTabChange('dashboard')}
-                      className="p-2 -ml-1 mr-2 text-[#FF4D6D] bg-[#FFF0F3] hover:bg-[#FFCCD5]/50 border border-[#FF8FA3]/25 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
+                      className="theme-accent-button p-2 -ml-1 mr-2 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
                       title="Back to OnlyUs Hub"
                     >
                       <LayoutGrid className="w-4 h-4" />
@@ -1393,7 +1330,7 @@ export default function App() {
                       </div>
                       
                       <div className="min-w-0">
-                        <h2 className="text-[15px] lg:text-[16px] font-bold text-[#1a1a1a] truncate leading-tight">
+                        <h2 className="text-[15px] lg:text-[16px] font-bold text-[var(--theme-text)] truncate leading-tight">
                           {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
                         </h2>
                         <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? 'text-green-500' : 'text-[#6E6E6E]/60'}`}>
@@ -1465,16 +1402,7 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-hidden relative">
-            {getWallpaper() && (
-              <div 
-                className="absolute inset-0 z-0 opacity-80 pointer-events-none transition-all duration-500"
-                style={{ 
-                  backgroundImage: getWallpaper()?.background,
-                  backgroundSize: getWallpaper()?.size || 'cover',
-                  backgroundPosition: 'center'
-                }}
-              />
-            )}
+            <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
             <div className="relative z-10 h-full flex flex-col">
               <ChatView 
                 role={userProfile?.role || 'partner'} 
@@ -1504,8 +1432,6 @@ export default function App() {
                 chatRoomId={chatRoomId}
                 quotaExceeded={quotaExceeded}
                 setQuotaExceeded={setQuotaExceeded}
-                inputText={inputText}
-                onInputTextChange={setInputText}
                 isTabActive={isTabActive}
                 onBroadcastTyping={broadcastTyping}
                 onSendNudge={sendNudge}
@@ -1560,105 +1486,48 @@ export default function App() {
 
       <AnimatePresence>
         {showCustomizeModal && (
-          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-[#171218]/55 backdrop-blur-sm" onClick={() => setShowCustomizeModal(false)}>
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center theme-modal-backdrop" onClick={() => setShowCustomizeModal(false)}>
             <motion.div
-              initial={{ y: 80, opacity: 0, scale: 0.98 }}
+              initial={{ y: 48, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 80, opacity: 0, scale: 0.98 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              exit={{ y: 48, opacity: 0, scale: 0.98 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 360 }}
               onClick={e => e.stopPropagation()}
-              className="customize-sheet w-full max-w-lg max-h-[88dvh] overflow-hidden rounded-t-[2rem] sm:rounded-[2rem] bg-[#FFFCFA] shadow-[0_24px_80px_rgba(28,18,24,.3)]"
+              className="theme-customize-sheet w-full max-w-2xl max-h-[88dvh] overflow-hidden rounded-t-[2rem] sm:rounded-[2rem]"
             >
-              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-[#2D2028]/8">
+              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-[var(--theme-border)]">
                 <div>
-                  <div className="flex items-center gap-2 text-[#A95770]">
+                  <div className="flex items-center gap-2 text-[var(--theme-accent)]">
                     <Sparkles className="w-4 h-4" />
                     <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Chat look</span>
                   </div>
-                  <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#251B20]">Customize</h3>
-                  <p className="mt-1 text-xs text-[#75646D]">Choose a complete mood or mix your own.</p>
+                  <h3 className="mt-1 text-2xl font-bold tracking-tight text-[var(--theme-text)]">Choose a theme</h3>
+                  <p className="mt-1 text-xs text-[var(--theme-text)]/65">Each theme restyles the chat, controls, and settings together.</p>
                 </div>
-                <button onClick={() => setShowCustomizeModal(false)} className="p-2.5 rounded-full bg-[#F4ECEF] text-[#6D5661] hover:bg-[#EEDFE5] transition-colors" aria-label="Close customize">
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => setShowCustomizeModal(false)} className="theme-icon-button p-2.5 rounded-full" aria-label="Close customize"><X className="w-5 h-5" /></button>
               </div>
-
-              <div className="custom-scrollbar overflow-y-auto max-h-[calc(88dvh-108px)] px-5 py-5 space-y-7">
-                <section>
-                  <div className="flex items-end justify-between mb-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-[#2A2025]">Premade themes</h4>
-                      <p className="text-[11px] text-[#8A747E]">Changes colors and wallpaper together</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {CUSTOMIZE_PRESETS.map((preset) => {
-                      const presetTheme = THEMES[preset.theme];
-                      const presetWallpaper = WALLPAPERS.find(item => item.id === preset.wallpaper);
-                      const isActive = userProfile?.theme === preset.theme && userProfile?.wallpaper === preset.wallpaper;
-                      return (
-                        <button
-                          key={preset.id}
-                          onClick={() => applyCustomizePreset(preset.theme, preset.wallpaper)}
-                          className={`text-left rounded-[1.35rem] p-2 border-2 transition-all active:scale-[0.98] ${isActive ? 'border-[#B85F78] shadow-[0_8px_24px_rgba(184,95,120,.16)]' : 'border-transparent bg-[#F5EEF0] hover:border-[#DDBBC6]'}`}
-                        >
-                          <div className="relative h-24 rounded-[1rem] overflow-hidden" style={{ backgroundColor: presetTheme.bg, backgroundImage: presetWallpaper?.background, backgroundSize: presetWallpaper?.size || 'cover' }}>
-                            <div className="absolute left-3 bottom-3 w-[58%] h-5 rounded-[12px_12px_12px_3px] shadow-sm" style={{ backgroundColor: presetTheme.partner }} />
-                            <div className="absolute right-3 bottom-10 w-[48%] h-5 rounded-[12px_12px_3px_12px] shadow-sm" style={{ backgroundColor: presetTheme.owner }} />
-                            {isActive && <span className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-full bg-[#B85F78] text-white shadow"><Check className="w-3.5 h-3.5" /></span>}
-                          </div>
-                          <div className="px-1.5 pt-2 pb-1">
-                            <p className="text-xs font-bold text-[#30242A]">{preset.name}</p>
-                            <p className="text-[10px] text-[#8A747E]">{preset.note}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="text-sm font-bold text-[#2A2025]">Color style</h4>
-                  <p className="mb-3 text-[11px] text-[#8A747E]">Keep your wallpaper and change the chat colors</p>
-                  <div className="flex gap-4 overflow-x-auto pb-2">
-                    {(Object.keys(THEMES) as ThemeName[]).map((themeName) => (
-                      <button key={themeName} onClick={() => updateSettings({ theme: themeName })} className="flex-shrink-0 text-center group">
-                        <span className={`relative block w-14 h-14 rounded-full border-[3px] p-1 transition-transform group-active:scale-95 ${userProfile?.theme === themeName ? 'border-[#B85F78]' : 'border-transparent'}`}>
-                          <span className="block w-full h-full rounded-full overflow-hidden shadow-sm" style={{ backgroundColor: THEMES[themeName].bg }}>
-                            <span className="block w-full h-1/2" style={{ backgroundColor: THEMES[themeName].owner }} />
-                            <span className="block ml-auto w-1/2 h-1/2" style={{ backgroundColor: THEMES[themeName].partner }} />
-                          </span>
-                        </span>
-                        <span className="block mt-1.5 text-[10px] font-semibold capitalize text-[#6F5B65]">{themeName}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="text-sm font-bold text-[#2A2025]">Wallpaper</h4>
-                  <p className="mb-3 text-[11px] text-[#8A747E]">Keep your colors and change the background</p>
-                  <div className="grid grid-cols-4 gap-3">
-                    {WALLPAPERS.map((wallpaper) => (
-                      <button key={wallpaper.id} onClick={() => updateSettings({ wallpaper: wallpaper.id })} className="group text-center">
-                        <span
-                          className={`relative block aspect-square rounded-[1rem] border-2 overflow-hidden transition-transform group-active:scale-95 ${userProfile?.wallpaper === wallpaper.id ? 'border-[#B85F78]' : 'border-[#E9DDE1]'}`}
-                          style={{ backgroundColor: getTheme(userProfile?.theme).bg, backgroundImage: wallpaper.background, backgroundSize: wallpaper.size || 'cover' }}
-                        >
-                          {wallpaper.id === 'none' && <span className="absolute inset-0 grid place-items-center"><X className="w-5 h-5 text-[#AA96A0]" /></span>}
-                          {userProfile?.wallpaper === wallpaper.id && <span className="absolute top-1.5 right-1.5 grid place-items-center w-5 h-5 rounded-full bg-[#B85F78] text-white"><Check className="w-3 h-3" /></span>}
-                        </span>
-                        <span className="block mt-1.5 text-[9px] font-semibold text-[#76626C] truncate">{wallpaper.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+              <div className="custom-scrollbar overflow-y-auto max-h-[calc(88dvh-108px)] px-5 py-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
+                    const theme = THEMES[themeName];
+                    const isActive = userProfile?.theme === themeName;
+                    return <button key={themeName} disabled={isThemeSaving} onClick={() => selectTheme(themeName)} className={`theme-choice text-left ${isActive ? 'theme-choice-active' : ''}`}>
+                      <div className="theme-choice-preview" style={{ background: theme.decoration, backgroundColor: theme.bg, color: theme.text }}>
+                        <span className="theme-preview-header" style={{ background: theme.header }} />
+                        <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
+                        <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
+                        {isActive && <span className="theme-choice-check"><Check className="w-3.5 h-3.5" /></span>}
+                      </div>
+                      <div className="pt-3 px-1"><p className="text-sm font-bold text-[var(--theme-text)]">{theme.name}</p><p className="mt-0.5 text-[11px] leading-relaxed text-[var(--theme-text)]/60">{theme.note}</p></div>
+                    </button>;
+                  })}
+                </div>
+                <p className="mt-5 text-center text-[11px] text-[var(--theme-text)]/55">Your selection is saved instantly and includes its own background, palette, and layout details.</p>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
       <AnimatePresence>
         {showDeleteChoices && (
           <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
@@ -1937,8 +1806,6 @@ function ChatView({
   chatRoomId,
   quotaExceeded,
   setQuotaExceeded,
-  inputText,
-  onInputTextChange,
   isTabActive,
   onBroadcastTyping,
   onSendNudge,
@@ -1972,8 +1839,6 @@ function ChatView({
   chatRoomId: string,
   quotaExceeded: boolean,
   setQuotaExceeded: (val: boolean) => void,
-  inputText: string,
-  onInputTextChange: (val: string) => void,
   isTabActive: boolean,
   onBroadcastTyping: (isTyping: boolean) => void,
   onSendNudge: (type: string) => void,
@@ -1981,6 +1846,7 @@ function ChatView({
   onSetShowNudgeMenu: (val: boolean) => void
 }) {
   const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
+  const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -2002,11 +1868,11 @@ function ChatView({
 
   useEffect(() => {
     if (editingMessage) {
-      onInputTextChange(editingMessage.text);
+      setInputText(editingMessage.text);
     } else {
-      onInputTextChange("");
+      setInputText("");
     }
-  }, [editingMessage, onInputTextChange]);
+  }, [editingMessage]);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -2039,7 +1905,7 @@ function ChatView({
           isEdited: true
         }).eq('id', editingMessage.id);
         onSetEditingMessage(null);
-        onInputTextChange("");
+        setInputText("");
       } catch (err) {
         console.error("Edit error:", err);
       }
@@ -2048,7 +1914,7 @@ function ChatView({
 
     const text = inputText;
     const tempId = `temp-${Date.now()}`;
-    onInputTextChange("");
+    setInputText("");
 
     const msgData: any = {
       id: tempId,
@@ -2309,7 +2175,7 @@ function ChatView({
             <input 
               type="text"
               value={inputText}
-              onChange={(e) => onInputTextChange(e.target.value)}
+              onChange={(e) => setInputText(e.target.value)}
               placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
               className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[#FF8FA3]/10 rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[#FF8FA3]/5 transition-all shadow-sm pr-12 placeholder-[#6E6E6E]/40"
             />
@@ -3303,9 +3169,9 @@ function ProfileModal({
     <motion.div 
       initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="fixed inset-0 z-[100] flex flex-col bg-white"
+      className="theme-settings fixed inset-0 z-[100] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)]"
     >
-      <div className="h-20 flex-shrink-0 border-b border-[#FF8FA3]/10 flex items-center justify-between px-6 bg-[#FFF8F6]/50">
+      <div className="h-20 flex-shrink-0 border-b border-[var(--theme-border)] flex items-center justify-between px-6 bg-[var(--theme-bg)]/50">
         <div className="flex items-center gap-4">
           <button onClick={onClose} className="p-2 -ml-2 text-[#6E6E6E]">
             <ChevronLeft className="w-6 h-6" />
@@ -3319,7 +3185,7 @@ function ProfileModal({
         )}
       </div>
 
-      <div className="flex border-b border-[#FF8FA3]/10 px-4 pt-2 bg-white flex-shrink-0 gap-2">
+      <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2">
         <button 
           onClick={() => setActiveTab('me')}
           className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
