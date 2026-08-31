@@ -97,10 +97,20 @@ const applyTheme = (themeName: ThemeName) => {
 const getMillis = (ts: any) => {
   if (!ts) return 0;
   if (typeof ts === 'number') return ts;
-  if (ts.toMillis) return ts.toMillis();
+  if (ts.toMillis && typeof ts.toMillis === 'function') return ts.toMillis();
+  if (ts.toDate && typeof ts.toDate === 'function') return ts.toDate().getTime();
+  if (ts.seconds) return ts.seconds * 1000;
   if (ts instanceof Date) return ts.getTime();
-  if (typeof ts === 'string') return new Date(ts).getTime();
+  if (typeof ts === 'string') {
+    const parsed = new Date(ts).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
   return 0;
+};
+
+const parseDate = (ts: any): Date => {
+  const millis = getMillis(ts);
+  return millis > 0 ? new Date(millis) : new Date();
 };
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
@@ -2684,9 +2694,9 @@ const MessageItem = React.memo(function MessageItem({
 
   const formatSeenTime = (timestamp: any) => {
     if (!timestamp) return "Seen";
-    const date = timestamp.toDate ? timestamp.toDate() : (typeof timestamp === 'number' ? new Date(timestamp) : new Date());
+    const date = parseDate(timestamp);
     const now = new Date();
-    const diff = (now.getTime() - date.getTime()) / 1000;
+    const diff = Math.max(0, (now.getTime() - date.getTime()) / 1000);
     
     if (diff < 60) return "Seen just now";
     if (diff < 3600) return `Seen ${Math.floor(diff / 60)}m ago`;
@@ -2695,7 +2705,7 @@ const MessageItem = React.memo(function MessageItem({
 
   const displayTime = () => {
     if (!msg.timestamp) return "";
-    const date = msg.timestamp.toDate ? msg.timestamp.toDate() : (typeof msg.timestamp === 'number' ? new Date(msg.timestamp) : new Date());
+    const date = parseDate(msg.timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
@@ -2781,8 +2791,8 @@ const MessageItem = React.memo(function MessageItem({
           </div>
         )}
         
-        <div className={`flex flex-col max-w-[85%] ${isOwn ? 'items-end' : 'items-start'} z-10`}>
-          <div className="relative group">
+        <div className={`flex flex-col max-w-[85%] sm:max-w-[75%] min-w-0 ${isOwn ? 'items-end' : 'items-start'} z-10`}>
+          <div className="relative group max-w-full min-w-0">
             <AnimatePresence>
               {showPicker && !isSwiping && (
                 <motion.div 
@@ -2823,7 +2833,7 @@ const MessageItem = React.memo(function MessageItem({
             </AnimatePresence>
 
             <div 
-              className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none ${
+              className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none max-w-full min-w-0 break-words ${
                 isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
               }`}
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
@@ -2844,14 +2854,14 @@ const MessageItem = React.memo(function MessageItem({
                       setTimeout(() => el.classList.remove('bg-[#FF8FA3]/25'), 1400);
                     }
                   }}
-                  className={`mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none ${
+                  className={`mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none w-full max-w-full min-w-0 overflow-hidden ${
                     isOwn ? 'bg-black/15 border-white text-white/95' : 'bg-[#FF8FA3]/10 border-[#FF8FA3] text-[#1a1a1a]/95'
                   }`}
                 >
-                  <p className="font-bold mb-0.5 opacity-75">
+                  <p className="font-bold mb-0.5 opacity-75 truncate max-w-full">
                      {getSenderName(resolvedReplyTo.sender_role)}
                   </p>
-                  <p className="italic truncate line-clamp-1 opacity-90">"{resolvedReplyTo.text}"</p>
+                  <p className="italic truncate opacity-90 block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">"{resolvedReplyTo.text}"</p>
                 </div>
               )}
 
