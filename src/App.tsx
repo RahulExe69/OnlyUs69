@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2 } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2 } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -82,19 +82,64 @@ const THEMES = {
     partner: '#FFD6C9',
     partnerText: '#5D5D5D',
     input: '#ffffff'
+  },
+  lavender: {
+    bg: '#F8F4FF',
+    text: '#302A3D',
+    header: 'rgba(250, 247, 255, 0.88)',
+    owner: '#8F78B8',
+    ownerText: '#ffffff',
+    partner: '#E6DCF3',
+    partnerText: '#4D4260',
+    input: '#FFFDFE'
+  },
+  ocean: {
+    bg: '#F1F8F8',
+    text: '#18383B',
+    header: 'rgba(245, 251, 250, 0.88)',
+    owner: '#397D83',
+    ownerText: '#ffffff',
+    partner: '#D3E9E7',
+    partnerText: '#245156',
+    input: '#FBFEFD'
+  },
+  sunset: {
+    bg: '#FFF7EF',
+    text: '#493229',
+    header: 'rgba(255, 250, 245, 0.9)',
+    owner: '#D97868',
+    ownerText: '#ffffff',
+    partner: '#F5D8C4',
+    partnerText: '#67483C',
+    input: '#FFFCF8'
   }
 };
 
 const WALLPAPERS = [
-  { id: 'none', name: 'None', url: '' },
-  { id: 'dots', name: 'Sweet Dots', url: 'https://www.transparenttextures.com/patterns/p6.png' },
-  { id: 'hearts', name: 'Little Hearts', url: 'https://www.transparenttextures.com/patterns/cut-copy-paste.png' },
-  { id: 'minimal', name: 'Minimal Pink', url: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=800&auto=format&fit=crop' },
-  { id: 'night', name: 'Starry Night', url: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?q=80&w=800&auto=format&fit=crop' }
+  { id: 'none', name: 'Clean', background: '' },
+  { id: 'dots', name: 'Confetti', background: 'radial-gradient(circle at center, rgba(255,255,255,.8) 0 2px, transparent 2.5px)', size: '22px 22px' },
+  { id: 'hearts', name: 'Sweetheart', background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,.64) 0 5px, transparent 5.5px), radial-gradient(circle at 70% 65%, rgba(255,143,163,.2) 0 7px, transparent 7.5px)', size: '44px 44px' },
+  { id: 'blush', name: 'Soft Bloom', background: 'radial-gradient(circle at 18% 20%, rgba(255,255,255,.72), transparent 24%), radial-gradient(circle at 78% 72%, rgba(214,120,104,.22), transparent 28%), linear-gradient(145deg, rgba(255,223,214,.74), rgba(255,247,239,.34))', size: 'cover' },
+  { id: 'stars', name: 'Starlight', background: 'radial-gradient(circle at 20% 18%, rgba(255,255,255,.75) 0 1px, transparent 1.8px), radial-gradient(circle at 72% 38%, rgba(255,255,255,.5) 0 1.5px, transparent 2px), radial-gradient(circle at 42% 78%, rgba(255,143,163,.55) 0 1px, transparent 2px)', size: '48px 48px' },
+  { id: 'petals', name: 'Lavender Petals', background: 'radial-gradient(ellipse at 25% 28%, rgba(143,120,184,.2) 0 7px, transparent 8px), radial-gradient(ellipse at 75% 68%, rgba(255,255,255,.7) 0 8px, transparent 9px)', size: '52px 52px' },
+  { id: 'waves', name: 'Calm Waves', background: 'repeating-radial-gradient(ellipse at 0 100%, transparent 0 17px, rgba(57,125,131,.14) 18px 20px, transparent 21px 35px)', size: '70px 48px' },
+  { id: 'minimal', name: 'Rose Cloud', background: 'radial-gradient(circle at 20% 25%, rgba(255,255,255,.82), transparent 26%), linear-gradient(145deg, rgba(255,205,210,.68), rgba(255,245,241,.42))', size: 'cover' },
+  { id: 'night', name: 'Night Sky', background: 'radial-gradient(circle at 22% 18%, rgba(255,255,255,.8) 0 1px, transparent 1.7px), radial-gradient(circle at 70% 46%, rgba(255,255,255,.55) 0 1.2px, transparent 1.9px), linear-gradient(155deg, rgba(22,25,48,.88), rgba(64,39,65,.72))', size: '54px 54px, 68px 68px, cover' }
 ];
 
-const applyTheme = (themeName: 'light' | 'dark' | 'romantic') => {
-  const theme = THEMES[themeName];
+type ThemeName = keyof typeof THEMES;
+
+const CUSTOMIZE_PRESETS: Array<{ id: string; name: string; note: string; theme: ThemeName; wallpaper: string }> = [
+  { id: 'only-us', name: 'Only Us', note: 'Our signature pink', theme: 'romantic', wallpaper: 'hearts' },
+  { id: 'soft-bloom', name: 'Soft Bloom', note: 'Warm and dreamy', theme: 'sunset', wallpaper: 'blush' },
+  { id: 'moonlight', name: 'Moonlight', note: 'Quiet after dark', theme: 'dark', wallpaper: 'stars' },
+  { id: 'lavender-haze', name: 'Lavender Haze', note: 'Soft violet petals', theme: 'lavender', wallpaper: 'petals' },
+  { id: 'ocean-eyes', name: 'Ocean Eyes', note: 'Cool and calm', theme: 'ocean', wallpaper: 'waves' },
+  { id: 'clean-slate', name: 'Clean Slate', note: 'Simple and bright', theme: 'light', wallpaper: 'none' }
+];
+
+const applyTheme = (themeName: ThemeName) => {
+  const theme = THEMES[themeName] || THEMES.romantic;
   const root = document.documentElement;
   root.style.setProperty('--theme-bg', theme.bg);
   root.style.setProperty('--theme-text', theme.text);
@@ -105,6 +150,8 @@ const applyTheme = (themeName: 'light' | 'dark' | 'romantic') => {
   root.style.setProperty('--theme-bubble-partner-text', theme.partnerText);
   root.style.setProperty('--theme-input-bg', theme.input);
 };
+
+const getTheme = (themeName?: string) => THEMES[themeName as ThemeName] || THEMES.romantic;
 
 const getMillis = (ts: any) => {
   if (!ts) return 0;
@@ -161,8 +208,7 @@ export default function App() {
     };
   }, [showMenu]);
 
-  const [showThemeModal, setShowThemeModal] = useState(false);
-  const [showWallpaperModal, setShowWallpaperModal] = useState(false);
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -594,7 +640,7 @@ export default function App() {
       if (data) {
         const profile = { ...data, uid: user.id } as UserProfile;
         setUserProfile(profile);
-        if (profile.theme) applyTheme(profile.theme as any);
+        if (profile.theme) applyTheme(profile.theme as ThemeName);
       } else {
         const newProfile = {
           id: user.id,
@@ -959,17 +1005,20 @@ export default function App() {
   // Apply theme when userProfile changes
   useEffect(() => {
     if (userProfile?.theme) {
-      applyTheme(userProfile.theme as any);
+      applyTheme(userProfile.theme as ThemeName);
     }
   }, [userProfile?.theme]);
 
   const updateSettings = async (updates: Partial<UserProfile>) => {
     if (!userProfile) return;
+    const previousProfile = userProfile;
+    setUserProfile(prev => prev ? { ...prev, ...updates } : null);
     try {
-      await supabase.from('users').update(updates).eq('id', userProfile.uid);
-      setUserProfile(prev => prev ? { ...prev, ...updates } : null);
+      const { error: settingsError } = await supabase.from('users').update(updates).eq('id', userProfile.uid);
+      if (settingsError) throw settingsError;
     } catch (err) {
       console.error("Error updating settings:", err);
+      setUserProfile(previousProfile);
     }
   };
 
@@ -985,10 +1034,14 @@ export default function App() {
     }
   };
 
-  const getWallpaperUrl = () => {
-    if (!userProfile?.wallpaper || userProfile.wallpaper === 'none') return '';
-    const wp = WALLPAPERS.find(w => w.id === userProfile.wallpaper);
-    return wp?.url || '';
+  const applyCustomizePreset = async (theme: ThemeName, wallpaper: string) => {
+    applyTheme(theme);
+    await updateSettings({ theme, wallpaper });
+  };
+
+  const getWallpaper = () => {
+    if (!userProfile?.wallpaper || userProfile.wallpaper === 'none') return null;
+    return WALLPAPERS.find(w => w.id === userProfile.wallpaper) || null;
   };
 
   const handleLogout = async () => {
@@ -1235,7 +1288,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-[#FFF8F6] font-sans text-[#1a1a1a] overflow-hidden relative">
+    <div className="flex h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300">
       {activeHubTab === 'dashboard' ? (
         <MultiHubDashboard
           userProfile={userProfile}
@@ -1257,8 +1310,8 @@ export default function App() {
           onBackToHub={() => handleHubTabChange('dashboard')}
         />
       ) : (
-        <main className="flex-1 flex flex-col bg-[#FFF8F6] overflow-hidden z-30 transition-all w-full relative">
-          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[#FFF8F6] shadow-sm border-b border-[#FF8FA3]/10">
+        <main className="flex-1 flex flex-col bg-[var(--theme-bg)] overflow-hidden z-30 transition-colors duration-300 w-full relative">
+          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[#FF8FA3]/10 transition-colors duration-300">
             <AnimatePresence mode="wait">
               {selectedMessages.length > 0 ? (
                 <motion.header 
@@ -1308,7 +1361,7 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 px-4 lg:px-6 flex items-center justify-between bg-white/95 backdrop-blur-md z-20"
+                  className="absolute inset-0 px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
                 >
                   <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
                     {/* Back to Multi-Hub button */}
@@ -1387,18 +1440,11 @@ export default function App() {
                                 My Profile
                               </button>
                               <button 
-                                onClick={() => { setShowThemeModal(true); setShowMenu(false); }}
+                                onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
                               >
-                                <Palette className="w-4 h-4 text-[#FF8FA3]" />
-                                Themes
-                              </button>
-                              <button 
-                                onClick={() => { setShowWallpaperModal(true); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                              >
-                                <ImageIcon className="w-4 h-4 text-[#FF8FA3]" />
-                                Wallpaper
+                                <Sparkles className="w-4 h-4 text-[#FF8FA3]" />
+                                Customize
                               </button>
                               <button 
                                 onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
@@ -1419,14 +1465,13 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-hidden relative">
-            {getWallpaperUrl() && (
+            {getWallpaper() && (
               <div 
-                className="absolute inset-0 z-0 opacity-40 pointer-events-none" 
+                className="absolute inset-0 z-0 opacity-80 pointer-events-none transition-all duration-500"
                 style={{ 
-                  backgroundImage: `url(${getWallpaperUrl()})`,
-                  backgroundSize: userProfile?.wallpaper === 'dots' || userProfile?.wallpaper === 'hearts' ? 'auto' : 'cover',
-                  backgroundPosition: 'center',
-                  filter: userProfile?.theme === 'dark' ? 'invert(1) opacity(0.1)' : 'none'
+                  backgroundImage: getWallpaper()?.background,
+                  backgroundSize: getWallpaper()?.size || 'cover',
+                  backgroundPosition: 'center'
                 }}
               />
             )}
@@ -1514,92 +1559,100 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showThemeModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setShowThemeModal(false)}>
-            <motion.div 
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
+        {showCustomizeModal && (
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-[#171218]/55 backdrop-blur-sm" onClick={() => setShowCustomizeModal(false)}>
+            <motion.div
+              initial={{ y: 80, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 80, opacity: 0, scale: 0.98 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              className="customize-sheet w-full max-w-lg max-h-[88dvh] overflow-hidden rounded-t-[2rem] sm:rounded-[2rem] bg-[#FFFCFA] shadow-[0_24px_80px_rgba(28,18,24,.3)]"
             >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-[#1a1a1a] flex items-center gap-2">
-                  <Palette className="w-5 h-5 text-[#FF8FA3]" />
-                  Choose Theme
-                </h3>
-                <button onClick={() => setShowThemeModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <X className="w-5 h-5 text-gray-400" />
+              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-[#2D2028]/8">
+                <div>
+                  <div className="flex items-center gap-2 text-[#A95770]">
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Chat look</span>
+                  </div>
+                  <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#251B20]">Customize</h3>
+                  <p className="mt-1 text-xs text-[#75646D]">Choose a complete mood or mix your own.</p>
+                </div>
+                <button onClick={() => setShowCustomizeModal(false)} className="p-2.5 rounded-full bg-[#F4ECEF] text-[#6D5661] hover:bg-[#EEDFE5] transition-colors" aria-label="Close customize">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              
-              <div className="space-y-3">
-                {(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => updateSettings({ theme: t })}
-                    className={`w-full p-4 rounded-2xl flex items-center justify-between border-2 transition-all ${userProfile?.theme === t ? 'border-[#FF8FA3] bg-[#FF8FA3]/5' : 'border-gray-100 hover:border-gray-200'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full border shadow-sm relative overflow-hidden" style={{ backgroundColor: THEMES[t].bg }}>
-                        <div className="absolute top-0 left-0 w-full h-1/2" style={{ backgroundColor: THEMES[t].owner }} />
-                        <div className="absolute bottom-0 right-0 w-1/2 h-1/2" style={{ backgroundColor: THEMES[t].partner }} />
-                      </div>
-                      <span className="font-semibold text-sm capitalize text-gray-800">{t}</span>
-                    </div>
-                    {userProfile?.theme === t && <Check className="w-5 h-5 text-[#FF8FA3]" />}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {showWallpaperModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setShowWallpaperModal(false)}>
-            <motion.div 
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-[#1a1a1a] flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5 text-[#FF8FA3]" />
-                  Chat Wallpaper
-                </h3>
-                <button onClick={() => setShowWallpaperModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <X className="w-5 h-5 text-gray-400" />
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto px-1 pb-2">
-                {WALLPAPERS.map((wp) => (
-                  <button
-                    key={wp.id}
-                    onClick={() => updateSettings({ wallpaper: wp.id })}
-                    className={`group relative aspect-[9/16] rounded-xl overflow-hidden border-2 transition-all ${userProfile?.wallpaper === wp.id ? 'border-[#FF8FA3]' : 'border-transparent hover:border-gray-200'}`}
-                  >
-                    {wp.url ? (
-                      <img src={wp.url} alt={wp.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                        <span className="text-gray-400 text-xs font-semibold">Default</span>
-                      </div>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
-                      <p className="text-white text-[10px] font-bold truncate">{wp.name}</p>
+              <div className="custom-scrollbar overflow-y-auto max-h-[calc(88dvh-108px)] px-5 py-5 space-y-7">
+                <section>
+                  <div className="flex items-end justify-between mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-[#2A2025]">Premade themes</h4>
+                      <p className="text-[11px] text-[#8A747E]">Changes colors and wallpaper together</p>
                     </div>
-                    {userProfile?.wallpaper === wp.id && (
-                      <div className="absolute top-2 right-2 p-1 bg-[#FF8FA3] rounded-full shadow-lg">
-                        <Check className="w-3 h-3 text-white" />
-                      </div>
-                    )}
-                  </button>
-                ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {CUSTOMIZE_PRESETS.map((preset) => {
+                      const presetTheme = THEMES[preset.theme];
+                      const presetWallpaper = WALLPAPERS.find(item => item.id === preset.wallpaper);
+                      const isActive = userProfile?.theme === preset.theme && userProfile?.wallpaper === preset.wallpaper;
+                      return (
+                        <button
+                          key={preset.id}
+                          onClick={() => applyCustomizePreset(preset.theme, preset.wallpaper)}
+                          className={`text-left rounded-[1.35rem] p-2 border-2 transition-all active:scale-[0.98] ${isActive ? 'border-[#B85F78] shadow-[0_8px_24px_rgba(184,95,120,.16)]' : 'border-transparent bg-[#F5EEF0] hover:border-[#DDBBC6]'}`}
+                        >
+                          <div className="relative h-24 rounded-[1rem] overflow-hidden" style={{ backgroundColor: presetTheme.bg, backgroundImage: presetWallpaper?.background, backgroundSize: presetWallpaper?.size || 'cover' }}>
+                            <div className="absolute left-3 bottom-3 w-[58%] h-5 rounded-[12px_12px_12px_3px] shadow-sm" style={{ backgroundColor: presetTheme.partner }} />
+                            <div className="absolute right-3 bottom-10 w-[48%] h-5 rounded-[12px_12px_3px_12px] shadow-sm" style={{ backgroundColor: presetTheme.owner }} />
+                            {isActive && <span className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-full bg-[#B85F78] text-white shadow"><Check className="w-3.5 h-3.5" /></span>}
+                          </div>
+                          <div className="px-1.5 pt-2 pb-1">
+                            <p className="text-xs font-bold text-[#30242A]">{preset.name}</p>
+                            <p className="text-[10px] text-[#8A747E]">{preset.note}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-sm font-bold text-[#2A2025]">Color style</h4>
+                  <p className="mb-3 text-[11px] text-[#8A747E]">Keep your wallpaper and change the chat colors</p>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    {(Object.keys(THEMES) as ThemeName[]).map((themeName) => (
+                      <button key={themeName} onClick={() => updateSettings({ theme: themeName })} className="flex-shrink-0 text-center group">
+                        <span className={`relative block w-14 h-14 rounded-full border-[3px] p-1 transition-transform group-active:scale-95 ${userProfile?.theme === themeName ? 'border-[#B85F78]' : 'border-transparent'}`}>
+                          <span className="block w-full h-full rounded-full overflow-hidden shadow-sm" style={{ backgroundColor: THEMES[themeName].bg }}>
+                            <span className="block w-full h-1/2" style={{ backgroundColor: THEMES[themeName].owner }} />
+                            <span className="block ml-auto w-1/2 h-1/2" style={{ backgroundColor: THEMES[themeName].partner }} />
+                          </span>
+                        </span>
+                        <span className="block mt-1.5 text-[10px] font-semibold capitalize text-[#6F5B65]">{themeName}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-sm font-bold text-[#2A2025]">Wallpaper</h4>
+                  <p className="mb-3 text-[11px] text-[#8A747E]">Keep your colors and change the background</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    {WALLPAPERS.map((wallpaper) => (
+                      <button key={wallpaper.id} onClick={() => updateSettings({ wallpaper: wallpaper.id })} className="group text-center">
+                        <span
+                          className={`relative block aspect-square rounded-[1rem] border-2 overflow-hidden transition-transform group-active:scale-95 ${userProfile?.wallpaper === wallpaper.id ? 'border-[#B85F78]' : 'border-[#E9DDE1]'}`}
+                          style={{ backgroundColor: getTheme(userProfile?.theme).bg, backgroundImage: wallpaper.background, backgroundSize: wallpaper.size || 'cover' }}
+                        >
+                          {wallpaper.id === 'none' && <span className="absolute inset-0 grid place-items-center"><X className="w-5 h-5 text-[#AA96A0]" /></span>}
+                          {userProfile?.wallpaper === wallpaper.id && <span className="absolute top-1.5 right-1.5 grid place-items-center w-5 h-5 rounded-full bg-[#B85F78] text-white"><Check className="w-3 h-3" /></span>}
+                        </span>
+                        <span className="block mt-1.5 text-[9px] font-semibold text-[#76626C] truncate">{wallpaper.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               </div>
             </motion.div>
           </div>
@@ -2258,7 +2311,7 @@ function ChatView({
               value={inputText}
               onChange={(e) => onInputTextChange(e.target.value)}
               placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full px-6 py-4 bg-white border border-[#FF8FA3]/10 rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[#FF8FA3]/5 transition-all shadow-sm pr-12 placeholder-[#6E6E6E]/40"
+              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[#FF8FA3]/10 rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[#FF8FA3]/5 transition-all shadow-sm pr-12 placeholder-[#6E6E6E]/40"
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
                <button 
@@ -4300,8 +4353,3 @@ function createImage(url: string): Promise<HTMLImageElement> {
     image.src = url;
   });
 }
-
-
-
-
-

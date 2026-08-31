@@ -18,7 +18,7 @@ export interface UserProfile {
   last_seen?: any;
   partnerNicknames?: { [uid: string]: string };
   last_read_at?: any;
-  theme?: 'light' | 'dark' | 'romantic';
+  theme?: 'light' | 'dark' | 'romantic' | 'lavender' | 'ocean' | 'sunset';
   wallpaper?: string;
 }
 
