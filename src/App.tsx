@@ -255,10 +255,17 @@ export default function App() {
       if (msgErr) {
         console.error("Error loading messages from Supabase:", msgErr);
       } else if (data) {
-        const msgMap = new Map<string, any>();
-        data.forEach((m: any) => msgMap.set(m.id, m));
+        // Filter out any previous test feeling messages so the chat is spotless
+        const filteredData = data.filter((m: any) => 
+          !m.text?.includes('Sent you a') && 
+          !m.text?.includes('Tickled you') && 
+          !m.text?.includes('Miss you so much')
+        );
 
-        const mappedData = data.map((m: any) => {
+        const msgMap = new Map<string, any>();
+        filteredData.forEach((m: any) => msgMap.set(m.id, m));
+
+        const mappedData = filteredData.map((m: any) => {
           let replyToObj = null;
           if (m.reply_to) {
             const orig = msgMap.get(m.reply_to);
@@ -286,6 +293,11 @@ export default function App() {
         });
         setMessages(mappedData as Message[]);
         localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
+
+        // Clean up database records of feeling messages in the background
+        supabase.from('messages').delete().ilike('text', '%Sent you a%').then();
+        supabase.from('messages').delete().ilike('text', '%Tickled you%').then();
+        supabase.from('messages').delete().ilike('text', '%Miss you so much%').then();
       }
       setMessagesLoading(false);
     };
@@ -296,6 +308,12 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const raw = payload.new;
+
+          // Ignore any feeling texts if inserted by mistake
+          if (raw.text?.includes('Sent you a') || raw.text?.includes('Tickled you') || raw.text?.includes('Miss you so much')) {
+            return;
+          }
+
           setMessages(prev => {
             let replyToObj = null;
             if (raw.reply_to) {
@@ -753,7 +771,7 @@ export default function App() {
       try { window.navigator.vibrate([100, 50, 100]); } catch (_) {}
     }
 
-    // 2. Real-time broadcast
+    // 2. Real-time broadcast to partner
     if (mainChannelRef.current) {
       try {
         await mainChannelRef.current.send({
@@ -768,28 +786,6 @@ export default function App() {
       } catch (err) {
         console.warn("Nudge broadcast notice:", err);
       }
-    }
-
-    // 3. Insert feeling into chat messages so partner can see it in history
-    const feelingLabels: Record<string, string> = {
-      hug: '🤗 Sent you a warm virtual hug 💖',
-      kiss: '💋 Sent you a sweet kiss ❤️',
-      tickle: '😂 Tickled you! 🤭',
-      miss: '🥺 Miss you so much 💙'
-    };
-    const feelingText = feelingLabels[type] || `💖 Sent you a ${type}`;
-
-    try {
-      await supabase.from('messages').insert([{
-        sender_role: currentRole,
-        text: feelingText,
-        created_at: new Date().toISOString(),
-        reactions: {},
-        reply_to: null,
-        attachment_url: null
-      }]);
-    } catch (err) {
-      console.error("Failed to insert feeling message:", err);
     }
   };
 
@@ -2225,33 +2221,35 @@ function ChatView({
       <BottomSheet
         isOpen={showNudgeMenu}
         onClose={() => onSetShowNudgeMenu(false)}
-        title="Send a Feeling"
+        title="Send a Feeling ✨"
       >
-        <div className="grid grid-cols-4 gap-4 p-4 lg:p-6 pb-10">
-          <AttachmentOption 
-            icon={<Heart className="w-6 h-6" />} 
-            label="Hug" 
-            color="bg-pink-400" 
-            onClick={() => { onSendNudge('hug'); onSetShowNudgeMenu(false); }} 
-          />
-          <AttachmentOption 
-            icon={<Wind className="w-6 h-6" />} 
-            label="Kiss" 
-            color="bg-red-400" 
-            onClick={() => { onSendNudge('kiss'); onSetShowNudgeMenu(false); }} 
-          />
-          <AttachmentOption 
-            icon={<Laugh className="w-6 h-6" />} 
-            label="Tickle" 
-            color="bg-yellow-400" 
-            onClick={() => { onSendNudge('tickle'); onSetShowNudgeMenu(false); }} 
-          />
-          <AttachmentOption 
-            icon={<Star className="w-6 h-6" />} 
-            label="Miss" 
-            color="bg-blue-400" 
-            onClick={() => { onSendNudge('miss'); onSetShowNudgeMenu(false); }} 
-          />
+        <div className="grid grid-cols-4 gap-3 p-4 lg:p-6 pb-8">
+          {[
+            { id: 'hug', label: 'Hug', emoji: '🤗', bg: 'bg-amber-100/90 text-amber-600 hover:bg-amber-200/90' },
+            { id: 'kiss', label: 'Kiss', emoji: '💋', bg: 'bg-rose-100/90 text-rose-600 hover:bg-rose-200/90' },
+            { id: 'love', label: 'Love', emoji: '💖', bg: 'bg-pink-100/90 text-pink-600 hover:bg-pink-200/90' },
+            { id: 'miss', label: 'Miss You', emoji: '🥺', bg: 'bg-blue-100/90 text-blue-600 hover:bg-blue-200/90' },
+            { id: 'cuddle', label: 'Cuddle', emoji: '🫂', bg: 'bg-purple-100/90 text-purple-600 hover:bg-purple-200/90' },
+            { id: 'tickle', label: 'Tickle', emoji: '😂', bg: 'bg-yellow-100/90 text-yellow-600 hover:bg-yellow-200/90' },
+            { id: 'adore', label: 'Adore', emoji: '😍', bg: 'bg-red-100/90 text-red-600 hover:bg-red-200/90' },
+            { id: 'blowkiss', label: 'Blow Kiss', emoji: '😘', bg: 'bg-pink-100/90 text-pink-500 hover:bg-pink-200/90' },
+          ].map((f) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                onSendNudge(f.id);
+                onSetShowNudgeMenu(false);
+              }}
+              className="flex flex-col items-center gap-2 p-2 rounded-2xl transition-all duration-200 hover:scale-105 active:scale-95 group"
+            >
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-transform duration-200 group-hover:rotate-6 ${f.bg}`}>
+                <span className="select-none leading-none">{f.emoji}</span>
+              </div>
+              <span className="text-[12px] font-bold text-[#1a1a1a]/80 tracking-tight text-center whitespace-nowrap">
+                {f.label}
+              </span>
+            </button>
+          ))}
         </div>
       </BottomSheet>
 
@@ -2292,26 +2290,32 @@ function ChatView({
 }
 
 function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: string }, onDismiss?: () => void }) {
-  const configs: Record<string, { label: string, emoji: string, color: string, secondaryEmoji: string }> = {
-    hug: { label: 'Virtual Hug', emoji: '💖', color: 'text-pink-500', secondaryEmoji: '🤗' },
-    kiss: { label: 'Sweet Kiss', emoji: '💋', color: 'text-red-500', secondaryEmoji: '😘' },
-    tickle: { label: 'Tickle!', emoji: '😂', color: 'text-yellow-500', secondaryEmoji: '🤭' },
-    miss: { label: 'Miss You', emoji: '🥺', color: 'text-blue-500', secondaryEmoji: '💙' },
+  const configs: Record<string, { label: string, emoji: string, color: string, bg: string }> = {
+    hug: { label: 'Virtual Hug', emoji: '🤗', color: 'text-amber-600', bg: 'bg-amber-400/20' },
+    kiss: { label: 'Sweet Kiss', emoji: '💋', color: 'text-rose-600', bg: 'bg-rose-500/20' },
+    love: { label: 'Love You', emoji: '💖', color: 'text-pink-600', bg: 'bg-pink-500/20' },
+    miss: { label: 'Miss You', emoji: '🥺', color: 'text-blue-600', bg: 'bg-blue-500/20' },
+    cuddle: { label: 'Warm Cuddle', emoji: '🫂', color: 'text-purple-600', bg: 'bg-purple-500/20' },
+    tickle: { label: 'Tickle Attack!', emoji: '😂', color: 'text-yellow-600', bg: 'bg-yellow-500/20' },
+    adore: { label: 'Adore You', emoji: '😍', color: 'text-red-600', bg: 'bg-red-500/20' },
+    blowkiss: { label: 'Blow Kiss', emoji: '😘', color: 'text-pink-500', bg: 'bg-pink-400/20' },
   };
 
   const config = configs[nudge.type] || configs.hug;
 
   const particles = [
-    { x: 120, y: -110, scale: 1.3, delay: 0 },
-    { x: -130, y: -90, scale: 1.1, delay: 0.1 },
-    { x: 140, y: 70, scale: 1.4, delay: 0.2 },
-    { x: -110, y: 110, scale: 1.2, delay: 0.15 },
-    { x: 0, y: -150, scale: 1.5, delay: 0.05 },
-    { x: -10, y: 150, scale: 1.2, delay: 0.25 },
-    { x: 80, y: 130, scale: 1.1, delay: 0.1 },
-    { x: -90, y: -130, scale: 1.3, delay: 0.2 },
-    { x: 160, y: -30, scale: 1.2, delay: 0.3 },
-    { x: -150, y: 20, scale: 1.4, delay: 0.05 }
+    { x: 130, y: -120, scale: 1.3, delay: 0 },
+    { x: -140, y: -100, scale: 1.2, delay: 0.1 },
+    { x: 150, y: 80, scale: 1.4, delay: 0.2 },
+    { x: -120, y: 120, scale: 1.3, delay: 0.15 },
+    { x: 0, y: -160, scale: 1.5, delay: 0.05 },
+    { x: -20, y: 160, scale: 1.3, delay: 0.25 },
+    { x: 90, y: 140, scale: 1.2, delay: 0.1 },
+    { x: -100, y: -140, scale: 1.4, delay: 0.2 },
+    { x: 170, y: -40, scale: 1.2, delay: 0.3 },
+    { x: -160, y: 30, scale: 1.4, delay: 0.05 },
+    { x: 80, y: -70, scale: 1.2, delay: 0.18 },
+    { x: -70, y: 80, scale: 1.3, delay: 0.22 }
   ];
 
   return (
@@ -2320,11 +2324,7 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onDismiss}
-      className={`fixed inset-0 z-[200] cursor-pointer flex items-center justify-center backdrop-blur-[4px] transition-colors duration-500 ${
-        nudge.type === 'kiss' ? 'bg-red-500/15' : 
-        nudge.type === 'tickle' ? 'bg-yellow-500/15' : 
-        nudge.type === 'miss' ? 'bg-blue-500/15' : 'bg-pink-400/15'
-      }`}
+      className={`fixed inset-0 z-[200] cursor-pointer flex items-center justify-center backdrop-blur-[6px] transition-colors duration-500 ${config.bg}`}
     >
       <div className="relative flex flex-col items-center">
         <motion.div
@@ -2332,42 +2332,42 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
            animate={{ 
              scale: [0, 1.2, 1], 
              rotate: [20, -10, 0],
-             y: [0, -20, 0]
+             y: [0, -15, 0]
            }}
            transition={{ duration: 0.8, ease: "easeOut" }}
            className="relative flex items-center justify-center"
         >
-          {nudge.type === 'kiss' ? (
+          {nudge.type === 'tickle' ? (
              <motion.div 
-              animate={{ scale: [1, 1.25, 1], rotate: [-10, 10, -10] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
+              animate={{ x: [-14, 14, -14], y: [-6, 6, -6], rotate: [-6, 6, -6] }}
+              transition={{ repeat: Infinity, duration: 0.18 }}
              >
-                <div className="text-[120px] drop-shadow-2xl select-none">💋</div>
-             </motion.div>
-          ) : nudge.type === 'tickle' ? (
-             <motion.div 
-              animate={{ x: [-12, 12, -12], y: [-6, 6, -6], rotate: [-5, 5, -5] }}
-              transition={{ repeat: Infinity, duration: 0.2 }}
-             >
-                <div className="text-[120px] drop-shadow-2xl select-none">😂</div>
+                <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
              </motion.div>
           ) : nudge.type === 'miss' ? (
             <motion.div 
-              animate={{ opacity: [0.75, 1, 0.75], y: [0, -12, 0], scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 2.5 }}
+              animate={{ opacity: [0.8, 1, 0.8], y: [0, -12, 0], scale: [1, 1.06, 1] }}
+              transition={{ repeat: Infinity, duration: 2.2 }}
              >
-                <div className="text-[120px] drop-shadow-2xl select-none">🥺</div>
+                <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
              </motion.div>
+          ) : nudge.type === 'kiss' || nudge.type === 'blowkiss' ? (
+            <motion.div 
+              animate={{ scale: [1, 1.2, 1], rotate: [-10, 10, -10] }}
+              transition={{ repeat: Infinity, duration: 1.4 }}
+            >
+              <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
+            </motion.div>
           ) : (
             <motion.div
               animate={{ scale: [1, 1.15, 1] }}
               transition={{ repeat: Infinity, duration: 1.2 }}
             >
-              <Heart className={`w-36 h-36 ${config.color} fill-current drop-shadow-2xl`} />
+              <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
             </motion.div>
           )}
           
-          {/* Floating mini celebration items */}
+          {/* Floating mini celebration items - all matching the feeling's emoji */}
           {particles.map((p, i) => (
             <motion.div
               key={i}
@@ -2383,9 +2383,9 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
                 repeat: Infinity,
                 delay: p.delay
               }}
-              className="absolute top-1/2 left-1/2 -ml-3 -mt-3 select-none pointer-events-none"
+              className="absolute top-1/2 left-1/2 -ml-4 -mt-4 select-none pointer-events-none"
             >
-              <div className="text-3xl">{config.secondaryEmoji}</div>
+              <div className="text-3xl lg:text-4xl">{config.emoji}</div>
             </motion.div>
           ))}
         </motion.div>
@@ -2567,15 +2567,6 @@ const MessageItem = React.memo(function MessageItem({
     
     return msg.replyTo || null;
   }, [msg.replyTo, (msg as any).reply_to, allMessages]);
-
-  const isFeelingType = useMemo(() => {
-    if (!msg.text || msg.deleted) return null;
-    if (msg.text.includes('warm virtual hug')) return 'hug';
-    if (msg.text.includes('sweet kiss')) return 'kiss';
-    if (msg.text.includes('Tickled you')) return 'tickle';
-    if (msg.text.includes('Miss you so much')) return 'miss';
-    return null;
-  }, [msg.text, msg.deleted]);
 
   // Close picker on outside click release (pointerup) or scroll
   useEffect(() => {
@@ -2840,14 +2831,8 @@ const MessageItem = React.memo(function MessageItem({
             <div 
               className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none ${
                 isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
-              } ${isFeelingType ? 'cursor-pointer hover:opacity-95' : ''}`}
+              }`}
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-              onClick={(e) => {
-                if (isFeelingType && !selectionActive) {
-                  e.stopPropagation();
-                  onTriggerNudge?.(isFeelingType);
-                }
-              }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
