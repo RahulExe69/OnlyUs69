@@ -39,7 +39,7 @@ export interface Message {
     sender_role: UserRole;
   };
   gameInvite?: {
-    gameType: 'tictactoe' | 'ludo';
+    gameType: 'tictactoe';
     sessionId: string;
     status: 'pending' | 'active' | 'finished';
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
 
 // Firestore mocks for migration
@@ -42,35 +42,15 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Settings2, Target, Download, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, Palette, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
+const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
-// Ludo Assets
-import boardImg from './assets/ludo/ludo_board.webp';
-import redToken from './assets/ludo/token_red.webp';
-import blueToken from './assets/ludo/token_blue.webp';
-import greenToken from './assets/ludo/token_green.webp';
-import yellowToken from './assets/ludo/token_yellow.webp';
-import diceBase from './assets/ludo/dice.webp';
-import dice1 from './assets/ludo/1.webp';
-import dice2 from './assets/ludo/2.webp';
-import dice3 from './assets/ludo/3.webp';
-import dice4 from './assets/ludo/4.webp';
-import dice5 from './assets/ludo/5.webp';
-import dice6 from './assets/ludo/6.webp';
-
-const DICE_FACES = {
-  1: dice1,
-  2: dice2,
-  3: dice3,
-  4: dice4,
-  5: dice5,
-  6: dice6
-};
+// Ludo Assets removed
 
 const THEMES = {
   light: {
@@ -169,7 +149,7 @@ export default function App() {
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
   const [showNudgeMenu, setShowNudgeMenu] = useState(false);
-  const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' | 'ludo' } | null>(null);
+  const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' } | null>(null);
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
@@ -299,26 +279,25 @@ export default function App() {
     return () => { supabase.removeChannel(unsubMsg); };
   }, [user?.id]);
 
-  const sendGameInvite = async (type: 'tictactoe' | 'ludo') => {
+  const sendGameInvite = async (type: 'tictactoe' = 'tictactoe') => {
     if (!userProfile) return;
     const sessionId = Math.random().toString(36).substring(7);
     const senderName = userProfile.role === 'owner' ? 'Rahul' : 'Nusrat';
-    const gameName = type === 'tictactoe' ? 'Tic Tac Toe' : 'Ludo';
     
     try {
       await supabase.from('messages').insert([{ 
         sender_role: userProfile.role,
-        text: `🎮 ${senderName} invited you to play ${gameName}`,
+        text: `🎮 ${senderName} invited you to play Tic Tac Toe`,
         created_at: new Date().toISOString(), 
         reactions: {},
         gameInvite: {
-          gameType: type,
+          gameType: 'tictactoe',
           sessionId: sessionId,
           status: 'pending'
         }
        }]);
       setShowGamesMenu(false);
-      setActiveGame({ id: sessionId, type });
+      setActiveGame({ id: sessionId, type: 'tictactoe' });
     } catch (err) {
       console.error("Error sending game invite:", err);
     }
@@ -642,15 +621,27 @@ export default function App() {
     }
   }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner]);
 
-  const broadcastTyping = (isTyping: boolean) => {
-    if (mainChannelRef.current && user && isTabActive) {
-      mainChannelRef.current.send({
-        type: 'broadcast',
-        event: 'typing',
-        payload: { userId: user.id, isTyping }
-      });
+  const lastBroadcastTypingStateRef = useRef<boolean>(false);
+  const lastBroadcastTypingTimeRef = useRef<number>(0);
+
+  const broadcastTyping = useCallback((isTyping: boolean) => {
+    if (!mainChannelRef.current || !user || !isTabActive) return;
+    
+    const now = Date.now();
+    // If state didn't change and we broadcasted recently (<2s), throttle it
+    if (lastBroadcastTypingStateRef.current === isTyping && (now - lastBroadcastTypingTimeRef.current) < 2000) {
+      return;
     }
-  };
+
+    lastBroadcastTypingStateRef.current = isTyping;
+    lastBroadcastTypingTimeRef.current = now;
+
+    mainChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { userId: user.id, isTyping }
+    });
+  }, [user, isTabActive]);
 
   const sendNudge = (type: string = 'hug') => {
     if (mainChannelRef.current && user && userProfile) {
@@ -1146,27 +1137,6 @@ export default function App() {
                               exit={{ opacity: 0, scale: 0.95, y: -10 }}
                               className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] border border-black/5 z-50 overflow-hidden py-1"
                             >
-                              <button 
-                                onClick={() => { handleHubTabChange('dashboard'); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
-                              >
-                                <LayoutGrid className="w-4 h-4 text-[#FF4D6D]" />
-                                OnlyUs Hub
-                              </button>
-                              <button 
-                                onClick={() => { handleHubTabChange('instagram'); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
-                              >
-                                <Instagram className="w-4 h-4 text-pink-600" />
-                                Instagram
-                              </button>
-                              <button 
-                                onClick={() => { handleHubTabChange('whatsapp'); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors border-b border-gray-100"
-                              >
-                                <MessageSquareCode className="w-4 h-4 text-emerald-600" />
-                                WhatsApp Web
-                              </button>
                               <button 
                                 onClick={() => { setShowProfileModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[#1a1a1a] hover:bg-[#FF8FA3]/5 flex items-center gap-3 transition-colors"
@@ -1694,9 +1664,9 @@ function ChatView({
   onSetShowAttachmentMenu: (val: boolean) => void,
   showGamesMenu: boolean,
   onSetShowGamesMenu: (val: boolean) => void,
-  activeGame: { id: string, type: 'tictactoe' | 'ludo' } | null,
-  onSetActiveGame: (game: { id: string, type: 'tictactoe' | 'ludo' } | null) => void,
-  onSendGameInvite: (type: 'tictactoe' | 'ludo') => Promise<void>,
+  activeGame: { id: string, type: 'tictactoe' } | null,
+  onSetActiveGame: (game: { id: string, type: 'tictactoe' } | null) => void,
+  onSendGameInvite: (type?: 'tictactoe') => Promise<void>,
   socketTypingUsers: string[],
   chatRoomId: string,
   quotaExceeded: boolean,
@@ -1815,14 +1785,19 @@ function ChatView({
 
   const sendGameInvite = onSendGameInvite;
 
+  const [messageLimit, setMessageLimit] = useState(50);
+
   const visibleMessages = messages.filter(m => {
     if (role === 'owner') return !m.hidden_for_owner;
     return !m.hidden_for_partner;
   });
 
+  const displayedMessages = visibleMessages.slice(-messageLimit);
+  const hasMoreMessages = visibleMessages.length > messageLimit;
+
   useEffect(() => {
     setTimeout(scrollToBottom, 50);
-  }, [visibleMessages.length]);
+  }, [displayedMessages.length]);
 
   const toggleReaction = async (msgId: string, emoji: string) => {
     const msg = messages.find(m => m.id === msgId);
@@ -1907,17 +1882,29 @@ function ChatView({
           <span className="text-[9px] font-bold text-[#FF8FA3]/60 uppercase tracking-[0.4em] bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[#FF8FA3]/10">Our Story Begins Here</span>
         </div>
         
+        {hasMoreMessages && (
+          <div className="flex justify-center mb-4">
+            <button 
+              onClick={() => setMessageLimit(prev => prev + 50)}
+              className="text-xs font-semibold px-4 py-2 bg-white/70 hover:bg-white text-[#FF8FA3] rounded-full shadow-sm border border-[#FF8FA3]/20 transition-all active:scale-95 flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Load earlier messages ({visibleMessages.length - messageLimit} more)
+            </button>
+          </div>
+        )}
+
         {messagesLoading ? (
           <div className="flex justify-center p-12">
             <div className="w-6 h-6 border-2 border-gray-100 border-t-black rounded-full animate-spin"></div>
           </div>
-        ) : visibleMessages.length === 0 ? (
+        ) : displayedMessages.length === 0 ? (
           <div className="text-center py-20 opacity-20 select-none grayscale">
             <Heart className="w-16 h-16 mx-auto mb-4" />
             <p className="font-bold uppercase tracking-widest text-xs italic">A clean slate for our story</p>
           </div>
         ) : (
-          visibleMessages.map((msg) => (
+          displayedMessages.map((msg) => (
             <MessageItem 
               key={msg.id} 
               msg={msg} 
@@ -2103,206 +2090,24 @@ function ChatView({
             isActive={true}
             onClick={() => sendGameInvite('tictactoe')}
           />
-          
-          <GameCard 
-            title="Ludo Classic"
-            subtitle={`Play with ${role === 'owner' ? 'Nusrat' : 'Rahul'} 💖`}
-            icon={<ShieldCheck className="w-5 h-5" />}
-            color="bg-gradient-to-br from-[#2ECC40] to-[#3D9970]"
-            isActive={true}
-            label="Ludo King Edition 👑"
-            onClick={() => sendGameInvite('ludo')}
-          />
-          
-          <GameCard 
-            title="Coming soon 💖"
-            subtitle="Stay Tuned"
-            icon={<Heart className="w-5 h-5" />}
-            color="bg-gray-200"
-            isActive={false}
-          />
         </div>
       </BottomSheet>
 
       {activeGame && activeGame.type === 'tictactoe' && (
-        <TicTacToe 
-          sessionId={activeGame.id} 
-          role={role} 
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          onClose={() => onSetActiveGame(null)} 
-        />
-      )}
-
-      {activeGame && activeGame.type === 'ludo' && (
-        <Ludo 
-          sessionId={activeGame.id} 
-          role={role} 
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          onClose={() => onSetActiveGame(null)} 
-        />
-      )}
-    </div>
-  );
-}
-
-function TicTacToe({ sessionId, role, userProfile, partnerProfile, onClose }: { sessionId: string, role: UserRole, userProfile: UserProfile | null, partnerProfile: UserProfile | null, onClose: () => void }) {
-  const [board, setBoard] = useState<(string | null)[]>(Array(9).fill(null));
-  const [turn, setTurn] = useState<UserRole>('owner');
-  const [winner, setWinner] = useState<UserRole | 'draw' | null>(null);
-  const [status, setStatus] = useState<'waiting' | 'playing' | 'finished'>('waiting');
-
-  useEffect(() => {
-    // Sync with Supabase
-    const unsub = onSnapshot({ coll: 'games', id: sessionId }, (snap: any) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setBoard(data.board);
-        setTurn(data.turn);
-        setWinner(data.winner);
-        setStatus(data.status);
-      } else {
-        // Init game if not exists
-        const randomTurn = Math.random() < 0.5 ? 'owner' : 'partner';
-        supabase.from('games').insert([{
-          id: sessionId,
-          board: Array(9).fill(null),
-          turn: randomTurn,
-          status: 'playing',
-          winner: null,
-          players: { [role]: userProfile?.uid }
-        }]).then();
-      }
-    });
-    return unsub;
-  }, [sessionId]);
-
-  const checkWinner = (squares: (string | null)[]) => {
-    const lines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
-      [0, 4, 8], [2, 4, 6]             // diags
-    ];
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c] = lines[i];
-      if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-        return squares[a] === 'X' ? 'owner' : 'partner';
-      }
-    }
-    if (squares.every(s => s !== null)) return 'draw';
-    return null;
-  };
-
-  const handleMove = async (index: number) => {
-    if (board[index] || winner || turn !== role || status !== 'playing') return;
-
-    const newBoard = [...board];
-    newBoard[index] = role === 'owner' ? 'X' : 'O';
-    const newWinner = checkWinner(newBoard);
-    const newTurn = role === 'owner' ? 'partner' : 'owner';
-
-    try {
-      await supabase.from('games').update({
-        board: newBoard,
-        turn: newWinner ? turn : newTurn,
-        winner: newWinner,
-        status: newWinner ? 'finished' : 'playing'
-      }).eq('id', sessionId);
-    } catch (err) {
-      console.error("Game move error:", err);
-    }
-  };
-
-  const resetGame = async () => {
-    try {
-      const randomTurn = Math.random() < 0.5 ? 'owner' : 'partner';
-      await supabase.from('games').update({
-        board: Array(9).fill(null),
-        turn: randomTurn,
-        status: 'playing',
-        winner: null
-      }).eq('id', sessionId);
-    } catch (err) {
-      console.error("Reset error:", err);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-white/80 backdrop-blur-xl"
-      />
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="relative w-full max-w-sm bg-white rounded-[3rem] p-8 shadow-[0_32px_64px_-16px_rgba(255,143,163,0.2)] border border-[#FF8FA3]/20"
-      >
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 bg-[#FF8FA3] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#FF8FA3]/20">
-               <Gamepad2 className="w-5 h-5 transition-transform group-hover:rotate-12" />
-             </div>
-             <div className="text-left">
-               <h3 className="text-sm font-black text-[#1a1a1a] uppercase tracking-wider">Tic Tac Toe</h3>
-               <p className="text-[10px] text-[#6E6E6E] opacity-60 font-medium tracking-widest uppercase">Match with {role === 'owner' ? 'Nusrat' : 'Rahul'}</p>
-             </div>
+        <Suspense fallback={
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-white/60 backdrop-blur-md">
+            <div className="w-8 h-8 border-3 border-[#FF8FA3]/20 border-t-[#FF8FA3] rounded-full animate-spin" />
           </div>
-          <button 
-            onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center bg-gray-50 text-gray-400 rounded-full hover:bg-red-50 hover:text-red-400 transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="text-center mb-8">
-          {winner ? (
-            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} className="py-2 px-6 bg-[#FF8FA3]/10 text-[#FF8FA3] rounded-2xl inline-block">
-              <span className="text-lg font-black uppercase tracking-tighter">
-                {winner === 'draw' ? "It's a Draw! 🤝" : winner === role ? "You Won! 🎉" : `${role === 'owner' ? 'Nusrat' : 'Rahul'} Won! 💖`}
-              </span>
-            </motion.div>
-          ) : (
-            <div className={`py-2 px-6 rounded-2xl inline-block transition-colors ${turn === role ? 'bg-[#FF8FA3] text-white shadow-lg shadow-[#FF8FA3]/20' : 'bg-gray-50 text-gray-400'}`}>
-              <span className="text-xs font-black uppercase tracking-[0.2em]">
-                {turn === role ? "Your Turn ✨" : `${role === 'owner' ? "Nusrat's" : "Rahul's"} Turn ⏳`}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {board.map((cell, i) => (
-            <button
-              key={i}
-              onClick={() => handleMove(i)}
-              className={`aspect-square rounded-3xl text-3xl font-black flex items-center justify-center transition-all ${
-                cell ? (cell === 'X' ? 'bg-[#FF8FA3] text-white' : 'bg-[#FFD6C9] text-[#FF8FA3]') : 'bg-gray-50 hover:bg-[#FF8FA3]/5 active:scale-95'
-              }`}
-            >
-              {cell && (
-                <motion.span initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}>
-                  {cell}
-                </motion.span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {winner && (
-          <button 
-            onClick={resetGame}
-            className="w-full py-4 bg-[#FF8FA3] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-[#FF8FA3]/30 hover:bg-[#FF8FA3]/90 transition-all active:scale-95"
-          >
-            Play Again
-          </button>
-        )}
-      </motion.div>
+        }>
+          <TicTacToe 
+            sessionId={activeGame.id} 
+            role={role} 
+            userProfile={userProfile}
+            partnerProfile={partnerProfile}
+            onClose={() => onSetActiveGame(null)} 
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -2436,771 +2241,6 @@ function GameCard({ title, subtitle, icon, color, isActive, onClick, label }: { 
   );
 }
 
-function Ludo({ sessionId, role, userProfile, partnerProfile, onClose }: { sessionId: string, role: UserRole, userProfile: UserProfile | null, partnerProfile: UserProfile | null, onClose: () => void }) {
-  // Developer Debug Tool State
-  const [debugConfig, setDebugConfig] = useState({
-    boardTop: 0.15,
-    boardBottom: -0.35,
-    boardLeft: 1.2,
-    boardRight: -1.4,
-    baseOffset1: 1.775,
-    baseOffset2: 3.725,
-    tokenSizeBase: 10.5,
-    tokenSizeGrid: 150,
-    showDebug: false,
-    enableDrag: false,
-    snapToGrid: true,
-    compact: true,
-    selectedTarget: 'board' as 'board' | 'pockets'
-  });
-
-  const nudge = (horizontal: number, vertical: number) => {
-    const amount = 0.05;
-    setDebugConfig(prev => {
-      if (prev.selectedTarget === 'board') {
-        return {
-          ...prev,
-          boardLeft: prev.boardLeft + (horizontal * amount),
-          boardRight: prev.boardRight - (horizontal * amount),
-          boardTop: prev.boardTop + (vertical * amount),
-          boardBottom: prev.boardBottom - (vertical * amount),
-        };
-      } else {
-        return {
-          ...prev,
-          baseOffset1: prev.baseOffset1 + (horizontal * amount / 2) + (vertical * amount / 2),
-          baseOffset2: prev.baseOffset2 - (horizontal * amount / 2) - (vertical * amount / 2),
-        };
-      }
-    });
-  };
-
-  const [dragInfo, setDragInfo] = useState<string | null>(null);
-
-  // Ludo Colors mapping to assets
-  const TOKEN_ASSETS = {
-    red: redToken,
-    blue: blueToken,
-    green: greenToken,
-    yellow: yellowToken
-  };
-
-  // Assign colors based on role
-  // Owner (You) = Blue (Bottom-Left)
-  // Partner (Nusrat) = Red (Top-Left)
-  const myColor = role === 'owner' ? 'blue' : 'red';
-  const partnerColor = role === 'owner' ? 'red' : 'blue';
-
-  const [gameState, setGameState] = useState<{
-    pieces: { red: number[], blue: number[], green: number[], yellow: number[] },
-    turn: 'owner' | 'partner',
-    dice: number | null,
-    status: 'rolling' | 'moving' | 'finished',
-    winner: string | null,
-    lastDiceRoll: number | null,
-    moveHistory?: any[]
-  } | null>(null);
-
-  const [isRolling, setIsRolling] = useState(false);
-
-
-
-  useEffect(() => {
-    if (gameState) return; // Skip Firestore if we have fresh Socket state
-    // Sync with Supabase
-    const unsub = onSnapshot({ coll: 'games', id: sessionId }, (snap: any) => {
-      if (snap.exists()) {
-        setGameState(snap.data() as any);
-      } else {
-        const randomTurn = Math.random() < 0.5 ? 'owner' : 'partner';
-        supabase.from('games').insert([{
-          id: sessionId,
-          pieces: {
-            red: [-1, -1, -1, -1],
-            blue: [-1, -1, -1, -1],
-            green: [-1, -1, -1, -1],
-            yellow: [-1, -1, -1, -1]
-          },
-          turn: randomTurn,
-          dice: null,
-          status: 'rolling',
-          winner: null,
-          lastDiceRoll: null
-        }]).then();
-      }
-    });
-    return unsub;
-  }, [sessionId]);
-
-  // Path Logic - 15x15 grid indices
-  const commonPath = [
-    [6,1], [6,2], [6,3], [6,4], [6,5], // Red stretch
-    [5,6], [4,6], [3,6], [2,6], [1,6], [0,6], // To Green
-    [0,7], [0,8], // Green top
-    [1,8], [2,8], [3,8], [4,8], [5,8], // From Green
-    [6,9], [6,10], [6,11], [6,12], [6,13], [6,14], // To Yellow
-    [7,14], [8,14], // Yellow right
-    [8,13], [8,12], [8,11], [8,10], [8,9], // From Yellow
-    [9,8], [10,8], [11,8], [12,8], [13,8], [14,8], // To Blue
-    [14,7], [14,6], // Blue bottom
-    [13,6], [12,6], [11,6], [10,6], [9,6], // From Blue
-    [8,5], [8,4], [8,3], [8,2], [8,1], [8,0], // To Red
-    [7,0], [6,0] // Red start
-  ];
-
-  const redHomeStretch = [[7,1], [7,2], [7,3], [7,4], [7,5], [7,6]];
-  const blueHomeStretch = [[13,7], [12,7], [11,7], [10,7], [9,7], [8,7]];
-  const greenHomeStretch = [[1,7], [2,7], [3,7], [4,7], [5,7], [6,7]];
-  const yellowHomeStretch = [[7,13], [7,12], [7,11], [7,10], [7,9], [7,8]];
-
-  const getPosCoords = (color: 'red' | 'blue' | 'green' | 'yellow', pos: number) => {
-    if (pos === -1) return null;
-    const offsets = { red: 0, green: 13, yellow: 26, blue: 39 };
-    const homeStretches = {
-      red: redHomeStretch,
-      blue: blueHomeStretch,
-      green: greenHomeStretch,
-      yellow: yellowHomeStretch
-    };
-
-    if (pos < 51) {
-      let pathIdx = (pos + offsets[color]) % 52;
-      return commonPath[pathIdx];
-    }
-    return homeStretches[color][pos - 51];
-  };
-
-  const rollDice = async () => {
-    if (gameState?.turn !== role || gameState.status !== 'rolling' || isRolling) return;
-
-    setIsRolling(true);
-    // Broadcast visual start (Socket.io - Cost: 0)
-    /* socket call removed */
-
-    setTimeout(async () => {
-      const roll = Math.floor(Math.random() * 6) + 1;
-      const myPieces = gameState.pieces[myColor];
-      
-      const canMoveAny = myPieces.some(p => {
-        if (p === -1) return roll === 6;
-        if (p + roll > 56) return false;
-        return true;
-      });
-
-      try {
-        await supabase.from('games').update({
-          dice: canMoveAny ? roll : null, // Clear dice if can't move
-          lastDiceRoll: roll,
-          status: canMoveAny ? 'moving' : 'rolling',
-          turn: canMoveAny ? gameState.turn : (gameState.turn === 'owner' ? 'partner' : 'owner')
-        }).eq('id', sessionId);
-        // Broadcast visual end (Socket.io - Cost: 0)
-        /* socket call removed */
-        
-        // Update Ephemeral State for reconnecting users (Cost: 0)
-        /* socket call removed */
-      } catch (err: any) { 
-        console.error(err);
-        if (err.code === 'resource-exhausted') {
-          alert("Firebase Quota Exceeded: Your daily limit for game updates has been reached. Please try again tomorrow or wait for the reset.");
-        }
-      }
-      setIsRolling(false);
-    }, 800);
-  };
-
-  const movePiece = async (pieceIdx: number) => {
-    if (!gameState || gameState.turn !== role || gameState.status !== 'moving') return;
-    
-    const roll = gameState.dice!;
-    const pieces = [...gameState.pieces[myColor]];
-    let pos = pieces[pieceIdx];
-
-    if (pos === -1 && roll !== 6) return;
-    if (pos !== -1 && pos + roll > 56) return;
-
-    if (pos === -1) pos = 0; else pos += roll;
-    pieces[pieceIdx] = pos;
-
-    const updatedAllPieces = { ...gameState.pieces };
-    updatedAllPieces[myColor] = pieces;
-
-    // Capture logic
-    if (pos < 51) {
-      const myCoords = getPosCoords(myColor, pos);
-      // Check other colors for capture
-      (['red', 'blue', 'green', 'yellow'] as const).forEach(color => {
-        if (color === myColor) return;
-        updatedAllPieces[color] = updatedAllPieces[color].map(op => {
-          if (op === -1 || op >= 51) return op;
-          const otherCoords = getPosCoords(color, op);
-          if (otherCoords?.[0] === myCoords?.[0] && otherCoords?.[1] === myCoords?.[1]) {
-            // Check for safe zones (stars on board)
-            const safeSpots = [[6,2], [2,8], [8,12], [12,6], [6,13], [1,6], [8,1], [13,8]];
-            const isSafe = safeSpots.some(s => s[0] === myCoords?.[0] && s[1] === myCoords?.[1]);
-            return isSafe ? op : -1;
-          }
-          return op;
-        });
-      });
-    }
-
-    const isWinner = pieces.every(p => p === 56);
-    const nextTurn = (roll === 6 || isWinner) ? gameState.turn : (gameState.turn === 'owner' ? 'partner' : 'owner');
-    
-    // 1. Optimistic Local UI Update
-    setGameState(prev => prev ? ({ 
-      ...prev, 
-      pieces: updatedAllPieces, 
-      status: 'rolling' as const, 
-      dice: null,
-      turn: nextTurn
-    }) : null);
-
-    // 2. Optimistic Socket Broadcast (Cost: 0, Instant)
-    /* socket call removed */
-
-    // 2b. Sync to Ephemeral Server State (Cost: 0)
-    /* socket call removed */
-
-    try {
-      // 3. Persistent Sync to Firestore (Cost: 1)
-      await supabase.from('games').update({
-        pieces: updatedAllPieces,
-        status: 'rolling',
-        dice: null,
-        turn: nextTurn,
-        winner: isWinner ? (role === 'owner' ? 'owner' : 'partner') : null
-      }).eq('id', sessionId);
-    } catch (err: any) { 
-      console.error(err);
-      if (err.code === 'resource-exhausted') {
-        alert("Firebase Quota Exceeded: Cannot save move. Please wait for the daily quota to reset.");
-      }
-    }
-  };
-
-  if (!gameState) return null;
-
-  const renderCellPieces = (r: number, c: number) => {
-    const redPiecesAt = gameState.pieces.red.map((p, i) => ({ coords: getPosCoords('red', p), i })).filter(p => p.coords?.[0] === r && p.coords?.[1] === c);
-    const bluePiecesAt = gameState.pieces.blue.map((p, i) => ({ coords: getPosCoords('blue', p), i })).filter(p => p.coords?.[0] === r && p.coords?.[1] === c);
-    const greenPiecesAt = gameState.pieces.green.map((p, i) => ({ coords: getPosCoords('green', p), i })).filter(p => p.coords?.[0] === r && p.coords?.[1] === c);
-    const yellowPiecesAt = gameState.pieces.yellow.map((p, i) => ({ coords: getPosCoords('yellow', p), i })).filter(p => p.coords?.[0] === r && p.coords?.[1] === c);
-
-    const allAt = [
-      ...redPiecesAt.map(p => ({ ...p, color: 'red' as const })), 
-      ...bluePiecesAt.map(p => ({ ...p, color: 'blue' as const })), 
-      ...greenPiecesAt.map(p => ({ ...p, color: 'green' as const })), 
-      ...yellowPiecesAt.map(p => ({ ...p, color: 'yellow' as const }))
-    ];
-
-    if (allAt.length === 0) return null;
-
-    return (
-      <div className="absolute inset-0 pointer-events-none z-10 transition-all duration-300">
-        <div className="relative w-full h-full">
-          {allAt.map((p, idx) => (
-            <motion.div
-              key={`${p.color}-${p.i}`}
-              layoutId={`${p.color}-piece-${p.i}`}
-              drag={debugConfig.enableDrag}
-              dragSnapToOrigin={!debugConfig.enableDrag}
-              onDrag={(_: any, info: any) => {
-                if (debugConfig.enableDrag) {
-                   setDragInfo(`${p.color} piece ${p.i}: r:${r}, c:${c} + x:${info.offset.x.toFixed(1)}, y:${info.offset.y.toFixed(1)}`);
-                }
-              }}
-              style={{
-                width: `${debugConfig.tokenSizeGrid}%`,
-                height: `${debugConfig.tokenSizeGrid}%`,
-              }}
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-10"
-            >
-              <motion.img 
-                src={TOKEN_ASSETS[p.color]} 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (debugConfig.enableDrag) {
-                    setDebugConfig(prev => ({ ...prev, selectedTarget: 'board' }));
-                  } else if (p.color === myColor) {
-                    movePiece(p.i);
-                  }
-                }}
-                className={`w-full h-full object-contain pointer-events-auto transition-transform active:scale-90 cursor-pointer ${
-                  gameState.status === 'moving' && p.color === myColor && gameState.turn === role
-                  ? 'animate-bounce drop-shadow-[0_8px_8px_rgba(0,0,0,0.4)]' : 'drop-shadow-[0_3px_3px_rgba(0,0,0,0.25)]'
-                }`}
-                alt="Piece"
-              />
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const getPartnerName = () => {
-    if (userProfile?.partnerNicknames) {
-      const keys = Object.keys(userProfile.partnerNicknames);
-      if (keys.length > 0) return userProfile.partnerNicknames[keys[0]];
-    }
-    return role === 'owner' ? 'Nusrat' : 'Rahul';
-  };
-
-  const turnText = gameState.turn === role 
-    ? "It's your turn! 🎲" 
-    : `${getPartnerName()}'s Turn ⏳`;
-
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/60 backdrop-blur-md" />
-      <motion.div 
-        initial={{ y: '100%' }} 
-        animate={{ y: 0 }}
-        className="relative w-full h-full bg-[#FFF9F9] flex flex-col pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)] z-10"
-      >
-        {/* Header */}
-        <div className="px-5 py-4 flex items-center justify-between bg-white border-b border-[#FF8FA3]/10 shadow-sm relative z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-tr from-[#FFD600] to-[#FFE552] rounded-xl flex items-center justify-center shadow-lg transform -rotate-3 border border-white/50">
-              <Gamepad2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-[#1a1a1a] uppercase tracking-tight">Ludo King Edition</h3>
-              <div className="flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${gameState.turn === role ? 'bg-[#FF8FA3]' : 'bg-gray-300'}`} />
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${gameState.turn === role ? 'text-[#FF8FA3]' : 'text-gray-400'}`}>
-                  {turnText}
-                </p>
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center bg-gray-50 text-gray-400 rounded-full hover:bg-red-50 hover:text-red-400 transition-all border border-gray-100">
-            <X className="w-5 h-5 font-black" />
-          </button>
-        </div>
-
-        {/* Board Container */}
-        <div className="flex-1 relative flex items-center justify-center p-3 lg:p-6 overflow-hidden">
-          <div className="relative w-full max-w-[min(90vw,calc(100vh-320px))] aspect-square rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
-            <img 
-              src={boardImg} 
-              alt="Ludo Board" 
-              className="absolute inset-0 w-full h-full object-cover" 
-            />
-            
-            {/* Logic Overlay Grid - Padded precisely to match the asset's geometric centers */}
-            <div 
-              className="absolute"
-              style={{
-                top: `${debugConfig.boardTop}%`,
-                bottom: `${debugConfig.boardBottom}%`,
-                left: `${debugConfig.boardLeft}%`,
-                right: `${debugConfig.boardRight}%`
-              }}
-            >
-              <div className="relative w-full h-full grid grid-cols-15 grid-rows-15">
-                {Array.from({ length: 225 }).map((_, i) => {
-                  const r = Math.floor(i / 15);
-                  const c = i % 15;
-                  return (
-                    <div key={i} className="relative w-full h-full" style={{ border: debugConfig.showDebug ? '1px solid rgba(255,255,255,0.2)' : 'none' }}>
-                      {renderCellPieces(r, c)}
-                    </div>
-                  );
-                })}
-
-                {/* Base Piece Overlays - Moved inside the same padded container for perfect sync */}
-                <LudoBaseOverlay 
-                  color="red" 
-                  r={0} c={0} 
-                  pieces={gameState.pieces.red}
-                  tokenImg={redToken}
-                  debugConfig={debugConfig}
-                  setDragInfo={setDragInfo}
-                  setDebugConfig={setDebugConfig}
-                  onPieceClick={(idx) => myColor === 'red' && movePiece(idx)}
-                  active={gameState.turn === (myColor === 'red' ? 'owner' : 'partner') && gameState.status === 'moving'}
-                />
-                <LudoBaseOverlay 
-                  color="blue" 
-                  r={9} c={0} // Bottom Left
-                  pieces={gameState.pieces.blue}
-                  tokenImg={blueToken}
-                  debugConfig={debugConfig}
-                  setDragInfo={setDragInfo}
-                  setDebugConfig={setDebugConfig}
-                  onPieceClick={(idx) => myColor === 'blue' && movePiece(idx)}
-                  active={gameState.turn === (myColor === 'blue' ? 'owner' : 'partner') && gameState.status === 'moving'}
-                />
-                <LudoBaseOverlay 
-                  color="green" 
-                  r={0} c={9} // Top Right
-                  pieces={gameState.pieces.green}
-                  tokenImg={greenToken}
-                  debugConfig={debugConfig}
-                  setDragInfo={setDragInfo}
-                  setDebugConfig={setDebugConfig}
-                  onPieceClick={(idx) => (myColor as string) === 'green' && movePiece(idx)}
-                  active={gameState.turn === ((myColor as string) === 'green' ? 'owner' : 'partner') && gameState.status === 'moving'}
-                />
-                <LudoBaseOverlay 
-                  color="yellow" 
-                  r={9} c={9} // Bottom Right
-                  pieces={gameState.pieces.yellow}
-                  tokenImg={yellowToken}
-                  debugConfig={debugConfig}
-                  setDragInfo={setDragInfo}
-                  setDebugConfig={setDebugConfig}
-                  onPieceClick={(idx) => (myColor as string) === 'yellow' && movePiece(idx)}
-                  active={gameState.turn === ((myColor as string) === 'yellow' ? 'owner' : 'partner') && gameState.status === 'moving'}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Debug UI - Floating Panel */}
-        <div className={`fixed bottom-4 left-4 z-[200] flex flex-col gap-2 transition-all duration-300 ${debugConfig.showDebug ? 'w-auto' : 'w-auto'}`}>
-           <div className="flex gap-1">
-             <button 
-               onClick={() => setDebugConfig(prev => ({ ...prev, showDebug: !prev.showDebug }))}
-               className="bg-black/60 backdrop-blur-md text-white text-[10px] px-3 py-2 rounded-xl font-mono uppercase tracking-widest shadow-xl border border-white/20 hover:bg-black transition-colors flex items-center gap-2"
-             >
-               {debugConfig.showDebug ? <ChevronDown className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
-               {debugConfig.showDebug ? 'Hide' : 'Debug'}
-             </button>
-             {debugConfig.showDebug && (
-               <button 
-                 onClick={() => setDebugConfig(prev => ({ ...prev, compact: !prev.compact }))}
-                 className="bg-black/60 backdrop-blur-md text-white text-[10px] px-3 py-2 rounded-xl border border-white/20 hover:bg-black transition-colors"
-               >
-                 {debugConfig.compact ? 'Expand' : 'Compact'}
-               </button>
-             )}
-           </div>
-
-           {debugConfig.showDebug && (
-             <div className={`bg-black/60 backdrop-blur-xl border border-white/20 rounded-[2rem] p-4 shadow-2xl flex flex-col gap-3 transition-all duration-300 ${debugConfig.compact ? 'w-24' : 'w-72'}`}>
-                <div className="flex items-center justify-between">
-                  {!debugConfig.compact && <h4 className="text-white font-mono text-[9px] uppercase tracking-tighter opacity-30">Dev Tool</h4>}
-                  <button 
-                    onClick={() => {
-                        // Generate a snapshot of all token coordinates based on current config
-                        const tokenManifest: any = {};
-                        ['red', 'blue', 'green', 'yellow'].forEach((color: any) => {
-                          tokenManifest[color] = gameState.pieces[color as keyof typeof gameState.pieces].map((pos, idx) => {
-                            const gridPos = getPosCoords(color, pos);
-                            if (pos === -1) {
-                               // Calculate pocket pos for manifest
-                               const rBase = color === 'red' || color === 'green' ? 0 : 9;
-                               const cBase = color === 'red' || color === 'blue' ? 0 : 9;
-                               const baseCells = [
-                                 [rBase + debugConfig.baseOffset1, cBase + debugConfig.baseOffset1], [rBase + debugConfig.baseOffset1, cBase + debugConfig.baseOffset2],
-                                 [rBase + debugConfig.baseOffset2, cBase + debugConfig.baseOffset1], [rBase + debugConfig.baseOffset2, cBase + debugConfig.baseOffset2]
-                               ];
-                               return { type: 'pocket', idx, relX: (baseCells[idx][1]/15)*100, relY: (baseCells[idx][0]/15)*100 };
-                            }
-                            return { type: 'grid', pos, r: gridPos?.[0], c: gridPos?.[1], relX: ((gridPos?.[1] || 0) + 0.5)/15*100, relY: ((gridPos?.[0] || 0) + 0.5)/15*100 };
-                          });
-                        });
-
-                        const exportData = {
-                           config: debugConfig,
-                           manifest: tokenManifest,
-                           timestamp: new Date().toISOString()
-                        };
-
-                        const json = JSON.stringify(exportData, null, 2);
-                        const blob = new Blob([json], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `ludo-coordinates-${new Date().toISOString().split('T')[0]}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                        alert("Manifest & Config downloaded!");
-                    }}
-                    className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/10 transition-colors"
-                    title="Download Coordinates Manifest"
-                  >
-                    <Download className="w-3 h-3" />
-                  </button>
-                </div>
-
-                {/* Smart Nudge D-Pad */}
-                <div className="flex flex-col items-center gap-1 bg-white/5 p-2 rounded-2xl">
-                  <div className="text-[8px] text-white/40 uppercase font-bold mb-1">Nudge {debugConfig.selectedTarget}</div>
-                  <button onClick={() => nudge(0, -1)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-white"><ChevronUp className="w-3 h-3" /></button>
-                  <div className="flex gap-1">
-                    <button onClick={() => nudge(-1, 0)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-white"><ChevronLeft className="w-3 h-3" /></button>
-                    <button 
-                      onClick={() => setDebugConfig(prev => ({ ...prev, selectedTarget: prev.selectedTarget === 'board' ? 'pockets' : 'board' }))}
-                      className="p-2 bg-[#FF8FA3]/20 rounded-lg text-[#FF8FA3]"
-                    >
-                      <Target className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => nudge(1, 0)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-white"><ChevronRight className="w-3 h-3" /></button>
-                  </div>
-                  <button onClick={() => nudge(0, 1)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-white"><ChevronDown className="w-3 h-3" /></button>
-                </div>
-
-                {!debugConfig.compact && (
-                  <div className="space-y-3 overflow-y-auto max-h-[50vh] pr-1 custom-scrollbar">
-                    {/* Token Sizes */}
-                    <div className="space-y-2 border-t border-white/5 pt-3">
-                      <div className="flex justify-between text-[9px] text-white/50 uppercase font-bold">
-                        <span>Sizes</span>
-                        <span>{debugConfig.tokenSizeBase}% / {debugConfig.tokenSizeGrid}%</span>
-                      </div>
-                      <input 
-                        type="range" min="5" max="25" step="0.1" 
-                        value={debugConfig.tokenSizeBase || 10.5} 
-                        onChange={e => setDebugConfig(prev => ({ ...prev, tokenSizeBase: parseFloat(e.target.value) || 0 }))}
-                        className="w-full accent-[#FF8FA3] h-1" 
-                      />
-                      <input 
-                        type="range" min="50" max="250" step="1" 
-                        value={debugConfig.tokenSizeGrid || 150} 
-                        onChange={e => setDebugConfig(prev => ({ ...prev, tokenSizeGrid: parseFloat(e.target.value) || 0 }))}
-                        className="w-full accent-blue-400 h-1" 
-                      />
-                    </div>
-
-                    {/* Precise Inputs */}
-                    <div className="space-y-3 border-t border-white/5 pt-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Top</label>
-                          <input type="number" step="0.05" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.boardTop) ? '' : debugConfig.boardTop} onChange={e => setDebugConfig(p => ({...p, boardTop: parseFloat(e.target.value)}))} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Bottom</label>
-                          <input type="number" step="0.05" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.boardBottom) ? '' : debugConfig.boardBottom} onChange={e => setDebugConfig(p => ({...p, boardBottom: parseFloat(e.target.value)}))} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Left</label>
-                          <input type="number" step="0.05" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.boardLeft) ? '' : debugConfig.boardLeft} onChange={e => setDebugConfig(p => ({...p, boardLeft: parseFloat(e.target.value)}))} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Right</label>
-                          <input type="number" step="0.05" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.boardRight) ? '' : debugConfig.boardRight} onChange={e => setDebugConfig(p => ({...p, boardRight: parseFloat(e.target.value)}))} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Pkt Off 1</label>
-                          <input type="number" step="0.01" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.baseOffset1) ? '' : debugConfig.baseOffset1} onChange={e => setDebugConfig(p => ({...p, baseOffset1: parseFloat(e.target.value)}))} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] text-white/30 uppercase">Pkt Off 2</label>
-                          <input type="number" step="0.01" className="w-full bg-white/5 border border-white/5 text-white rounded p-1 text-[9px]" value={Number.isNaN(debugConfig.baseOffset2) ? '' : debugConfig.baseOffset2} onChange={e => setDebugConfig(p => ({...p, baseOffset2: parseFloat(e.target.value)}))} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <button 
-                       onClick={() => setDebugConfig(prev => ({ ...prev, enableDrag: !prev.enableDrag }))}
-                       className={`w-full py-2 rounded-xl text-[9px] font-bold uppercase transition-all ${debugConfig.enableDrag ? 'bg-red-500/80 text-white shadow-lg shadow-red-500/20' : 'bg-white/10 text-white/50'}`}
-                    >
-                      {debugConfig.enableDrag ? 'Drag Active' : 'Enable Drag'}
-                    </button>
-                  </div>
-                )}
-             </div>
-           )}
-        </div>
-
-        {/* Controls Section */}
-        <div className="px-6 py-6 bg-white border-t border-[#FF8FA3]/10 flex flex-col items-center gap-6 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] relative z-20">
-          <div className="flex items-center justify-around w-full max-w-md">
-            <LudoDice 
-              name={role === 'owner' ? 'You' : 'Rahul'} 
-              active={gameState.turn === 'owner'} 
-              diceVal={gameState.turn === 'owner' ? gameState.dice : null} 
-              isRolling={isRolling && gameState.turn === 'owner'}
-              onRoll={rollDice}
-            />
-            <div className="h-12 w-px bg-gradient-to-b from-gray-50 via-gray-200 to-gray-50 opacity-50" />
-            <LudoDice 
-              name={role === 'partner' ? 'You' : getPartnerName()} 
-              active={gameState.turn === 'partner'} 
-              diceVal={gameState.turn === 'partner' ? gameState.dice : null}
-              isRolling={isRolling && gameState.turn === 'partner'}
-              onRoll={rollDice}
-            />
-          </div>
-          
-          <div className="flex gap-4">
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-full border border-gray-100">
-               <div className={`w-2.5 h-2.5 rounded-full ${myColor === 'red' ? 'bg-[#FF3D3D]' : 'bg-[#00A3FF]'}`} />
-               <span className="text-[10px] font-black text-[#1a1a1a] uppercase tracking-tighter">You ({myColor})</span>
-             </div>
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-full border border-gray-100">
-               <div className={`w-2.5 h-2.5 rounded-full ${partnerColor === 'red' ? 'bg-[#FF3D3D]' : 'bg-[#00A3FF]'}`} />
-               <span className="text-[10px] font-black text-[#1a1a1a] uppercase tracking-tighter">{getPartnerName()} ({partnerColor})</span>
-             </div>
-          </div>
-        </div>
-
-        {/* Win/Overlay */}
-        <AnimatePresence>
-          {gameState.winner && (
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-[#FF8FA3]/95 backdrop-blur-lg z-[130] flex flex-col items-center justify-center text-white p-8 text-center"
-            >
-              <div className="w-24 h-24 bg-white/20 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-2xl relative">
-                  <Heart className="w-12 h-12 text-white fill-white animate-pulse" />
-                  <div className="absolute -top-2 -right-2 bg-white text-[#FF8FA3] px-3 py-1 rounded-full text-[10px] font-black uppercase">Champion</div>
-              </div>
-              <h2 className="text-4xl font-black uppercase tracking-tighter mb-2">LUDO KING! 👑</h2>
-              <p className="text-xl font-bold opacity-90 mb-10">
-                {gameState.winner === role ? "You claimed the throne!" : `${getPartnerName()} won our hearts!`}
-              </p>
-              <button 
-                onClick={onClose}
-                className="w-full max-w-[200px] py-4 bg-white text-[#FF8FA3] rounded-2xl font-black uppercase tracking-widest shadow-2xl hover:scale-105 active:scale-95 transition-all"
-              >
-                End Game
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </div>
-  );
-}
-
-function LudoBaseOverlay({ color, r, c, pieces, tokenImg, onPieceClick, active, debugConfig, setDragInfo, setDebugConfig }: { 
-  color: string, 
-  r: number, 
-  c: number, 
-  pieces: number[], 
-  tokenImg: string, 
-  onPieceClick?: (idx: number) => void, 
-  active: boolean,
-  debugConfig: any,
-  setDragInfo: (info: string | null) => void,
-  setDebugConfig: any
-}) {
-  // Geometric center of pockets in a 6x6 base grid
-  const baseCells = [
-    [r + debugConfig.baseOffset1, c + debugConfig.baseOffset1], [r + debugConfig.baseOffset1, c + debugConfig.baseOffset2],
-    [r + debugConfig.baseOffset2, c + debugConfig.baseOffset1], [r + debugConfig.baseOffset2, c + debugConfig.baseOffset2]
-  ];
-
-  return (
-    <>
-      {pieces.map((p, idx) => {
-        if (p !== -1) return null;
-        const [row, col] = baseCells[idx];
-        return (
-          <div 
-            key={idx}
-            className="absolute flex items-center justify-center z-20 pointer-events-none"
-            style={{ 
-              top: `${(row/15)*100}%`, 
-              left: `${(col/15)*100}%`,
-              width: `${debugConfig.tokenSizeBase}%`, 
-              height: `${debugConfig.tokenSizeBase}%`,
-              transform: 'translate(-50%, -50%)' 
-            }}
-          >
-            <motion.img 
-              layoutId={`${color}-piece-${idx}`}
-              drag={debugConfig.enableDrag}
-              dragSnapToOrigin={!debugConfig.enableDrag}
-              onDrag={(_: any, info: any) => {
-                if (debugConfig.enableDrag) {
-                   setDragInfo(`${color} base piece ${idx}: offset x:${info.offset.x.toFixed(1)}, y:${info.offset.y.toFixed(1)}`);
-                }
-              }}
-              src={tokenImg}
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                if (debugConfig.enableDrag) {
-                  setDebugConfig(prev => ({ ...prev, selectedTarget: 'pockets' }));
-                } else {
-                  onPieceClick?.(idx); 
-                }
-              }}
-              className={`w-full h-full object-contain pointer-events-auto cursor-pointer transition-all active:scale-75 ${active ? 'animate-bounce drop-shadow-[0_8px_8px_rgba(0,0,0,0.4)]' : 'drop-shadow-[0_3px_3px_rgba(0,0,0,0.25)]'}`}
-              alt="Token"
-            />
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
-function DiceFace({ value }: { value: number | null }) {
-  if (!value) return null;
-  return (
-    <div className="w-full h-full flex items-center justify-center p-1">
-      <img 
-        src={DICE_FACES[value as keyof typeof DICE_FACES]} 
-        className="w-[85%] h-[85%] object-contain" 
-        alt={`Dice ${value}`}
-        referrerPolicy="no-referrer"
-      />
-    </div>
-  );
-}
-
-function LudoDice({ name, active, diceVal, isRolling, onRoll }: { name: string, active: boolean, diceVal: number | null, isRolling: boolean, onRoll: () => void }) {
-  return (
-    <div className={`flex flex-col items-center gap-2 transition-all duration-500 ${active ? 'scale-105' : 'opacity-30 grayscale scale-90'}`}>
-      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1a1a1a] mb-1">{name}</span>
-      <div className="relative">
-        <button 
-          onClick={onRoll}
-          disabled={!active || isRolling || diceVal !== null}
-          className={`w-20 h-20 flex items-center justify-center transition-all z-10 relative group
-            ${!active ? 'cursor-not-allowed' : 'cursor-pointer active:translate-y-1'}
-            ${isRolling ? 'animate-bounce' : ''}
-          `}
-        >
-          {/* Dice Base */}
-          <img 
-            src={diceBase} 
-            className="absolute inset-0 w-full h-full object-contain filter drop-shadow-lg" 
-            alt="Dice Base" 
-            referrerPolicy="no-referrer"
-          />
-          
-          <div className="w-full h-full relative z-20 flex items-center justify-center">
-            {isRolling ? (
-               <div className="w-full h-full opacity-40 animate-pulse flex items-center justify-center">
-                  <div className="w-12 h-12 rounded-lg bg-gray-200/50" />
-               </div>
-            ) : diceVal !== null ? (
-               <DiceFace value={diceVal} />
-            ) : null}
-          </div>
-        </button>
-        
-        {active && !isRolling && diceVal === null && (
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1.1, opacity: 1 }}
-            className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap"
-          >
-             <span className="text-[9px] font-black text-[#FF8FA3] uppercase tracking-widest bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-md border border-[#FF8FA3]/20 animate-bounce block">
-               ROLL!
-             </span>
-          </motion.div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function CelebrateIcon({ className }: { className?: string }) {
   return (
     <div className={className}>
@@ -3257,7 +2297,7 @@ function BottomSheet({ isOpen, onClose, title, children }: { isOpen: boolean, on
   );
 }
 
-function MessageItem({ 
+const MessageItem = React.memo(function MessageItem({ 
   msg, 
   role, 
   onReact, 
@@ -3288,7 +2328,7 @@ function MessageItem({
   isInteractionPoint?: boolean,
   showSeenText?: boolean,
   partnerLastReadAt: number,
-  onJoinGame?: (game: { id: string, type: 'tictactoe' | 'ludo' }) => void,
+  onJoinGame?: (game: { id: string, type: 'tictactoe' }) => void,
   key?: React.Key
 }) {
   const isOwn = msg.sender_role === role;
@@ -3517,7 +2557,7 @@ function MessageItem({
                   </div>
                   <div className="flex-1">
                     <p className={`text-[11px] font-bold ${isOwn ? 'text-white' : 'text-[#1a1a1a]'}`}>
-                      {msg.gameInvite.gameType === 'tictactoe' ? 'Tic Tac Toe' : 'Ludo Classic'}
+                      Tic Tac Toe
                     </p>
                     <p className={`text-[9px] uppercase tracking-wider opacity-60 ${isOwn ? 'text-white' : 'text-[#6E6E6E]'}`}>Match Challenge</p>
                   </div>
@@ -3597,8 +2637,8 @@ function MessageItem({
       </div>
     </motion.div>
   </div>
-);
-}
+  );
+});
 
 function HeartFloating({ active }: { active?: boolean }) {
   if (!active) return null;
