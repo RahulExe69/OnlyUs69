@@ -1484,6 +1484,9 @@ export default function App() {
             onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
             messages={messages}
             isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+            currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+            onThemeSelect={selectTheme}
+            isThemeSaving={isThemeSaving}
           />
         )}
       </AnimatePresence>
@@ -3494,7 +3497,10 @@ function PartnerInfoModal({
   onPartnerUpdated,
   onMyProfileUpdated,
   messages = [],
-  isPartnerOnline = false
+  isPartnerOnline = false,
+  currentTheme = 'romantic',
+  onThemeSelect,
+  isThemeSaving = false
 }: { 
   partner: UserProfile, 
   myProfile: UserProfile | null, 
@@ -3503,7 +3509,10 @@ function PartnerInfoModal({
   onPartnerUpdated?: (partner: UserProfile) => void,
   onMyProfileUpdated?: (me: UserProfile) => void,
   messages?: Message[],
-  isPartnerOnline?: boolean
+  isPartnerOnline?: boolean,
+  currentTheme?: ThemeName,
+  onThemeSelect?: (theme: ThemeName) => Promise<void>,
+  isThemeSaving?: boolean
 }) {
   const [view, setView] = useState<'main' | 'nicknames'>('main');
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'reels' | 'links'>('media');
@@ -3517,9 +3526,12 @@ function PartnerInfoModal({
   const [isSaving, setIsSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   
-  // Dummy options & modals
+  // Option modals
   const [showCustomiseModal, setShowCustomiseModal] = useState(false);
   const [showWhoCanEditModal, setShowWhoCanEditModal] = useState(false);
+  const [customiseTab, setCustomiseTab] = useState<'theme' | 'font'>('theme');
+  const [pendingTheme, setPendingTheme] = useState<ThemeName>(currentTheme);
+  const [previewTheme, setPreviewTheme] = useState<ThemeName | null>(null);
 
   // Photo change logic
   const [showCropper, setShowCropper] = useState(false);
@@ -3659,6 +3671,34 @@ function PartnerInfoModal({
 
   const partnerHandle = partner.email ? partner.email.split('@')[0] : '_btw.nusrat_';
   const myHandle = myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey';
+  const fontChoices: Array<{ label: string; sample: string; linkedTheme: ThemeName }> = [
+    { label: 'Inter', sample: 'Sleek & clean', linkedTheme: 'light' },
+    { label: 'Nunito', sample: 'Soft & rounded', linkedTheme: 'romantic' },
+    { label: 'Georgia', sample: 'Classic serif', linkedTheme: 'lavender' },
+    { label: 'Trebuchet', sample: 'Modern crisp', linkedTheme: 'ocean' },
+    { label: 'Palatino', sample: 'Warm elegant', linkedTheme: 'sunset' },
+  ];
+
+  useEffect(() => {
+    if (showCustomiseModal) {
+      setCustomiseTab('theme');
+      setPendingTheme(currentTheme);
+      setPreviewTheme(null);
+    }
+  }, [showCustomiseModal, currentTheme]);
+
+  const closeCustomiseModal = () => {
+    if (previewTheme) applyTheme(currentTheme);
+    setPreviewTheme(null);
+    setShowCustomiseModal(false);
+  };
+
+  const applySelectedTheme = async () => {
+    if (!onThemeSelect || pendingTheme === currentTheme || isThemeSaving) return;
+    await onThemeSelect(pendingTheme);
+    setPreviewTheme(null);
+    setShowCustomiseModal(false);
+  };
 
   return (
     <motion.div 
@@ -4047,7 +4087,7 @@ function PartnerInfoModal({
         )}
       </AnimatePresence>
 
-      {/* Dummy Customise Bottom Sheet */}
+      {/* Instagram-style Customise Bottom Sheet */}
       <AnimatePresence>
         {showCustomiseModal && (
           <>
@@ -4055,7 +4095,7 @@ function PartnerInfoModal({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowCustomiseModal(false)}
+              onClick={closeCustomiseModal}
               className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
             />
             <motion.div 
@@ -4063,22 +4103,113 @@ function PartnerInfoModal({
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl"
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
-              <div className="text-center py-2">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white mx-auto mb-3 shadow-md">
-                  <Heart className="w-7 h-7 fill-white" />
+              <div className="px-5 pt-3 pb-4 border-b border-neutral-200">
+                <div className="w-12 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+                <div className="relative flex items-center justify-center">
+                  <h3 className="text-[24px] font-bold text-[#111111]">Customise</h3>
+                  <button
+                    onClick={closeCustomiseModal}
+                    className="absolute right-0 p-1 text-neutral-500 hover:text-neutral-700"
+                    aria-label="Close customise"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <h3 className="text-lg font-bold text-[#111111]">Customise Theme & Fonts</h3>
-                <p className="text-[13px] text-neutral-500 mt-1 max-w-xs mx-auto">
-                  Custom chat gradients, romantic themes, and handwriting fonts are ready to customize in settings.
-                </p>
-                <button 
-                  onClick={() => setShowCustomiseModal(false)}
-                  className="mt-6 w-full h-11 bg-neutral-900 text-white font-bold rounded-xl text-sm active:scale-95 transition-all"
+                <div className="mt-5 grid grid-cols-2 text-center">
+                  <button
+                    onClick={() => setCustomiseTab('theme')}
+                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-3 ${customiseTab === 'theme' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
+                  >
+                    Theme
+                  </button>
+                  <button
+                    onClick={() => setCustomiseTab('font')}
+                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-3 ${customiseTab === 'font' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
+                  >
+                    Font
+                  </button>
+                </div>
+              </div>
+
+              <div className="custom-scrollbar overflow-y-auto px-4 pt-4 pb-24 max-h-[68dvh]">
+                {customiseTab === 'theme' ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
+                      const theme = THEMES[themeName];
+                      const isSelected = pendingTheme === themeName;
+                      const isApplied = currentTheme === themeName;
+                      return (
+                        <button
+                          key={themeName}
+                          type="button"
+                          onClick={() => setPendingTheme(themeName)}
+                          disabled={isThemeSaving}
+                          className={`rounded-2xl p-2.5 text-left border transition-all ${isSelected ? 'border-[#111111] shadow-md' : 'border-neutral-200'} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
+                        >
+                          <div
+                            className="relative h-36 rounded-[1.1rem] overflow-hidden border border-black/5"
+                            style={{ background: theme.decoration, backgroundColor: theme.bg }}
+                          >
+                            <span className="theme-preview-header" style={{ background: theme.header }} />
+                            <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
+                            <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
+                            {(isSelected || isApplied) && (
+                              <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 text-white flex items-center justify-center">
+                                <Check className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-[14px] font-semibold text-[#111111] leading-tight truncate">{theme.name}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {fontChoices.map((font) => {
+                      const theme = THEMES[font.linkedTheme];
+                      const active = THEMES[pendingTheme].font === theme.font;
+                      return (
+                        <button
+                          key={font.label}
+                          type="button"
+                          onClick={() => setPendingTheme(font.linkedTheme)}
+                          disabled={isThemeSaving}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${active ? 'border-[#111111] bg-neutral-50' : 'border-neutral-200 bg-white'}`}
+                          style={{ fontFamily: theme.font }}
+                        >
+                          <p className="text-[18px] text-[#111111] leading-tight">{font.label}</p>
+                          <p className="text-[13px] text-neutral-500">{font.sample}</p>
+                        </button>
+                      );
+                    })}
+                    <p className="text-[12px] text-neutral-500 pt-1 px-1">Fonts are linked to matching themes for a complete look.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-neutral-200 px-4 py-3 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyTheme(pendingTheme);
+                    setPreviewTheme(pendingTheme);
+                  }}
+                  disabled={isThemeSaving}
+                  className="h-12 rounded-2xl bg-[#F1F3F7] text-[#111111] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
                 >
-                  Got it
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={applySelectedTheme}
+                  disabled={isThemeSaving || pendingTheme === currentTheme}
+                  className="h-12 rounded-2xl bg-[#4F46E5] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isThemeSaving ? 'Applying...' : 'Apply'}
                 </button>
               </div>
             </motion.div>
