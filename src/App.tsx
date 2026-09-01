@@ -1283,10 +1283,10 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[#FF8FA3] text-white z-30"
+                  className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300"
                 >
                   <div className="flex items-center gap-6 lg:gap-8">
-                    <button onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95 text-white">
+                    <button onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
                       <X className="w-5 h-5 lg:w-6 lg:h-6" />
                     </button>
                     <span className="text-lg lg:text-xl font-bold tracking-tight">{selectedMessages.length}</span>
@@ -2717,7 +2717,7 @@ const MessageItem = React.memo(function MessageItem({
       ref={itemRef}
       id={`msg-${msg.id}`}
       className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default rounded-2xl ${
-        isSelected ? 'bg-[#FF8FA3]/20 backdrop-blur-[1px]' : 'hover:bg-romantic-pink/5'
+        isSelected ? 'bg-[var(--theme-accent)]/20 backdrop-blur-[1px]' : 'hover:bg-[var(--theme-accent)]/5'
       } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       onPointerDown={handlePointerDown}
@@ -2855,13 +2855,11 @@ const MessageItem = React.memo(function MessageItem({
                     const el = document.getElementById(`msg-${resolvedReplyTo.id}`);
                     if (el) {
                       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      el.classList.add('bg-[#FF8FA3]/25');
-                      setTimeout(() => el.classList.remove('bg-[#FF8FA3]/25'), 1400);
+                      el.classList.add('theme-message-focus');
+                      setTimeout(() => el.classList.remove('theme-message-focus'), 1400);
                     }
                   }}
-                  className={`mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none w-full max-w-full min-w-0 overflow-hidden ${
-                    isOwn ? 'bg-black/15 border-white text-white/95' : 'bg-[#FF8FA3]/10 border-[#FF8FA3] text-[#1a1a1a]/95'
-                  }`}
+                  className={`theme-reply-context ${isOwn ? 'theme-reply-context-owner' : 'theme-reply-context-partner'} mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none w-full max-w-full min-w-0 overflow-hidden`}
                 >
                   <p className="font-bold mb-0.5 opacity-75 truncate max-w-full">
                      {getSenderName(resolvedReplyTo.sender_role)}

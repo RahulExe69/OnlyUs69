@@ -109,6 +109,23 @@ body {
   transition: background 220ms ease, opacity 220ms ease;
 }
 
+/* Theme-aware states inside the conversation, including long-press selection
+   and quoted replies, must not fall back to the original rose palette. */
+.theme-message-focus {
+  background-color: color-mix(in srgb, var(--theme-accent) 25%, transparent);
+  transition: background-color 180ms ease;
+}
+.theme-reply-context-owner {
+  background: color-mix(in srgb, var(--theme-bubble-owner) 78%, var(--theme-text));
+  border-color: color-mix(in srgb, var(--theme-bubble-owner-text) 82%, transparent);
+  color: var(--theme-bubble-owner-text);
+}
+.theme-reply-context-partner {
+  background: color-mix(in srgb, var(--theme-bubble-partner) 82%, var(--theme-surface));
+  border-color: var(--theme-accent);
+  color: var(--theme-bubble-partner-text);
+}
+
 .chat-theme .chat-bubble-owner,
 .chat-theme .chat-bubble-partner {
   box-shadow: 0 9px 22px color-mix(in srgb, var(--theme-accent) 14%, transparent);
