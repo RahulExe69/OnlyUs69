@@ -59,7 +59,7 @@ export const ExternalHubView: React.FC<ExternalHubViewProps> = ({
   };
 
   return (
-    <div className="h-screen w-full bg-[#121212] text-white flex flex-col overflow-hidden relative select-none">
+    <div className="theme-external-hub h-screen w-full flex flex-col overflow-hidden relative select-none">
       {/* Top Floating Control Bar */}
       <header className="h-14 px-4 bg-[#1e1e1e]/95 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-30 shrink-0">
         <div className="flex items-center gap-3">

@@ -25,6 +25,7 @@ html, body {
 
 body {
   touch-action: pan-y;
+  font-family: var(--theme-font);
 }
 
 @theme {
@@ -108,6 +109,23 @@ body {
   transition: background 220ms ease, opacity 220ms ease;
 }
 
+/* Theme-aware states inside the conversation, including long-press selection
+   and quoted replies, must not fall back to the original rose palette. */
+.theme-message-focus {
+  background-color: color-mix(in srgb, var(--theme-accent) 25%, transparent);
+  transition: background-color 180ms ease;
+}
+.theme-reply-context-owner {
+  background: color-mix(in srgb, var(--theme-bubble-owner) 78%, var(--theme-text));
+  border-color: color-mix(in srgb, var(--theme-bubble-owner-text) 82%, transparent);
+  color: var(--theme-bubble-owner-text);
+}
+.theme-reply-context-partner {
+  background: color-mix(in srgb, var(--theme-bubble-partner) 82%, var(--theme-surface));
+  border-color: var(--theme-accent);
+  color: var(--theme-bubble-partner-text);
+}
+
 .chat-theme .chat-bubble-owner,
 .chat-theme .chat-bubble-partner {
   box-shadow: 0 9px 22px color-mix(in srgb, var(--theme-accent) 14%, transparent);
@@ -158,6 +176,33 @@ body {
 :root[data-chat-theme="sunset"] .chat-theme .chat-bubble-owner { border-radius: 28px 28px 28px 8px; }
 :root[data-chat-theme="sunset"] .chat-theme .chat-bubble-partner { border-radius: 28px 28px 8px 28px; }
 
+/* These themes deliberately change the interface silhouette, not only its palette. */
+:root[data-chat-theme="doodle"] .chat-theme,
+:root[data-chat-theme="doodle"] .theme-settings,
+:root[data-chat-theme="doodle"] .theme-customize-sheet { letter-spacing: .015em; }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="doodle"] .theme-accent-button,
+:root[data-chat-theme="doodle"] .theme-icon-button { border: 2px solid var(--theme-text); border-radius: 18px 22px 17px 24px; box-shadow: 3px 3px 0 color-mix(in srgb, var(--theme-text) 70%, transparent); }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-owner { transform: rotate(-.35deg); }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-partner { transform: rotate(.3deg); }
+
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-partner { border-radius: 0; border-left: 3px solid var(--theme-accent); box-shadow: 7px 7px 0 rgba(0,0,0,.22); }
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-owner { border-left: 0; border-right: 3px solid var(--theme-accent); }
+
+:root[data-chat-theme="forest"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="forest"] .chat-theme .chat-bubble-partner { border-radius: 24px 7px 24px 7px; border-width: 1px; }
+
+:root[data-chat-theme="cyber"] .theme-chat-decoration { background-size: 24px 24px, 24px 24px, auto; opacity: 1; }
+:root[data-chat-theme="cyber"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="cyber"] .chat-theme .chat-bubble-partner { border-radius: 2px; border: 1px solid var(--theme-accent); box-shadow: 4px 4px 0 rgba(255,60,172,.38); }
+:root[data-chat-theme="cyber"] .theme-accent-button,
+:root[data-chat-theme="cyber"] .theme-icon-button { border-radius: 2px; box-shadow: 2px 2px 0 rgba(255,60,172,.55); }
+
+:root[data-chat-theme="aurora"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="aurora"] .chat-theme .chat-bubble-partner { border-radius: 24px; backdrop-filter: blur(12px); border-color: color-mix(in srgb, var(--theme-accent) 32%, white); }
+
 .theme-settings { background: var(--theme-surface); color: var(--theme-text); }
 .theme-settings input { background: var(--theme-input-bg) !important; border-color: var(--theme-border) !important; color: var(--theme-text) !important; }
 .theme-settings .bg-\[\#FFF8F6\],
@@ -166,3 +211,57 @@ body {
 .theme-settings .text-\[\#FF8FA3\],
 .theme-settings .border-\[\#FF8FA3\] { color: var(--theme-accent) !important; border-color: var(--theme-accent) !important; }
 .theme-settings .bg-\[\#FF8FA3\] { background-color: var(--theme-accent) !important; }
+
+/* The hub and companion views share the same variables as the chat, so changing a
+   theme is a whole-app decision rather than a chat-only colour preference. */
+.theme-hub,
+.theme-external-hub {
+  background: var(--theme-bg) !important;
+  color: var(--theme-text) !important;
+  font-family: var(--theme-font);
+}
+.theme-hub-glow { background: color-mix(in srgb, var(--theme-accent) 24%, transparent); }
+.theme-hub .bg-white\/80,
+.theme-hub .bg-white\/90,
+.theme-hub .bg-white\/95,
+.theme-hub .bg-white\/60,
+.theme-hub .bg-\[\#FFF0F3\],
+.theme-hub .bg-pink-50,
+.theme-hub .bg-emerald-50,
+.theme-external-hub .bg-\[\#1e1e1e\],
+.theme-external-hub .bg-neutral-900,
+.theme-external-hub .bg-neutral-800\/90,
+.theme-external-hub .bg-white\/5,
+.theme-external-hub .bg-white\/10 {
+  background-color: var(--theme-surface) !important;
+}
+.theme-settings .bg-white,
+.theme-settings .bg-neutral-50,
+.theme-settings .bg-neutral-100 { background-color: var(--theme-surface) !important; }
+.theme-settings [class*="text-\["],
+.theme-settings [class*="text-neutral"],
+.theme-settings [class*="text-gray"] { color: var(--theme-text) !important; }
+.theme-settings [class*="border-neutral"],
+.theme-settings [class*="border-black"] { border-color: var(--theme-border) !important; }
+.theme-hub [class*="text-\["],
+.theme-hub [class*="text-gray"],
+.theme-hub [class*="text-pink"],
+.theme-hub [class*="text-emerald"],
+.theme-external-hub [class*="text-white"],
+.theme-external-hub [class*="text-\["] {
+  color: var(--theme-text) !important;
+}
+.theme-hub [class*="border-\["],
+.theme-hub [class*="border-pink"],
+.theme-hub [class*="border-emerald"],
+.theme-external-hub [class*="border-white"] { border-color: var(--theme-border) !important; }
+.theme-hub [class*="bg-gradient"],
+.theme-external-hub [class*="bg-gradient"] {
+  background-image: linear-gradient(135deg, var(--theme-accent), color-mix(in srgb, var(--theme-accent) 45%, var(--theme-bg))) !important;
+}
+.theme-hub .group-hover\:bg-white:hover,
+.theme-hub .group-hover\:bg-gradient-to-tr:hover { background-color: var(--theme-surface) !important; }
+.theme-hub .group-hover\:text-\[\#C9184A\]:hover,
+.theme-hub .group-hover\:text-white:hover { color: var(--theme-accent) !important; }
+.theme-external-hub button:not([class*="bg-white"]),
+.theme-external-hub .bg-emerald-500 { background-color: var(--theme-accent) !important; color: var(--theme-bubble-owner-text) !important; }

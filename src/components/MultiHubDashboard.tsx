@@ -84,11 +84,11 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF0F3] text-[#1a1a1a] flex flex-col justify-between relative overflow-hidden select-none">
+    <div className="theme-hub min-h-screen flex flex-col justify-between relative overflow-hidden select-none">
       {/* Background soft ambient glows */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#FFCCD5]/50 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 -right-32 w-96 h-96 bg-[#FFE5EC]/60 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 left-1/4 w-96 h-96 bg-[#FFB3C1]/30 rounded-full blur-3xl pointer-events-none" />
+      <div className="theme-hub-glow absolute -top-32 -left-32 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
+      <div className="theme-hub-glow absolute top-1/2 -right-32 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
+      <div className="theme-hub-glow absolute -bottom-32 left-1/4 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Bar */}
       <header className="relative z-10 px-5 pt-6 pb-4 flex items-center justify-between max-w-xl mx-auto w-full">
