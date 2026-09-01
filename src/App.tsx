@@ -1484,6 +1484,9 @@ export default function App() {
             onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
             messages={messages}
             isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+            currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+            onThemeSelect={selectTheme}
+            isThemeSaving={isThemeSaving}
           />
         )}
       </AnimatePresence>
@@ -1494,50 +1497,13 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showCustomizeModal && (
-          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center theme-modal-backdrop" onClick={() => setShowCustomizeModal(false)}>
-            <motion.div
-              initial={{ y: 48, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 48, opacity: 0, scale: 0.98 }}
-              transition={{ type: 'spring', damping: 30, stiffness: 360 }}
-              onClick={e => e.stopPropagation()}
-              className="theme-customize-sheet w-full max-w-2xl max-h-[88dvh] overflow-hidden rounded-t-[2rem] sm:rounded-[2rem]"
-            >
-              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-[var(--theme-border)]">
-                <div>
-                  <div className="flex items-center gap-2 text-[var(--theme-accent)]">
-                    <Sparkles className="w-4 h-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Chat look</span>
-                  </div>
-                  <h3 className="mt-1 text-2xl font-bold tracking-tight text-[var(--theme-text)]">Choose a theme</h3>
-                  <p className="mt-1 text-xs text-[var(--theme-text)]/65">Each theme restyles the chat, controls, and settings together.</p>
-                </div>
-                <button onClick={() => setShowCustomizeModal(false)} className="theme-icon-button p-2.5 rounded-full" aria-label="Close customize"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="custom-scrollbar overflow-y-auto max-h-[calc(88dvh-108px)] px-5 py-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
-                    const theme = THEMES[themeName];
-                    const isActive = userProfile?.theme === themeName;
-                    return <button key={themeName} disabled={isThemeSaving} onClick={() => selectTheme(themeName)} className={`theme-choice text-left ${isActive ? 'theme-choice-active' : ''}`}>
-                      <div className="theme-choice-preview" style={{ background: theme.decoration, backgroundColor: theme.bg, color: theme.text }}>
-                        <span className="theme-preview-header" style={{ background: theme.header }} />
-                        <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
-                        <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
-                        {isActive && <span className="theme-choice-check"><Check className="w-3.5 h-3.5" /></span>}
-                      </div>
-                      <div className="pt-3 px-1"><p className="text-sm font-bold text-[var(--theme-text)]">{theme.name}</p><p className="mt-0.5 text-[11px] leading-relaxed text-[var(--theme-text)]/60">{theme.note}</p></div>
-                    </button>;
-                  })}
-                </div>
-                <p className="mt-5 text-center text-[11px] text-[var(--theme-text)]/55">Your selection is saved instantly and includes its own background, palette, and layout details.</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ThemeCustomizeSheet
+        isOpen={showCustomizeModal}
+        onClose={() => setShowCustomizeModal(false)}
+        currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+        onThemeSelect={selectTheme}
+        isThemeSaving={isThemeSaving}
+      />
       <AnimatePresence>
         {showDeleteChoices && (
           <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
@@ -3486,6 +3452,140 @@ function ProfileModal({
   );
 }
 
+function ThemeCustomizeSheet({
+  isOpen,
+  onClose,
+  currentTheme,
+  onThemeSelect,
+  isThemeSaving = false,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentTheme: ThemeName;
+  onThemeSelect: (theme: ThemeName) => Promise<void> | void;
+  isThemeSaving?: boolean;
+}) {
+  const [pendingTheme, setPendingTheme] = useState<ThemeName>(currentTheme);
+  const [previewTheme, setPreviewTheme] = useState<ThemeName | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPendingTheme(currentTheme);
+      setPreviewTheme(null);
+    }
+  }, [isOpen, currentTheme]);
+
+  const closeSheet = () => {
+    if (previewTheme) applyTheme(currentTheme);
+    setPreviewTheme(null);
+    onClose();
+  };
+
+  const applySelectedTheme = async () => {
+    if (pendingTheme === currentTheme || isThemeSaving) return;
+    await onThemeSelect(pendingTheme);
+    setPreviewTheme(null);
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeSheet}
+            className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 pt-3 pb-4 border-b border-neutral-200">
+              <div className="w-12 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+              <div className="relative flex items-center justify-center">
+                <h3 className="text-[24px] font-bold text-[#111111]">Customise</h3>
+                <button
+                  onClick={closeSheet}
+                  className="absolute right-0 p-1 text-neutral-500 hover:text-neutral-700"
+                  aria-label="Close customise"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-center text-[13px] text-neutral-500 mt-2">
+                Themes already include matching colors, wallpaper mood, and font.
+              </p>
+            </div>
+
+            <div className="custom-scrollbar overflow-y-auto px-4 pt-4 pb-24 max-h-[68dvh]">
+              <div className="grid grid-cols-2 gap-3">
+                {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
+                  const theme = THEMES[themeName];
+                  const isSelected = pendingTheme === themeName;
+                  const isApplied = currentTheme === themeName;
+                  return (
+                    <button
+                      key={themeName}
+                      type="button"
+                      onClick={() => setPendingTheme(themeName)}
+                      disabled={isThemeSaving}
+                      className={`rounded-2xl p-2.5 text-left border transition-all ${isSelected ? 'border-[#111111] shadow-md' : 'border-neutral-200'} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
+                    >
+                      <div
+                        className="relative h-36 rounded-[1.1rem] overflow-hidden border border-black/5"
+                        style={{ background: theme.decoration, backgroundColor: theme.bg }}
+                      >
+                        <span className="theme-preview-header" style={{ background: theme.header }} />
+                        <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
+                        <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
+                        {(isSelected || isApplied) && (
+                          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 text-white flex items-center justify-center">
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-[14px] font-semibold text-[#111111] leading-tight truncate">{theme.name}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-neutral-200 px-4 py-3 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  applyTheme(pendingTheme);
+                  setPreviewTheme(pendingTheme);
+                }}
+                disabled={isThemeSaving}
+                className="h-12 rounded-2xl bg-[#F1F3F7] text-[#111111] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={applySelectedTheme}
+                disabled={isThemeSaving || pendingTheme === currentTheme}
+                className="h-12 rounded-2xl bg-[#4F46E5] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+              >
+                {isThemeSaving ? 'Applying...' : 'Apply'}
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function PartnerInfoModal({ 
   partner, 
   myProfile, 
@@ -3494,7 +3594,10 @@ function PartnerInfoModal({
   onPartnerUpdated,
   onMyProfileUpdated,
   messages = [],
-  isPartnerOnline = false
+  isPartnerOnline = false,
+  currentTheme = 'romantic',
+  onThemeSelect,
+  isThemeSaving = false
 }: { 
   partner: UserProfile, 
   myProfile: UserProfile | null, 
@@ -3503,7 +3606,10 @@ function PartnerInfoModal({
   onPartnerUpdated?: (partner: UserProfile) => void,
   onMyProfileUpdated?: (me: UserProfile) => void,
   messages?: Message[],
-  isPartnerOnline?: boolean
+  isPartnerOnline?: boolean,
+  currentTheme?: ThemeName,
+  onThemeSelect?: (theme: ThemeName) => Promise<void>,
+  isThemeSaving?: boolean
 }) {
   const [view, setView] = useState<'main' | 'nicknames'>('main');
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'reels' | 'links'>('media');
@@ -3517,7 +3623,7 @@ function PartnerInfoModal({
   const [isSaving, setIsSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   
-  // Dummy options & modals
+  // Option modals
   const [showCustomiseModal, setShowCustomiseModal] = useState(false);
   const [showWhoCanEditModal, setShowWhoCanEditModal] = useState(false);
 
@@ -3757,7 +3863,7 @@ function PartnerInfoModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-semibold text-[#111111] leading-tight">Customise</p>
-                  <p className="text-[12px] text-[#737373] mt-0.5 leading-tight">Theme and font</p>
+                  <p className="text-[12px] text-[#737373] mt-0.5 leading-tight">Theme</p>
                 </div>
               </button>
 
@@ -4047,44 +4153,16 @@ function PartnerInfoModal({
         )}
       </AnimatePresence>
 
-      {/* Dummy Customise Bottom Sheet */}
-      <AnimatePresence>
-        {showCustomiseModal && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowCustomiseModal(false)}
-              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
-            />
-            <motion.div 
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl"
-            >
-              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
-              <div className="text-center py-2">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white mx-auto mb-3 shadow-md">
-                  <Heart className="w-7 h-7 fill-white" />
-                </div>
-                <h3 className="text-lg font-bold text-[#111111]">Customise Theme & Fonts</h3>
-                <p className="text-[13px] text-neutral-500 mt-1 max-w-xs mx-auto">
-                  Custom chat gradients, romantic themes, and handwriting fonts are ready to customize in settings.
-                </p>
-                <button 
-                  onClick={() => setShowCustomiseModal(false)}
-                  className="mt-6 w-full h-11 bg-neutral-900 text-white font-bold rounded-xl text-sm active:scale-95 transition-all"
-                >
-                  Got it
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <ThemeCustomizeSheet
+        isOpen={showCustomiseModal}
+        onClose={() => setShowCustomiseModal(false)}
+        currentTheme={currentTheme}
+        onThemeSelect={async (theme) => {
+          if (!onThemeSelect) return;
+          await onThemeSelect(theme);
+        }}
+        isThemeSaving={isThemeSaving}
+      />
 
       {/* "Change Who Can Edit Nickname" Modal */}
       <AnimatePresence>
