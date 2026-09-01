@@ -13,6 +13,16 @@ const sql = `
 ALTER TABLE IF EXISTS app_config 
 ADD COLUMN IF NOT EXISTS partner_passcode text DEFAULT '123456';
 
+-- Message media is structured metadata and the binary lives in Storage. This
+-- prevents oversized Realtime payloads from dropping photos on the other device.
+ALTER TABLE IF EXISTS messages
+ADD COLUMN IF NOT EXISTS media jsonb,
+ADD COLUMN IF NOT EXISTS attachment_url text;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('chat-media', 'chat-media', true, 52428800, ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'])
+ON CONFLICT (id) DO UPDATE SET public = true;
+
 -- 2. Ensure initial row exists
 INSERT INTO app_config (id, owner_email, partner_allowed_emails, partner_passcode)
 VALUES ('main', 'bodruddoja4@gmail.com', ARRAY[]::text[], '123456')
@@ -34,6 +44,18 @@ BEGIN
     SELECT 1 FROM pg_policies WHERE tablename = 'app_config' AND policyname = 'Allow all update config'
   ) THEN
     CREATE POLICY "Allow all update config" ON app_config FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- Both authenticated Google sessions and the PIN-backed partner session use
+-- the public client, so storage access must be symmetric for the shared chat.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'OnlyUs chat media read') THEN
+    CREATE POLICY "OnlyUs chat media read" ON storage.objects FOR SELECT USING (bucket_id = 'chat-media');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'OnlyUs chat media upload') THEN
+    CREATE POLICY "OnlyUs chat media upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-media');
   END IF;
 END $$;
 `;

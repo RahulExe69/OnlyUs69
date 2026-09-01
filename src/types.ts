@@ -48,6 +48,8 @@ export interface Message {
   hidden_for_partner?: boolean;
   isEdited?: boolean;
   media?: MediaAttachment;
+  /** Local-only while an optimistic message is waiting for Supabase. */
+  deliveryStatus?: 'sending' | 'sent' | 'failed';
   replyTo?: {
     id: string;
     text: string;
@@ -60,4 +62,3 @@ export interface Message {
     status: 'pending' | 'active' | 'finished';
   };
 }
-
