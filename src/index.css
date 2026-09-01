@@ -1,14 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --theme-bg: #FFF8F6;
-  --theme-text: #1a1a1a;
-  --theme-header-bg: rgba(255, 255, 255, 0.8);
-  --theme-bubble-owner: #FF8FA3;
+  --theme-bg: #FFF7F8;
+  --theme-text: #3A202B;
+  --theme-header-bg: rgba(255, 250, 251, .86);
+  --theme-bubble-owner: #E45F84;
   --theme-bubble-owner-text: #FFFFFF;
-  --theme-bubble-partner: #FFD6C9;
-  --theme-bubble-partner-text: #5D5D5D;
+  --theme-bubble-partner: #FFE0E7;
+  --theme-bubble-partner-text: #663746;
   --theme-input-bg: #FFFFFF;
+  --theme-surface: #FFFDFD;
+  --theme-accent: #E45F84;
+  --theme-border: rgba(228, 95, 132, .18);
+  --theme-decoration: radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%);
+  --theme-font: "Nunito", "Inter", sans-serif;
 }
 
 html, body {
@@ -89,15 +94,8 @@ body {
 }
 
 /* A theme is a complete chat experience: surface, typography, decoration, and controls. */
-:root {
-  --theme-surface: #FFFDFD;
-  --theme-accent: #E45F84;
-  --theme-border: rgba(228, 95, 132, .18);
-  --theme-decoration: radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%);
-  --theme-font: "Nunito", "Inter", sans-serif;
-}
-
 .chat-theme,
+.theme-customize-page,
 .theme-customize-sheet,
 .theme-settings {
   font-family: var(--theme-font);

@@ -109,7 +109,18 @@ const applyTheme = (themeName: ThemeName) => {
   root.style.setProperty('--theme-font', theme.font);
   // Keeps installed-PWA chrome and mobile browser UI in the same visual system.
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.accent);
+  try {
+    localStorage.setItem('onlyus_chat_theme', themeName);
+  } catch (e) {}
 };
+
+// Immediately apply cached theme to prevent any flash of default theme on page refresh/initial load
+try {
+  const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
+  if (THEMES[cachedTheme]) {
+    applyTheme(cachedTheme);
+  }
+} catch (e) {}
 
 const getMillis = (ts: any) => {
   if (!ts) return 0;
@@ -197,7 +208,20 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [isTabActive, setIsTabActive] = useState(true);
   const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
-  const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>('dashboard');
+  const getInitialTab = (): 'dashboard' | 'chat' | 'instagram' | 'whatsapp' => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get('tab');
+        if (tabParam === 'chat' || tabParam === 'dashboard' || tabParam === 'instagram' || tabParam === 'whatsapp') {
+          return tabParam;
+        }
+      } catch (e) {}
+    }
+    return 'dashboard';
+  };
+
+  const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>(getInitialTab);
   const mainChannelRef = useRef<any>(null);
 
   // Periodic 10s tick to keep relative "Last seen" and online indicators accurate in realtime
@@ -253,8 +277,49 @@ export default function App() {
         }
         return false; // on dashboard, allow Android to minimize/exit
       };
+
+      window.registerPushToken = async (token: string) => {
+        if (!token) return false;
+        try {
+          const role = isOwner ? 'owner' : (isPartner ? 'partner' : (user?.email === OWNER_EMAIL ? 'owner' : 'partner'));
+          await supabase.from('device_tokens').upsert([
+            {
+              user_id: user?.id || role,
+              email: user?.email || (role === 'owner' ? OWNER_EMAIL : 'nusrat@onlyus.app'),
+              role: role,
+              token: token,
+              updated_at: new Date().toISOString()
+            }
+          ], { onConflict: 'token' });
+          return true;
+        } catch (err) {
+          console.warn('Failed to register device token:', err);
+          return false;
+        }
+      };
+
+      window.sendNativeDirectReply = async (text: string) => {
+        if (!text || !text.trim()) return false;
+        try {
+          const role = isOwner ? 'owner' : 'partner';
+          const newMsg = {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            sender_role: role,
+            text: text.trim(),
+            created_at: new Date().toISOString(),
+            reactions: {},
+            pinned: false,
+            deleted: false
+          };
+          const { error } = await supabase.from('messages').insert([newMsg]);
+          return !error;
+        } catch (err) {
+          console.warn('Failed to send native direct reply:', err);
+          return false;
+        }
+      };
     }
-  }, [activeHubTab]);
+  }, [activeHubTab, isOwner, isPartner, user]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -367,6 +432,15 @@ export default function App() {
             const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === msg.text && m.sender_role === msg.sender_role));
             const isDuplicate = filtered.some(m => m.id === msg.id);
             if (isDuplicate) return filtered;
+
+            if (typeof window !== 'undefined' && typeof window.AndroidBridge?.onNewMessage === 'function') {
+              try {
+                window.AndroidBridge.onNewMessage(JSON.stringify(msg));
+              } catch (e) {
+                console.warn('AndroidBridge.onNewMessage error:', e);
+              }
+            }
+
             return [...filtered, msg];
           });
         } else if (payload.eventType === 'UPDATE') {
@@ -610,6 +684,7 @@ export default function App() {
         setUserProfile(profile);
         if (profile.theme) applyTheme(profile.theme as ThemeName);
       } else {
+        const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
         const newProfile = {
           id: user.id,
           email: (email || "").trim().toLowerCase(),
@@ -618,11 +693,11 @@ export default function App() {
           photo_url: user?.user_metadata?.avatar_url || "",
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString(),
-          theme: 'romantic'
+          theme: cachedTheme
         };
         await supabase.from('users').upsert([newProfile]);
         setUserProfile({ ...newProfile, uid: user.id } as any);
-        applyTheme('romantic');
+        applyTheme(cachedTheme);
       }
       setLoading(false);
     };
@@ -1234,10 +1309,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFF8F6] flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--theme-bg)] text-[var(--theme-text)] flex items-center justify-center transition-colors duration-300">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#FF8FA3] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-sans text-sm text-[#FF8FA3] font-medium animate-pulse">Initializing OnlyUs...</p>
+          <div className="w-12 h-12 border-4 border-[var(--theme-accent)] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-sans text-sm text-[var(--theme-accent)] font-medium animate-pulse">Initializing OnlyUs...</p>
         </div>
       </div>
     );
@@ -1344,15 +1419,15 @@ export default function App() {
                             src={partnerProfile.photo_url} 
                             alt="Partner" 
                             referrerPolicy="no-referrer"
-                            className="w-10 h-10 lg:w-11 lg:h-11 rounded-full object-cover border border-[#FF8FA3]/20 shadow-sm"
+                            className="w-10 h-10 lg:w-11 lg:h-11 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 shadow-sm"
                           />
                         ) : (
-                          <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-full bg-[#FFD6C9]/40 flex items-center justify-center border border-[#FF8FA3]/10 text-[#FF8FA3] font-bold text-lg">
+                          <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 text-[var(--theme-accent)] font-bold text-lg">
                             {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
                           </div>
                         )}
                         {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' && (
-                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-white rounded-full"></div>
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full"></div>
                         )}
                       </div>
                       
@@ -1464,17 +1539,13 @@ export default function App() {
                 onSendNudge={sendNudge}
                 showNudgeMenu={showNudgeMenu}
                 onSetShowNudgeMenu={setShowNudgeMenu}
+                activeNudge={activeNudge}
+                onDismissNudge={() => setActiveNudge(null)}
               />
             </div>
           </div>
         </main>
       )}
-
-      <AnimatePresence>
-        {activeNudge && (
-          <NudgeOverlay nudge={activeNudge} onDismiss={() => setActiveNudge(null)} />
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {showProfileModal && userProfile && (
@@ -1803,7 +1874,9 @@ function ChatView({
   onBroadcastTyping,
   onSendNudge,
   showNudgeMenu,
-  onSetShowNudgeMenu
+  onSetShowNudgeMenu,
+  activeNudge,
+  onDismissNudge
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -1836,7 +1909,9 @@ function ChatView({
   onBroadcastTyping: (isTyping: boolean) => void,
   onSendNudge: (type: string) => void,
   showNudgeMenu: boolean,
-  onSetShowNudgeMenu: (val: boolean) => void
+  onSetShowNudgeMenu: (val: boolean) => void,
+  activeNudge?: { type: string, sender: string } | null,
+  onDismissNudge?: () => void
 }) {
   const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
   const [inputText, setInputText] = useState('');
@@ -2031,62 +2106,70 @@ function ChatView({
   }, [messages.length, userProfile?.uid, role, isTabActive, isOverlayOpen]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div 
-        ref={scrollRef}
-        id="message-container" 
-        className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6"
-      >
-        {quotaExceeded && <QuotaBanner />}
-        <div className="flex justify-center mb-10 pt-6">
-          <span className="text-[9px] font-bold text-[#FF8FA3]/60 uppercase tracking-[0.4em] bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[#FF8FA3]/10">Our Story Begins Here</span>
-        </div>
-        
-        {hasMoreMessages && (
-          <div className="flex justify-center mb-4">
-            <button 
-              onClick={() => setMessageLimit(prev => prev + 50)}
-              className="text-xs font-semibold px-4 py-2 bg-white/70 hover:bg-white text-[#FF8FA3] rounded-full shadow-sm border border-[#FF8FA3]/20 transition-all active:scale-95 flex items-center gap-1.5"
-            >
-              <RefreshCw className="w-3 h-3" />
-              Load earlier messages ({visibleMessages.length - messageLimit} more)
-            </button>
+    <div className="flex flex-col h-full relative">
+      <div className="relative flex-1 overflow-hidden flex flex-col min-h-0">
+        <div 
+          ref={scrollRef}
+          id="message-container" 
+          className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
+        >
+          {quotaExceeded && <QuotaBanner />}
+          <div className="flex justify-center mb-10 pt-6">
+            <span className="text-[9px] font-bold text-[var(--theme-accent)] uppercase tracking-[0.4em] bg-[var(--theme-surface)]/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[var(--theme-border)]">Our Story Begins Here</span>
           </div>
-        )}
+          
+          {hasMoreMessages && (
+            <div className="flex justify-center mb-4">
+              <button 
+                onClick={() => setMessageLimit(prev => prev + 50)}
+                className="text-xs font-semibold px-4 py-2 bg-[var(--theme-surface)]/90 hover:bg-[var(--theme-surface)] text-[var(--theme-accent)] rounded-full shadow-sm border border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40 transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Load earlier messages ({visibleMessages.length - messageLimit} more)
+              </button>
+            </div>
+          )}
 
-        {messagesLoading ? (
-          <div className="flex justify-center p-12">
-            <div className="w-6 h-6 border-2 border-gray-100 border-t-black rounded-full animate-spin"></div>
-          </div>
-        ) : displayedMessages.length === 0 ? (
-          <div className="text-center py-20 opacity-20 select-none grayscale">
-            <Heart className="w-16 h-16 mx-auto mb-4" />
-            <p className="font-bold uppercase tracking-widest text-xs italic">A clean slate for our story</p>
-          </div>
-        ) : (
-          displayedMessages.map((msg) => (
-            <MessageItem 
-              key={msg.id} 
-              msg={msg} 
-              role={role} 
-              allMessages={visibleMessages}
-              onReact={toggleReaction} 
-              isSelected={!!selectedMessages.find(m => m.id === msg.id)}
-              selectionCount={selectedMessages.length}
-              onToggleSelect={onToggleSelect}
-              selectionActive={selectedMessages.length > 0}
-              onReply={onSetReplyingTo}
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              onViewImage={onViewImage}
-              isInteractionPoint={msg.id === interactionId}
-              showSeenText={msg.id === interactionId && showIndicatorSeenText}
-              partnerLastReadAt={partnerLastReadMillis}
-              onJoinGame={(game) => onSetActiveGame(game)}
-              onTriggerNudge={onSendNudge}
-            />
-          ))
-        )}
+          {messagesLoading ? (
+            <div className="flex justify-center p-12">
+              <div className="w-6 h-6 border-2 border-[var(--theme-border)] border-t-[var(--theme-accent)] rounded-full animate-spin"></div>
+            </div>
+          ) : displayedMessages.length === 0 ? (
+            <div className="text-center py-20 opacity-20 select-none grayscale">
+              <Heart className="w-16 h-16 mx-auto mb-4" />
+              <p className="font-bold uppercase tracking-widest text-xs italic">A clean slate for our story</p>
+            </div>
+          ) : (
+            displayedMessages.map((msg) => (
+              <MessageItem 
+                key={msg.id} 
+                msg={msg} 
+                role={role} 
+                allMessages={visibleMessages}
+                onReact={toggleReaction} 
+                isSelected={!!selectedMessages.find(m => m.id === msg.id)}
+                selectionCount={selectedMessages.length}
+                onToggleSelect={onToggleSelect}
+                selectionActive={selectedMessages.length > 0}
+                onReply={onSetReplyingTo}
+                userProfile={userProfile}
+                partnerProfile={partnerProfile}
+                onViewImage={onViewImage}
+                isInteractionPoint={msg.id === interactionId}
+                showSeenText={msg.id === interactionId && showIndicatorSeenText}
+                partnerLastReadAt={partnerLastReadMillis}
+                onJoinGame={(game) => onSetActiveGame(game)}
+                onTriggerNudge={onSendNudge}
+              />
+            ))
+          )}
+        </div>
+
+        <AnimatePresence>
+          {activeNudge && (
+            <NudgeOverlay nudge={activeNudge} onDismiss={onDismissNudge} />
+          )}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence>
@@ -2095,14 +2178,14 @@ function ChatView({
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 5 }}
-            className="px-6 lg:px-10 py-1 flex items-center gap-2.5 text-[#FF8FA3] bg-gradient-to-t from-white/40 to-transparent"
+            className="px-6 lg:px-10 py-1 flex items-center gap-2.5 text-[var(--theme-accent)] bg-gradient-to-t from-[var(--theme-bg)]/80 to-transparent"
           >
-            <div className="flex gap-2 items-center bg-white/80 backdrop-blur-md px-4 py-2 rounded-2xl shadow-md border border-[#FF8FA3]/10 scale-95 origin-left">
-              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0 }} className="w-2 h-2 bg-[#FF8FA3] rounded-full" />
-              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-2 h-2 bg-[#FF8FA3] rounded-full" />
-              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-2 h-2 bg-[#FF8FA3] rounded-full" />
+            <div className="flex gap-2 items-center bg-[var(--theme-surface)]/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-md border border-[var(--theme-border)] scale-95 origin-left">
+              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0 }} className="w-2 h-2 bg-[var(--theme-accent)] rounded-full" />
+              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-2 h-2 bg-[var(--theme-accent)] rounded-full" />
+              <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-2 h-2 bg-[var(--theme-accent)] rounded-full" />
             </div>
-            <span className="text-[11px] font-bold italic tracking-wide opacity-80 animate-pulse">
+            <span className="text-[11px] font-bold italic tracking-wide opacity-80 animate-pulse text-[var(--theme-accent)]">
               {role === 'owner' ? (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || 'Nusrat') : 'Rahul'} is writing...
             </span>
           </motion.div>
@@ -2294,18 +2377,16 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
   const config = configs[nudge.type] || configs.hug;
 
   const particles = [
-    { x: 130, y: -120, scale: 1.3, delay: 0 },
-    { x: -140, y: -100, scale: 1.2, delay: 0.1 },
-    { x: 150, y: 80, scale: 1.4, delay: 0.2 },
-    { x: -120, y: 120, scale: 1.3, delay: 0.15 },
-    { x: 0, y: -160, scale: 1.5, delay: 0.05 },
-    { x: -20, y: 160, scale: 1.3, delay: 0.25 },
-    { x: 90, y: 140, scale: 1.2, delay: 0.1 },
-    { x: -100, y: -140, scale: 1.4, delay: 0.2 },
-    { x: 170, y: -40, scale: 1.2, delay: 0.3 },
-    { x: -160, y: 30, scale: 1.4, delay: 0.05 },
-    { x: 80, y: -70, scale: 1.2, delay: 0.18 },
-    { x: -70, y: 80, scale: 1.3, delay: 0.22 }
+    { x: 100, y: -90, scale: 1.2, delay: 0 },
+    { x: -110, y: -80, scale: 1.1, delay: 0.1 },
+    { x: 115, y: 60, scale: 1.3, delay: 0.2 },
+    { x: -95, y: 90, scale: 1.2, delay: 0.15 },
+    { x: 0, y: -120, scale: 1.4, delay: 0.05 },
+    { x: -15, y: 120, scale: 1.2, delay: 0.25 },
+    { x: 70, y: 100, scale: 1.1, delay: 0.1 },
+    { x: -80, y: -100, scale: 1.3, delay: 0.2 },
+    { x: 130, y: -30, scale: 1.1, delay: 0.3 },
+    { x: -120, y: 20, scale: 1.3, delay: 0.05 },
   ];
 
   return (
@@ -2314,46 +2395,46 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onDismiss}
-      className={`fixed inset-0 z-[200] cursor-pointer flex items-center justify-center backdrop-blur-[6px] transition-colors duration-500 ${config.bg}`}
+      className={`absolute inset-0 z-40 overflow-hidden cursor-pointer flex items-center justify-center backdrop-blur-[4px] transition-colors duration-500 rounded-none ${config.bg}`}
     >
-      <div className="relative flex flex-col items-center">
+      <div className="relative flex flex-col items-center p-4">
         <motion.div
            initial={{ scale: 0, rotate: -20 }}
            animate={{ 
              scale: [0, 1.2, 1], 
              rotate: [20, -10, 0],
-             y: [0, -15, 0]
+             y: [0, -10, 0]
            }}
            transition={{ duration: 0.8, ease: "easeOut" }}
            className="relative flex items-center justify-center"
         >
           {nudge.type === 'tickle' ? (
              <motion.div 
-              animate={{ x: [-14, 14, -14], y: [-6, 6, -6], rotate: [-6, 6, -6] }}
+              animate={{ x: [-12, 12, -12], y: [-5, 5, -5], rotate: [-6, 6, -6] }}
               transition={{ repeat: Infinity, duration: 0.18 }}
              >
-                <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
+                <div className="text-[90px] sm:text-[110px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
              </motion.div>
           ) : nudge.type === 'miss' ? (
             <motion.div 
-              animate={{ opacity: [0.8, 1, 0.8], y: [0, -12, 0], scale: [1, 1.06, 1] }}
+              animate={{ opacity: [0.8, 1, 0.8], y: [0, -10, 0], scale: [1, 1.06, 1] }}
               transition={{ repeat: Infinity, duration: 2.2 }}
-             >
-                <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
-             </motion.div>
+            >
+              <div className="text-[90px] sm:text-[110px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
+            </motion.div>
           ) : nudge.type === 'kiss' || nudge.type === 'blowkiss' ? (
             <motion.div 
               animate={{ scale: [1, 1.2, 1], rotate: [-10, 10, -10] }}
               transition={{ repeat: Infinity, duration: 1.4 }}
             >
-              <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
+              <div className="text-[90px] sm:text-[110px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
             </motion.div>
           ) : (
             <motion.div
               animate={{ scale: [1, 1.15, 1] }}
               transition={{ repeat: Infinity, duration: 1.2 }}
             >
-              <div className="text-[130px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
+              <div className="text-[90px] sm:text-[110px] drop-shadow-2xl select-none leading-none">{config.emoji}</div>
             </motion.div>
           )}
           
@@ -2373,21 +2454,21 @@ function NudgeOverlay({ nudge, onDismiss }: { nudge: { type: string, sender: str
                 repeat: Infinity,
                 delay: p.delay
               }}
-              className="absolute top-1/2 left-1/2 -ml-4 -mt-4 select-none pointer-events-none"
+              className="absolute top-1/2 left-1/2 -ml-3 -mt-3 select-none pointer-events-none"
             >
-              <div className="text-3xl lg:text-4xl">{config.emoji}</div>
+              <div className="text-2xl sm:text-3xl">{config.emoji}</div>
             </motion.div>
           ))}
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mt-12 bg-white/95 backdrop-blur-md px-8 py-4 rounded-[2rem] shadow-2xl border border-pink-100/80 flex flex-col items-center gap-1"
+          transition={{ delay: 0.2 }}
+          className="mt-8 bg-[var(--theme-surface)]/95 backdrop-blur-md px-6 py-3 rounded-[2rem] shadow-xl border border-[var(--theme-border)] flex flex-col items-center gap-0.5"
         >
-          <span className={`text-sm font-black uppercase tracking-[0.2em] ${config.color}`}>{config.label}</span>
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-widest opacity-70">From {nudge.sender} {config.emoji}</span>
+          <span className={`text-xs sm:text-sm font-black uppercase tracking-[0.2em] ${config.color}`}>{config.label}</span>
+          <span className="text-[10px] sm:text-xs font-bold text-[var(--theme-text)]/60 uppercase tracking-widest">From {nudge.sender} {config.emoji}</span>
         </motion.div>
       </div>
     </motion.div>
@@ -2736,8 +2817,8 @@ const MessageItem = React.memo(function MessageItem({
         style={{ opacity: swipeOpacity, x: useTransform(swipeX, [8, 48], [-12, 0]) }}
         className="absolute left-6 top-1/2 -translate-y-1/2 z-0"
       >
-        <div className="p-2 bg-[#FF8FA3]/10 rounded-full">
-          <CornerUpLeft className="w-5 h-5 text-[#FF8FA3]" />
+        <div className="p-2 bg-[var(--theme-accent)]/15 rounded-full">
+          <CornerUpLeft className="w-5 h-5 text-[var(--theme-accent)]" />
         </div>
       </motion.div>
 
@@ -2783,13 +2864,13 @@ const MessageItem = React.memo(function MessageItem({
               <img 
                 src={partnerProfile.photo_url} 
                 alt="P" 
-                className="w-8 h-8 rounded-full object-cover border border-[#FF8FA3]/10 shadow-sm" 
+                className="w-8 h-8 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20 shadow-sm" 
                 referrerPolicy="no-referrer" 
                 onContextMenu={(e) => e.preventDefault()}
                 style={{ WebkitTouchCallout: 'none' }}
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-[#FFD6C9]/40 flex items-center justify-center text-[#FF8FA3] font-bold text-xs border border-[#FF8FA3]/10">
+              <div className="w-8 h-8 rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)] font-bold text-xs border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20">
                 {partnerProfile?.display_name?.[0] || 'P'}
               </div>
             )}
@@ -2806,7 +2887,7 @@ const MessageItem = React.memo(function MessageItem({
                   exit={{ opacity: 0, scale: 0.8, y: pickerPosition === 'bottom' ? -10 : 10 }}
                   className={`absolute ${
                     pickerPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
-                  } z-50 bg-white/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(255,143,163,0.18)] border border-[#FF8FA3]/15 p-1.5 rounded-full flex gap-1 w-max ${
+                  } z-50 bg-[var(--theme-surface)]/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-[var(--theme-border)] p-1.5 rounded-full flex gap-1 w-max ${
                     isOwn ? 'right-0' : 'left-0'
                   }`}
                   onClick={(e) => e.stopPropagation()}
@@ -2823,12 +2904,12 @@ const MessageItem = React.memo(function MessageItem({
                           setShowPicker(false);
                         }}
                         className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all relative ${
-                          isActive ? 'bg-[#FF8FA3]/20 scale-110' : 'hover:bg-[#FF8FA3]/5'
+                          isActive ? 'bg-[var(--theme-accent)]/20 scale-110' : 'hover:bg-[var(--theme-accent)]/10'
                         }`}
                       >
                         {e}
                         {isActive && (
-                          <motion.div layoutId="reaction-bg" className="absolute inset-0 bg-[#FF8FA3]/10 rounded-full -z-10" />
+                          <motion.div layoutId="reaction-bg" className="absolute inset-0 bg-[var(--theme-accent)]/15 rounded-full -z-10" />
                         )}
                       </motion.button>
                     );
@@ -2891,22 +2972,22 @@ const MessageItem = React.memo(function MessageItem({
             {msg.gameInvite && !msg.deleted && (
               <div className="mt-4 pt-4 border-t border-black/5 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOwn ? 'bg-white text-[#FF8FA3]' : 'bg-[#FF8FA3] text-white'}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOwn ? 'bg-white text-[var(--theme-accent)]' : 'bg-[var(--theme-accent)] text-white'}`}>
                     <Gamepad2 className="w-5 h-5" />
                   </div>
                   <div className="flex-1">
-                    <p className={`text-[11px] font-bold ${isOwn ? 'text-white' : 'text-[#1a1a1a]'}`}>
+                    <p className={`text-[11px] font-bold ${isOwn ? 'text-white' : 'text-[var(--theme-text)]'}`}>
                       Tic Tac Toe
                     </p>
-                    <p className={`text-[9px] uppercase tracking-wider opacity-60 ${isOwn ? 'text-white' : 'text-[#6E6E6E]'}`}>Match Challenge</p>
+                    <p className={`text-[9px] uppercase tracking-wider opacity-60 ${isOwn ? 'text-white' : 'text-[var(--theme-text)]/70'}`}>Match Challenge</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => onJoinGame?.({ id: msg.gameInvite!.sessionId, type: msg.gameInvite!.gameType })}
                   className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-95 shadow-sm ${
                     isOwn 
-                      ? 'bg-white text-[#FF8FA3] hover:bg-white/90 shadow-white/20' 
-                      : 'bg-[#FF8FA3] text-white hover:bg-[#FF8FA3]/90 shadow-[#FF8FA3]/20'
+                      ? 'bg-white text-[var(--theme-accent)] hover:bg-white/90 shadow-white/20' 
+                      : 'bg-[var(--theme-accent)] text-white hover:opacity-90 shadow-[var(--theme-accent)]/20'
                   }`}
                 >
                   Join Game
@@ -2935,14 +3016,14 @@ const MessageItem = React.memo(function MessageItem({
                       e.stopPropagation(); 
                       onReact(msg.id, emoji);
                     }}
-                    className={`flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-white border shadow-[0_2px_8px_rgba(0,0,0,0.12)] hover:scale-110 transition-transform cursor-pointer text-[13px] ${
+                    className={`flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-[var(--theme-surface)] border shadow-[0_2px_8px_rgba(0,0,0,0.12)] hover:scale-110 transition-transform cursor-pointer text-[13px] ${
                       userReacted 
-                        ? 'border-[#FF8FA3]/50 z-10' 
-                        : 'border-gray-100 z-0'
+                        ? 'border-[var(--theme-accent)]/70 ring-1 ring-[var(--theme-accent)]/40 z-10' 
+                        : 'border-[var(--theme-border)] z-0'
                     }`}
                   >
                     <span>{emoji}</span>
-                    {count > 1 && <span className="ml-1 text-[10px] font-bold text-[#6E6E6E]">{count}</span>}
+                    {count > 1 && <span className="ml-1 text-[10px] font-bold text-[var(--theme-text)]/70">{count}</span>}
                   </motion.div>
                 );
               })}
@@ -3201,36 +3282,36 @@ function ProfileModal({
       <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2">
         <button 
           onClick={() => setActiveTab('me')}
-          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
+          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
         >
           My Profile
         </button>
         <button 
           onClick={() => setActiveTab('partner')}
-          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'partner' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
+          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'partner' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
         >
           Partner's Profile
         </button>
         {isOwner && (
           <button 
             onClick={() => setActiveTab('access')}
-            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'access' ? 'border-[#FF8FA3] text-[#FF8FA3]' : 'border-transparent text-[#6E6E6E]/50'}`}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'access' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
           >
             PIN Access
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[var(--theme-bg)] text-[var(--theme-text)]">
         {activeTab === 'me' && (
           <div className="max-w-md mx-auto space-y-8">
             <div className="flex flex-col items-center">
               <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-[#FFD6C9] overflow-hidden border-4 border-[#FF8FA3]/20 shadow-md relative">
+                <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/30 shadow-md relative ring-4 ring-[var(--theme-accent)]/15">
                   {photo ? (
                     <img src={photo} alt="Me" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[#FF8FA3]">
+                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
                       {name?.[0] || '?'}
                     </div>
                   )}
@@ -3238,7 +3319,7 @@ function ProfileModal({
                 <button 
                   type="button"
                   onClick={() => myFileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 bg-[#FF8FA3] p-2.5 rounded-full text-white shadow-lg border-2 border-white hover:scale-110 active:scale-95 transition-transform"
+                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform"
                 >
                   <Camera className="w-5 h-5" />
                 </button>
@@ -3247,32 +3328,32 @@ function ProfileModal({
                   accept="image/*" className="hidden" 
                 />
               </div>
-              <p className="mt-4 text-[11px] font-bold text-[#6E6E6E] uppercase tracking-widest opacity-60">Tap camera to change your photo</p>
+              <p className="mt-4 text-[11px] font-bold text-[var(--theme-text)]/60 uppercase tracking-widest">Tap camera to change your photo</p>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Your Display Name</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Your Display Name</label>
                 <input 
                   value={name} onChange={(e) => setName(e.target.value)}
                   placeholder="How your partner sees you..."
-                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
+                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
                 />
               </div>
               
-              <div className="pt-6 border-t border-[#FF8FA3]/10 flex flex-col gap-4">
+              <div className="pt-6 border-t border-[var(--theme-border)] flex flex-col gap-4">
                 <button 
                   type="button"
                   onClick={saveMyProfile}
                   disabled={isSaving}
-                  className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50"
+                  className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50"
                 >
                   {isSaving ? "Saving..." : "Save My Profile"}
                 </button>
                 <button 
                   type="button"
                   onClick={onLogout}
-                  className="w-full h-14 bg-[#FFF8F6] text-red-400 border border-red-100 rounded-2xl text-[13px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-50 active:scale-95 transition-all"
+                  className="w-full h-14 bg-[var(--theme-surface)] text-red-400 border border-red-200/50 rounded-2xl text-[13px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500/10 active:scale-95 transition-all"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout Session
@@ -3286,11 +3367,11 @@ function ProfileModal({
           <div className="max-w-md mx-auto space-y-8">
             <div className="flex flex-col items-center">
               <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-[#FFD6C9] overflow-hidden border-4 border-[#FF8FA3]/20 shadow-md relative">
+                <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/30 shadow-md relative ring-4 ring-[var(--theme-accent)]/15">
                   {partnerPhoto ? (
                     <img src={partnerPhoto} alt="Partner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[#FF8FA3]">
+                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
                       {partnerName?.[0] || '?'}
                     </div>
                   )}
@@ -3298,7 +3379,7 @@ function ProfileModal({
                 <button 
                   type="button"
                   onClick={() => partnerFileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 bg-[#FF8FA3] p-2.5 rounded-full text-white shadow-lg border-2 border-white hover:scale-110 active:scale-95 transition-transform"
+                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform"
                 >
                   <Camera className="w-5 h-5" />
                 </button>
@@ -3307,39 +3388,39 @@ function ProfileModal({
                   accept="image/*" className="hidden" 
                 />
               </div>
-              <p className="mt-4 text-[11px] font-bold text-[#FF8FA3] uppercase tracking-widest">
+              <p className="mt-4 text-[11px] font-bold text-[var(--theme-accent)] uppercase tracking-widest">
                 Edit {partnerName}'s Photo & Profile
               </p>
-              <p className="mt-1 text-[10px] text-[#6E6E6E] opacity-60 text-center">
+              <p className="mt-1 text-[10px] text-[var(--theme-text)]/60 text-center">
                 Both of you can update each other's photo anytime!
               </p>
             </div>
 
             <div className="space-y-5">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Partner's Display Name</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Partner's Display Name</label>
                 <input 
                   value={partnerName} onChange={(e) => setPartnerName(e.target.value)}
                   placeholder="Partner's display name..."
-                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
+                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block ml-1 opacity-60">Custom Nickname (Only visible to you)</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Custom Nickname (Only visible to you)</label>
                 <input 
                   value={partnerNickname} onChange={(e) => setPartnerNickname(e.target.value)}
                   placeholder="e.g. My Queen, My Love..."
-                  className="w-full bg-[#FFF8F6] border border-[#FF8FA3]/15 rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/20 font-medium"
+                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
                 />
               </div>
               
-              <div className="pt-6 border-t border-[#FF8FA3]/10">
+              <div className="pt-6 border-t border-[var(--theme-border)]">
                 <button 
                   type="button"
                   onClick={savePartnerProfile}
                   disabled={isSaving}
-                  className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50"
+                  className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50"
                 >
                   {isSaving ? "Updating Partner..." : `Save ${partnerName}'s Profile`}
                 </button>
@@ -3351,21 +3432,21 @@ function ProfileModal({
         {activeTab === 'access' && isOwner && (
           <div className="max-w-md mx-auto space-y-8">
             {/* 6-Digit Passcode Section */}
-            <section className="bg-gradient-to-br from-[#FFF0F3] to-[#FFF8F6] p-6 rounded-3xl border border-[#FF8FA3]/20 shadow-sm space-y-5">
+            <section className="bg-[var(--theme-surface)] p-6 rounded-3xl border border-[var(--theme-border)] shadow-sm space-y-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#FF8FA3]/15 flex items-center justify-center text-[#FF8FA3]">
+                  <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)]">
                     <KeyRound className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-[#1a1a1a]">Nusrat's 6-Digit Passcode</h3>
-                    <p className="text-[10px] text-[#6E6E6E] opacity-70">Used for instant passcode login</p>
+                    <h3 className="text-xs font-bold text-[var(--theme-text)]">Nusrat's 6-Digit Passcode</h3>
+                    <p className="text-[10px] text-[var(--theme-text)]/60">Used for instant passcode login</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={generateRandomPin}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-white border border-[#FF8FA3]/20 rounded-xl text-[10px] font-bold text-[#FF8FA3] hover:bg-[#FF8FA3]/5 active:scale-95 transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-xl text-[10px] font-bold text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>Random PIN</span>
@@ -3383,7 +3464,7 @@ function ProfileModal({
                     value={partnerPasscode}
                     onChange={(e) => setPartnerPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="123456"
-                    className="w-full h-14 bg-white border border-[#FF8FA3]/25 rounded-2xl px-5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/30"
+                    className="w-full h-14 bg-[var(--theme-input-bg)] border border-[var(--theme-border)] rounded-2xl px-5 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[var(--theme-text)] focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/30"
                   />
                 </div>
 
@@ -3391,7 +3472,7 @@ function ProfileModal({
                   <button
                     type="button"
                     onClick={copyPasscodeToClipboard}
-                    className="flex-1 h-11 bg-white border border-[#FF8FA3]/20 text-[#1a1a1a] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[#FFF8F6] active:scale-95 transition-all"
+                    className="flex-1 h-11 bg-[var(--theme-surface)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all"
                   >
                     {copiedCode ? (
                       <>
@@ -3400,7 +3481,7 @@ function ProfileModal({
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-[#FF8FA3]" />
+                        <Copy className="w-3.5 h-3.5 text-[var(--theme-accent)]" />
                         <span>Copy 6-Digit Code</span>
                       </>
                     )}
@@ -3408,7 +3489,7 @@ function ProfileModal({
                 </div>
               </div>
 
-              <p className="text-[11px] text-[#6E6E6E] leading-relaxed opacity-80">
+              <p className="text-[11px] text-[var(--theme-text)]/70 leading-relaxed">
                 Nusrat can enter this 6-digit code on the login screen to enter OnlyUs immediately without any Google account.
               </p>
             </section>
@@ -3416,14 +3497,14 @@ function ProfileModal({
             {/* Email Authorizations (Optional backup) */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
-                <UserPlus className="w-4 h-4 text-[#FF8FA3]" />
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] opacity-60">Backup Email Access (Optional)</h3>
+                <UserPlus className="w-4 h-4 text-[var(--theme-accent)]" />
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60">Backup Email Access (Optional)</h3>
               </div>
               <div className="space-y-2">
                 {emails.map(email => (
-                  <div key={email} className="flex items-center justify-between p-3.5 bg-[#FFF8F6] rounded-2xl border border-[#FF8FA3]/5">
-                    <span className="text-xs font-mono text-[#6E6E6E] truncate">{email}</span>
-                    <button onClick={() => removeEmail(email)} className="p-1.5 text-red-300 hover:text-red-500 transition-colors">
+                  <div key={email} className="flex items-center justify-between p-3.5 bg-[var(--theme-surface)] rounded-2xl border border-[var(--theme-border)]">
+                    <span className="text-xs font-mono text-[var(--theme-text)] truncate">{email}</span>
+                    <button onClick={() => removeEmail(email)} className="p-1.5 text-red-400 hover:text-red-600 transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -3434,9 +3515,9 @@ function ProfileModal({
                 <input 
                   type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="Optional Google Email..."
-                  className="flex-1 bg-[#FFF8F6] border border-[#FF8FA3]/10 rounded-xl px-4 py-2.5 text-xs focus:outline-none"
+                  className="flex-1 bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-xl px-4 py-2.5 text-xs focus:outline-none"
                 />
-                <button type="submit" className="px-4 bg-[#1a1a1a] text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all">
+                <button type="submit" className="px-4 bg-[var(--theme-accent)] text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all">
                   Add
                 </button>
               </form>
@@ -3446,7 +3527,7 @@ function ProfileModal({
               type="button"
               onClick={savePasscodeAndAccess}
               disabled={isSaving || partnerPasscode.length !== 6}
-              className="w-full h-14 bg-[#FF8FA3] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[#FF8FA3]/15 active:scale-95 transition-all disabled:opacity-50 mt-6"
+              className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50 mt-6"
             >
               {isSaving ? "Saving Settings..." : "Save Passcode & Settings"}
             </button>
@@ -3467,7 +3548,7 @@ function ProfileModal({
   );
 }
 
-function ThemeCustomizeSheet({
+function ThemeCustomizePage({
   isOpen,
   onClose,
   currentTheme,
@@ -3488,10 +3569,6 @@ function ThemeCustomizeSheet({
     }
   }, [isOpen, currentTheme]);
 
-  const closeSheet = () => {
-    onClose();
-  };
-
   const applySelectedTheme = async () => {
     if (pendingTheme === currentTheme || isThemeSaving) return;
     await onThemeSelect(pendingTheme);
@@ -3501,89 +3578,175 @@ function ThemeCustomizeSheet({
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeSheet}
-            className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
-          />
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="theme-customize-sheet fixed bottom-0 left-0 right-0 z-[130] rounded-t-[2.2rem] max-w-2xl mx-auto shadow-2xl overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 pt-3 pb-4 border-b border-[var(--theme-border)]">
-              <div className="w-12 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto mb-4" />
-              <div className="relative flex items-center justify-center">
-                <h3 className="text-[24px] font-bold text-[var(--theme-text)]">Customise</h3>
-                <button
-                  onClick={closeSheet}
-                  className="absolute right-0 p-1 text-[var(--theme-text)]/55 hover:text-[var(--theme-accent)]"
-                  aria-label="Close customise"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+        <motion.div
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+          className="theme-customize-page fixed inset-0 z-[140] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden font-sans"
+        >
+          {/* Header Bar */}
+          <header className="h-16 sm:h-20 px-4 sm:px-6 flex items-center justify-between border-b border-[var(--theme-border)] bg-[var(--theme-surface)]/90 backdrop-blur-md flex-shrink-0 z-20">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onClose}
+                className="p-2 -ml-2 text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                aria-label="Back to chat"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <div>
+                <h2 className="text-[18px] sm:text-[20px] font-bold text-[var(--theme-text)] tracking-tight">Customise Theme</h2>
+                <p className="text-[11px] sm:text-[12px] text-[var(--theme-text)]/60 font-medium">Personalize colors, wallpaper & fonts</p>
               </div>
-              <p className="text-center text-[13px] text-[var(--theme-text)]/60 mt-2">
-                Themes already include matching colors, wallpaper mood, and font.
-              </p>
+            </div>
+            {pendingTheme !== currentTheme && (
+              <button
+                onClick={applySelectedTheme}
+                disabled={isThemeSaving}
+                className="px-4 py-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isThemeSaving ? 'Saving...' : 'Apply'}
+              </button>
+            )}
+          </header>
+
+          {/* Body Content */}
+          <div className="flex-1 custom-scrollbar overflow-y-auto px-4 sm:px-8 py-5 pb-28 max-w-4xl mx-auto w-full">
+            {/* Info Banner */}
+            <div className="mb-6 p-4 rounded-2xl bg-[var(--theme-bg)] border border-[var(--theme-border)] flex items-start gap-3.5 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0 font-bold">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-[var(--theme-text)]">Chat Atmosphere</h3>
+                <p className="text-xs text-[var(--theme-text)]/65 leading-relaxed mt-0.5">
+                  Each theme changes the room's mood with custom wallpaper textures, bubble colors, ambient lighting, and typography.
+                </p>
+              </div>
             </div>
 
-            <div className="custom-scrollbar overflow-y-auto px-3 sm:px-4 pt-3 pb-24 max-h-[68dvh]">
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
-                  const theme = THEMES[themeName];
-                  const isSelected = pendingTheme === themeName;
-                  const isApplied = currentTheme === themeName;
-                  return (
-                    <button
-                      key={themeName}
-                      type="button"
-                      onClick={() => setPendingTheme(themeName)}
-                      disabled={isThemeSaving}
-                      className={`theme-choice ${isSelected ? 'theme-choice-active' : ''} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
+            {/* Grid of themes */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-5">
+              {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
+                const theme = THEMES[themeName];
+                const isSelected = pendingTheme === themeName;
+                const isApplied = currentTheme === themeName;
+                return (
+                  <button
+                    key={themeName}
+                    type="button"
+                    onClick={() => setPendingTheme(themeName)}
+                    disabled={isThemeSaving}
+                    className={`group relative flex flex-col p-3 rounded-2xl sm:rounded-3xl border transition-all text-left overflow-hidden cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--theme-accent)] bg-[var(--theme-surface)] ring-4 ring-[var(--theme-accent)]/20 shadow-lg scale-[1.01]'
+                        : 'border-[var(--theme-border)] bg-[var(--theme-surface)] hover:border-[var(--theme-accent)]/40 hover:shadow-md'
+                    } ${isThemeSaving ? 'opacity-70 cursor-wait' : ''}`}
+                  >
+                    {/* Preview box */}
+                    <div
+                      className="relative w-full h-28 sm:h-36 rounded-xl sm:rounded-2xl overflow-hidden border border-black/5 p-2.5 flex flex-col justify-between shadow-inner transition-transform group-hover:scale-[1.01]"
+                      style={{ background: theme.decoration, backgroundColor: theme.bg }}
                     >
-                      <div
-                        className="theme-choice-preview"
-                        style={{ background: theme.decoration, backgroundColor: theme.bg }}
+                      {/* Mini top bar */}
+                      <div 
+                        className="w-full h-3 sm:h-3.5 rounded-full shadow-xs flex items-center px-1.5 justify-between"
+                        style={{ background: theme.header }}
                       >
-                        <span className="theme-preview-header" style={{ background: theme.header }} />
-                        <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
-                        <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
-                        {(isSelected || isApplied) && (
-                          <span className="theme-choice-check">
-                            <Check className="w-3.5 h-3.5" />
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: theme.accent }} />
+                        <div className="w-8 h-1 rounded-full opacity-30" style={{ background: theme.text }} />
+                      </div>
+
+                      {/* Mini bubbles */}
+                      <div className="space-y-1.5 my-auto px-0.5">
+                        <div
+                          className="max-w-[78%] px-2.5 py-1 rounded-xl text-[9px] font-semibold shadow-xs"
+                          style={{
+                            background: theme.partner,
+                            color: theme.partnerText,
+                            borderRadius: '12px 12px 12px 3px'
+                          }}
+                        >
+                          Hi there ❤️
+                        </div>
+                        <div
+                          className="max-w-[78%] ml-auto px-2.5 py-1 rounded-xl text-[9px] font-semibold text-right shadow-xs"
+                          style={{
+                            background: theme.owner,
+                            color: theme.ownerText,
+                            borderRadius: '12px 12px 3px 12px'
+                          }}
+                        >
+                          Love you ✨
+                        </div>
+                      </div>
+
+                      {/* Selected check badge */}
+                      {(isSelected || isApplied) && (
+                        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-md">
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Theme Details */}
+                    <div className="mt-3 px-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <h4 className="text-[13px] sm:text-[15px] font-bold text-[var(--theme-text)] leading-tight truncate">
+                          {theme.name}
+                        </h4>
+                        {isApplied && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex-shrink-0">
+                            Active
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-[12px] sm:text-[14px] font-semibold text-[var(--theme-text)] leading-tight truncate">{theme.name}</p>
-                    </button>
-                  );
-                })}
-              </div>
+                      <p className="text-[11px] text-[var(--theme-text)]/60 mt-1 line-clamp-2 leading-snug">
+                        {theme.note}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] px-4 py-3">
+          {/* Bottom Action Footer */}
+          <div className="fixed bottom-0 left-0 right-0 bg-[var(--theme-surface)]/95 backdrop-blur-md border-t border-[var(--theme-border)] p-4 z-30">
+            <div className="max-w-md mx-auto">
               <button
                 type="button"
                 onClick={applySelectedTheme}
                 disabled={isThemeSaving || pendingTheme === currentTheme}
-                className="w-full h-12 rounded-2xl bg-[var(--theme-accent)] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+                className="w-full h-13 rounded-2xl bg-[var(--theme-accent)] text-white text-[15px] sm:text-[16px] font-bold tracking-wide shadow-xl shadow-[var(--theme-accent)]/20 active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isThemeSaving ? 'Applying...' : 'Apply'}
+                {isThemeSaving ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Applying Theme...</span>
+                  </>
+                ) : pendingTheme === currentTheme ? (
+                  <>
+                    <Check className="w-5 h-5" />
+                    <span>Theme Active</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span>Apply {THEMES[pendingTheme]?.name || 'Theme'}</span>
+                  </>
+                )}
               </button>
             </div>
-          </motion.div>
-        </>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );
 }
+
+const ThemeCustomizeSheet = ThemeCustomizePage;
 
 function PartnerInfoModal({ 
   partner, 
@@ -3805,7 +3968,7 @@ function PartnerInfoModal({
             <div className="flex flex-col items-center pt-2 pb-6 px-4">
               <div className="relative group">
                 <div 
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border border-black/10 shadow-sm cursor-pointer active:scale-95 transition-transform bg-neutral-100"
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/30 shadow-sm ring-4 ring-[var(--theme-accent)]/15 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)]"
                   onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
                 >
                   {partner.photo_url ? (
@@ -3816,7 +3979,7 @@ function PartnerInfoModal({
                       referrerPolicy="no-referrer" 
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-neutral-400 bg-neutral-100">
+                    <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-[var(--theme-accent)] bg-[var(--theme-accent)]/10">
                       {currentPartnerNickname?.[0] || 'P'}
                     </div>
                   )}
@@ -3830,7 +3993,7 @@ function PartnerInfoModal({
                     photoInputRef.current?.click();
                   }}
                   title="Change partner's photo"
-                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center border-2 border-white shadow-md hover:scale-105 active:scale-90 transition-transform"
+                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform"
                 >
                   <Camera className="w-4 h-4" />
                 </button>
@@ -4007,7 +4170,7 @@ function PartnerInfoModal({
                 className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-13 h-13 rounded-full overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                  <div className="w-13 h-13 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
                     {myProfile?.photo_url ? (
                       <img 
                         src={myProfile.photo_url} 
@@ -4016,7 +4179,7 @@ function PartnerInfoModal({
                         referrerPolicy="no-referrer" 
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-lg">
+                      <div className="w-full h-full flex items-center justify-center font-bold text-[var(--theme-accent)] text-lg">
                         {currentMyNickname?.[0] || 'R'}
                       </div>
                     )}
@@ -4040,7 +4203,7 @@ function PartnerInfoModal({
                 className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative w-13 h-13 rounded-full overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                  <div className="relative w-13 h-13 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
                     {partner.photo_url ? (
                       <img 
                         src={partner.photo_url} 
@@ -4049,12 +4212,12 @@ function PartnerInfoModal({
                         referrerPolicy="no-referrer" 
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center font-bold text-neutral-400 text-lg">
+                      <div className="w-full h-full flex items-center justify-center font-bold text-[var(--theme-accent)] text-lg">
                         {currentPartnerNickname?.[0] || 'N'}
                       </div>
                     )}
                     {isPartnerOnline && (
-                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#4ade80] border-2 border-white rounded-full" />
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full" />
                     )}
                   </div>
                   <div className="min-w-0">

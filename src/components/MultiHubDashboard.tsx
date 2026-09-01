@@ -152,16 +152,16 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
                 <img 
                   src={partnerProfile.photo_url} 
                   alt={partnerName} 
-                  className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm"
+                  className="w-11 h-11 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 shadow-sm"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#FFB3C1] to-[#FF758F] text-white flex items-center justify-center font-bold text-sm shadow-sm">
+                <div className="w-11 h-11 rounded-full bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center font-bold text-sm shadow-sm">
                   {partnerName[0] || 'N'}
                 </div>
               )}
               {isPartnerOnline && (
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full animate-pulse" />
+                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse" />
               )}
             </div>
             <div>

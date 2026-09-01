@@ -85,6 +85,29 @@ Themes are synchronized with Supabase and persist across sessions and devices.
 
 ---
 
+## 📱 Companion Native Android APKs
+
+The OnlyUs ecosystem is complemented by two bespoke native Android APKs built for each partner's distinct workflow and privacy needs:
+
+### 1. 🥷 Nusrat's Stealth Private APK
+* **Design Philosophy**: Ultimate privacy, discreet identity, and stealth operation on device.
+* **Key Characteristics**:
+  * **Discreet Presence**: Custom disguised launcher icon and benign app naming to maintain total confidentiality on shared or scrutinized devices.
+  * **Fast Access**: 6-digit PIN-based authentication (`partner_passcode`) with biometric unlocking option.
+  * **Native Hardware Back Bridge**: Seamless navigation handling via `window.handleAndroidBack()` ensuring smooth return to dashboard without accidental exits.
+  * **Full Hub Access**: Direct integration with the private chat, Instagram companion, and WhatsApp launcher.
+
+### 2. ⚡ Rahul's WhatsApp-Style Instant Notifier APK
+* **Design Philosophy**: High-visibility real-time communication, heads-up notifications, and immediate actionability.
+* **Key Characteristics**:
+  * **Authentic Branding**: Full "OnlyUs" visual identity with high-res couple launcher icon.
+  * **WhatsApp-Style Push Notifications**: Foreground & background service connecting to Supabase Realtime and Firebase Cloud Messaging (FCM). Receives instant heads-up alerts with sound, vibration, and Nusrat's avatar when she messages.
+  * **Inline Quick Reply (`RemoteInput`)**: Reply directly from the Android notification shade without opening the app — answers are dispatched directly into the Supabase database.
+  * **Direct-to-Chat Deep Linking**: Tapping any notification opens the app immediately with `?tab=chat` to land right in the conversation.
+  * **Bi-directional Bridge**: Features `AndroidBridge.onNewMessage` and `window.sendNativeDirectReply` hooks.
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Technology |
