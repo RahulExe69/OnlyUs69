@@ -48,9 +48,10 @@ import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
 import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
-import { MediaSendPreviewModal } from './components/MediaSendPreviewModal';
-import { saveLocalMedia, getLocalMedia, MAX_MEDIA_BYTES, mediaTypeForFile } from './lib/mediaStore';
-import { supabaseUrl, supabaseAnonKey } from './lib/supabase';
+import { MediaSendPreviewModal, SelectedMediaFile } from './components/MediaSendPreviewModal';
+import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/mediaStore';
+import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
+import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -149,8 +150,45 @@ const parseDate = (ts: any): Date => {
 // Older rows only have attachment_url. Keep them visible while the structured
 // media payload is rolled out, rather than dropping a partner's photo.
 const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
-  if (raw.media?.url) return raw.media as MediaAttachment;
+  if (raw.media?.url || (raw.media?.mediaList && raw.media.mediaList.length > 0)) {
+    return raw.media as MediaAttachment;
+  }
+  if (raw.mediaList && raw.mediaList.length > 0) {
+    return {
+      id: raw.id,
+      type: raw.mediaList[0].type || 'image',
+      url: raw.mediaList[0].url,
+      mediaList: raw.mediaList,
+      fileName: raw.mediaList[0].fileName || 'Shared album'
+    };
+  }
   if (!raw.attachment_url) return undefined;
+
+  if (typeof raw.attachment_url === 'string') {
+    const trimmed = raw.attachment_url.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.mediaList || parsed.url) {
+            return parsed as MediaAttachment;
+          }
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return {
+              id: raw.id,
+              type: parsed[0].type || 'image',
+              url: parsed[0].url,
+              mediaList: parsed,
+              fileName: parsed[0].fileName || 'Shared album'
+            };
+          }
+        }
+      } catch {
+        // Fall back to standard URL interpretation
+      }
+    }
+  }
+
   const isVideo = /^data:video\//.test(raw.attachment_url) || /\.(mp4|mov|webm)(?:\?|$)/i.test(raw.attachment_url);
   return {
     id: raw.id,
@@ -161,14 +199,6 @@ const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
 };
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
-
-const USERNAME_PATTERN = /^[a-z][a-z0-9_]{2,29}$/;
-const normalizeUsername = (value: string) => value.trim().toLowerCase();
-const usernameError = (value: string) => {
-  const username = normalizeUsername(value);
-  if (!USERNAME_PATTERN.test(username)) return 'Use 3–30 lowercase letters, numbers, or underscores; start with a letter.';
-  return null;
-};
 
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
@@ -251,6 +281,23 @@ export default function App() {
   const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>(getInitialTab);
   const mainChannelRef = useRef<any>(null);
 
+  // Mobile / Browser Hardware Back Button Overlay Closers
+  useOverlayBack(activeHubTab !== 'dashboard', () => setActiveHubTab('dashboard'), 'hub-active-tab');
+  useOverlayBack(showProfileModal, () => setShowProfileModal(false), 'profile-modal');
+  useOverlayBack(showPartnerInfo, () => setShowPartnerInfo(false), 'partner-info-modal');
+  useOverlayBack(!!showFullImage, () => setShowFullImage(null), 'full-image-viewer');
+  useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
+  useOverlayBack(showClearChatConfirm, () => setShowClearChatConfirm(false), 'clear-chat-confirm');
+  useOverlayBack(showDeleteChoices, () => setShowDeleteChoices(false), 'delete-choices');
+  useOverlayBack(!!activeGame, () => setActiveGame(null), 'active-game');
+  useOverlayBack(!!activeNudge, () => setActiveNudge(null), 'active-nudge');
+  useOverlayBack(showAttachmentMenu, () => setShowAttachmentMenu(false), 'attachment-menu');
+  useOverlayBack(showGamesMenu, () => setShowGamesMenu(false), 'games-menu');
+  useOverlayBack(showNudgeMenu, () => setShowNudgeMenu(false), 'nudge-menu');
+  useOverlayBack(showMenu, () => setShowMenu(false), 'top-3dot-menu');
+  useOverlayBack(selectedMessages.length > 0, () => setSelectedMessages([]), 'selected-messages');
+  useOverlayBack(isSidebarOpen, () => setIsSidebarOpen(false), 'sidebar-drawer');
+
   // Periodic 10s tick to keep relative "Last seen" and online indicators accurate in realtime
   const [, setTimeTick] = useState(0);
   useEffect(() => {
@@ -259,7 +306,9 @@ export default function App() {
   }, []);
 
   const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
-    if (tab !== 'chat') (document.activeElement as HTMLElement | null)?.blur();
+    if (tab === 'dashboard' && typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
+      (document.activeElement as HTMLElement).blur();
+    }
     const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
 
     if (hasAndroidBridge) {
@@ -299,11 +348,15 @@ export default function App() {
         return activeHubTab;
       };
       window.handleAndroidBack = () => {
-        if (activeHubTab === 'chat') {
+        if (hasOpenOverlays()) {
+          const popped = popOverlay();
+          if (popped) return true;
+        }
+        if (activeHubTab !== 'dashboard') {
           setActiveHubTab('dashboard');
           return true; // handled, don't exit app
         }
-        return false; // on dashboard, allow Android to minimize/exit
+        return false; // on dashboard with no overlays, allow Android to minimize/exit
       };
 
       window.registerPushToken = async (token: string) => {
@@ -360,63 +413,89 @@ export default function App() {
   // Lifecycle 0: Real-time Messages Sync from Supabase (Immediate upon Auth)
   useEffect(() => {
     if (!user) return;
+    initMediaSyncListener(supabase, isOwner ? 'owner' : 'partner');
     setMessagesLoading(true);
+    let isCancelled = false;
+    let retryTimer: any = null;
 
-    const fetchMessages = async () => {
-      const { data, error: msgErr } = await supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: true });
+    const fetchMessages = async (retryAttempt = 0) => {
+      try {
+        const { data, error: msgErr } = await supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: true });
 
-      if (msgErr) {
-        console.error("Error loading messages from Supabase:", msgErr);
-      } else if (data) {
-        // Filter out any previous test feeling messages so the chat is spotless
-        const filteredData = data.filter((m: any) => 
-          !m.text?.includes('Sent you a') && 
-          !m.text?.includes('Tickled you') && 
-          !m.text?.includes('Miss you so much')
-        );
+        if (isCancelled) return;
 
-        const msgMap = new Map<string, any>();
-        filteredData.forEach((m: any) => msgMap.set(m.id, m));
-
-        const mappedData = filteredData.map((m: any) => {
-          let replyToObj = null;
-          if (m.reply_to) {
-            const orig = msgMap.get(m.reply_to);
-            if (orig) {
-              replyToObj = {
-                id: orig.id,
-                text: orig.deleted 
-                  ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
-                  : orig.text,
-                sender_role: orig.sender_role
-              };
-            } else {
-              replyToObj = {
-                id: m.reply_to,
-                text: m.reply_text || 'Original message',
-                sender_role: m.reply_sender_role || (m.sender_role === 'owner' ? 'partner' : 'owner')
-              };
-            }
+        if (msgErr) {
+          console.warn("Message sync notice from Supabase (retrying):", msgErr.message || msgErr);
+          if (retryAttempt < 8) {
+            const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
+            retryTimer = setTimeout(() => {
+              if (!isCancelled && user) fetchMessages(retryAttempt + 1);
+            }, delay);
           }
-          return {
-            ...m,
-            media: hydrateMessageMedia(m),
-            timestamp: m.created_at || m.timestamp || new Date().toISOString(),
-            replyTo: replyToObj
-          };
-        });
-        setMessages(mappedData as Message[]);
-        localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
+        } else if (data) {
+          // Filter out any previous test feeling messages so the chat is spotless
+          const filteredData = data.filter((m: any) => 
+            !m.text?.includes('Sent you a') && 
+            !m.text?.includes('Tickled you') && 
+            !m.text?.includes('Miss you so much')
+          );
 
-        // Clean up database records of feeling messages in the background
-        supabase.from('messages').delete().ilike('text', '%Sent you a%').then();
-        supabase.from('messages').delete().ilike('text', '%Tickled you%').then();
-        supabase.from('messages').delete().ilike('text', '%Miss you so much%').then();
+          const msgMap = new Map<string, any>();
+          filteredData.forEach((m: any) => msgMap.set(m.id, m));
+
+          const mappedData = filteredData.map((m: any) => {
+            let replyToObj = null;
+            if (m.reply_to) {
+              const orig = msgMap.get(m.reply_to);
+              if (orig) {
+                replyToObj = {
+                  id: orig.id,
+                  text: orig.deleted 
+                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    : orig.text,
+                  sender_role: orig.sender_role
+                };
+              } else {
+                replyToObj = {
+                  id: m.reply_to,
+                  text: m.reply_text || 'Original message',
+                  sender_role: m.reply_sender_role || (m.sender_role === 'owner' ? 'partner' : 'owner')
+                };
+              }
+            }
+            const hydrated = hydrateMessageMedia(m);
+            return {
+              ...m,
+              media: hydrated,
+              mediaList: hydrated?.mediaList,
+              timestamp: m.created_at || m.timestamp || new Date().toISOString(),
+              replyTo: replyToObj
+            };
+          });
+          setMessages(mappedData as Message[]);
+          localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
+
+          // Clean up database records of feeling messages in the background safely
+          supabase.from('messages').delete().ilike('text', '%Sent you a%').then(undefined, () => {});
+          supabase.from('messages').delete().ilike('text', '%Tickled you%').then(undefined, () => {});
+          supabase.from('messages').delete().ilike('text', '%Miss you so much%').then(undefined, () => {});
+        }
+      } catch (err: any) {
+        console.warn("Network fetch exception when syncing messages (retrying):", err?.message || err);
+        if (retryAttempt < 8) {
+          const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
+          retryTimer = setTimeout(() => {
+            if (!isCancelled && user) fetchMessages(retryAttempt + 1);
+          }, delay);
+        }
+      } finally {
+        if (!isCancelled) {
+          setMessagesLoading(false);
+        }
       }
-      setMessagesLoading(false);
     };
 
     fetchMessages();
@@ -452,9 +531,11 @@ export default function App() {
               }
             }
 
+            const hydrated = hydrateMessageMedia(raw);
             const msg = {
               ...raw,
-              media: hydrateMessageMedia(raw),
+              media: hydrated,
+              mediaList: hydrated?.mediaList,
               timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
               replyTo: replyToObj
             } as Message;
@@ -496,9 +577,11 @@ export default function App() {
               }
             }
 
+            const hydrated = hydrateMessageMedia(raw);
             const msg = {
               ...raw,
-              media: hydrateMessageMedia(raw),
+              media: hydrated,
+              mediaList: hydrated?.mediaList,
               timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
               replyTo: replyToObj
             } as Message;
@@ -513,7 +596,11 @@ export default function App() {
         }
       }).subscribe();
       
-    return () => { supabase.removeChannel(unsubMsg); };
+    return () => { 
+      isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      supabase.removeChannel(unsubMsg); 
+    };
   }, [user?.id]);
 
   const sendGameInvite = async (type: 'tictactoe' = 'tictactoe') => {
@@ -660,13 +747,17 @@ export default function App() {
     if (!user) return;
     
     const fetchConfig = async () => {
-      const { data } = await supabase.from('app_config').select('*').eq('id', 'main').single();
-      if (data) {
-        setAppConfig(data as AppConfig);
-        verifyPasscodeSession(data as AppConfig);
-      } else if (user?.email === OWNER_EMAIL) {
-        await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' }]);
-        setAppConfig({ owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' } as AppConfig);
+      try {
+        const { data, error } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+        if (data) {
+          setAppConfig(data as AppConfig);
+          verifyPasscodeSession(data as AppConfig);
+        } else if (user?.email === OWNER_EMAIL && (!error || error.code === 'PGRST116')) {
+          await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' }]);
+          setAppConfig({ owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' } as AppConfig);
+        }
+      } catch (err) {
+        console.warn("Notice: fetchConfig network retry", err);
       }
     };
     fetchConfig();
@@ -706,58 +797,71 @@ export default function App() {
     }
 
     // Instant update on session start
-    supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+    supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then(undefined, () => {});
 
     const fetchProfile = async () => {
-      const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
-      if (data) {
-        const profile = { ...data, uid: user.id } as UserProfile;
-        setUserProfile(profile);
-        if (profile.theme) applyTheme(profile.theme as ThemeName);
-      } else {
-        const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
-        const newProfile = {
-          id: user.id,
-          email: (email || "").trim().toLowerCase(),
-          role,
-          display_name: user?.user_metadata?.full_name || (role === 'owner' ? 'Rahul' : 'Nusrat'),
-          username: normalizeUsername((email || (role === 'owner' ? 'rahul' : 'nusrat')).split('@')[0]).replace(/[^a-z0-9_]/g, '_').slice(0, 30),
-          photo_url: user?.user_metadata?.avatar_url || "",
-          last_seen: new Date().toISOString(),
-          last_read_at: new Date().toISOString(),
-          theme: cachedTheme
-        };
-        await supabase.from('users').upsert([newProfile]);
-        setUserProfile({ ...newProfile, uid: user.id } as any);
-        applyTheme(cachedTheme);
+      try {
+        const { data, error } = await supabase.from('users').select('*').eq('id', user.id).single();
+        if (data) {
+          const defaultHandle = data.username || (data.email ? data.email.split('@')[0] : (data.role === 'owner' ? 'rahul' : 'nusrat'));
+          const profile = { ...data, uid: user.id, username: defaultHandle } as UserProfile;
+          setUserProfile(profile);
+          if (profile.theme) applyTheme(profile.theme as ThemeName);
+        } else if (!error || error.code === 'PGRST116') {
+          const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
+          const defaultHandle = (email || "").split('@')[0] || (role === 'owner' ? 'rahul' : 'nusrat');
+          const newProfile = {
+            id: user.id,
+            email: (email || "").trim().toLowerCase(),
+            role,
+            display_name: user?.user_metadata?.full_name || (role === 'owner' ? 'Rahul' : 'Nusrat'),
+            username: defaultHandle,
+            photo_url: user?.user_metadata?.avatar_url || "",
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString(),
+            theme: cachedTheme
+          };
+          await supabase.from('users').upsert([newProfile]);
+          setUserProfile({ ...newProfile, uid: user.id } as any);
+          applyTheme(cachedTheme);
+        }
+      } catch (err) {
+        console.warn("Notice: fetchProfile network retry", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     fetchProfile();
 
     const fetchPartner = async () => {
-      // Sort by last_seen descending to always pick partner's most recently active profile
-      const targetRole = role === 'owner' ? 'partner' : 'owner';
-      const { data } = await supabase.from('users')
-        .select('*')
-        .eq('role', targetRole)
-        .order('last_seen', { ascending: false });
+      try {
+        // Sort by last_seen descending to always pick partner's most recently active profile
+        const targetRole = role === 'owner' ? 'partner' : 'owner';
+        const { data } = await supabase.from('users')
+          .select('*')
+          .eq('role', targetRole)
+          .order('last_seen', { ascending: false });
 
-      if (data && data.length > 0) {
-        setPartnerProfile({ ...data[0], uid: data[0].id } as UserProfile);
-      } else if (role === 'owner') {
-        // Fallback for partner profile if not loaded
-        setPartnerProfile({
-          id: '625ede11-c534-4475-be39-63554fdbb7a7',
-          uid: '625ede11-c534-4475-be39-63554fdbb7a7',
-          email: 'bodruddoja2@gmail.com',
-          role: 'partner',
-          display_name: 'Nusrat',
-          photo_url: '',
-          theme: 'romantic',
-          last_seen: new Date().toISOString(),
-          last_read_at: new Date().toISOString()
-        });
+        if (data && data.length > 0) {
+          const partnerHandle = data[0].username || (data[0].email ? data[0].email.split('@')[0] : (data[0].role === 'owner' ? 'rahul' : 'nusrat'));
+          setPartnerProfile({ ...data[0], uid: data[0].id, username: partnerHandle } as UserProfile);
+        } else if (role === 'owner') {
+          // Fallback for partner profile if not loaded
+          setPartnerProfile({
+            id: '625ede11-c534-4475-be39-63554fdbb7a7',
+            uid: '625ede11-c534-4475-be39-63554fdbb7a7',
+            email: 'bodruddoja2@gmail.com',
+            username: 'bodruddoja2',
+            role: 'partner',
+            display_name: 'Nusrat',
+            photo_url: '',
+            theme: 'romantic',
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.warn("Notice: fetchPartner network retry", err);
       }
     };
     fetchPartner();
@@ -767,7 +871,7 @@ export default function App() {
       if (user?.id && !document.hidden && document.visibilityState === 'visible') {
         supabase.from('users').update({ 
           last_seen: new Date().toISOString() 
-        }).eq('id', user.id).then();
+        }).eq('id', user.id).then(undefined, () => {});
       }
     }, 15000);
 
@@ -1393,7 +1497,7 @@ export default function App() {
                   className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300"
                 >
                   <div className="flex items-center gap-6 lg:gap-8">
-                    <button onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
+                    <button onPointerDown={(e) => e.preventDefault()} onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
                       <X className="w-5 h-5 lg:w-6 lg:h-6" />
                     </button>
                     <span className="text-lg lg:text-xl font-bold tracking-tight">{selectedMessages.length}</span>
@@ -1401,26 +1505,26 @@ export default function App() {
                   <div className="flex items-center gap-2 lg:gap-4">
                     {selectedMessages.length === 1 && (
                       <>
-                        <button onClick={startReplyFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Reply">
+                        <button onPointerDown={(e) => e.preventDefault()} onClick={startReplyFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Reply">
                           <Reply className="w-5 h-5" />
                         </button>
                         {selectedMessages[0].sender_role === userProfile?.role && !selectedMessages[0].deleted && (
-                          <button onClick={startEditFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Edit">
+                          <button onPointerDown={(e) => e.preventDefault()} onClick={startEditFromSelection} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Edit">
                             <Pencil className="w-5 h-5" />
                           </button>
                         )}
                       </>
                     )}
                     {selectedMessages.length < messages.length && (
-                      <button onClick={selectAllMessages} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Select All">
+                      <button onPointerDown={(e) => e.preventDefault()} onClick={selectAllMessages} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Select All">
                         <ListChecks className="w-5 h-5" />
                       </button>
                     )}
-                    <button onClick={() => setShowDeleteChoices(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Delete">
+                    <button onPointerDown={(e) => e.preventDefault()} onClick={() => setShowDeleteChoices(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Delete">
                       <Trash2 className="w-5 h-5" />
                     </button>
                     {selectedMessages.every(m => !m.deleted) && (
-                      <button onClick={copySelected} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Copy">
+                      <button onPointerDown={(e) => e.preventDefault()} onClick={copySelected} className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95" title="Copy">
                         <Copy className="w-5 h-5" />
                       </button>
                     )}
@@ -1486,6 +1590,7 @@ export default function App() {
                     <div className="relative">
                       <button 
                         ref={menuBtnRef}
+                        onPointerDown={(e) => e.preventDefault()}
                         onClick={() => setShowMenu(!showMenu)}
                         className={`p-2 rounded-full transition-all ${showMenu ? 'bg-[var(--theme-accent)]/15 text-[var(--theme-accent)]' : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10'}`}
                       >
@@ -1495,15 +1600,17 @@ export default function App() {
                       <AnimatePresence>
                         {showMenu && (
                           <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                            <div className="fixed inset-0 z-40" onPointerDown={(e) => e.preventDefault()} onClick={() => setShowMenu(false)} />
                             <motion.div 
                               ref={menuRef}
+                              onPointerDown={(e) => e.preventDefault()}
                               initial={{ opacity: 0, scale: 0.95, y: -10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -10 }}
                               className="absolute right-0 mt-2 w-52 bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] border border-[var(--theme-border)] z-50 overflow-hidden py-1 backdrop-blur-md"
                             >
                               <button 
+                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowProfileModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
@@ -1511,6 +1618,7 @@ export default function App() {
                                 My Profile
                               </button>
                               <button 
+                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
@@ -1518,6 +1626,7 @@ export default function App() {
                                 Customize
                               </button>
                               <button 
+                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
@@ -1584,12 +1693,11 @@ export default function App() {
         {showProfileModal && userProfile && (
           <ProfileModal 
             profile={userProfile} 
-            partnerProfile={partnerProfile}
             onClose={() => setShowProfileModal(false)}
             config={appConfig}
             isOwner={isOwner}
             onLogout={handleLogout}
-            onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
+            onProfileUpdated={(newMe) => setUserProfile(newMe)}
           />
         )}
       </AnimatePresence>
@@ -1770,7 +1878,15 @@ function LoginView({
         )}
 
         {loginMode === 'passcode' ? (
-          <form onSubmit={handlePasscodeSubmit} className="space-y-5">
+          <form 
+            onSubmit={handlePasscodeSubmit} 
+            className="space-y-5"
+            autoComplete="off"
+            noValidate
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+          >
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block text-center opacity-70">
                 Enter 6-Digit Passcode
@@ -1779,14 +1895,25 @@ function LoginView({
               {/* PIN input display boxes */}
               <div className="relative">
                 <input
-                  type="password"
+                  type="tel"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={6}
+                  name="onlyus_access_code"
+                  id="onlyus_access_code"
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  data-form-type="other"
                   value={passcode}
                   onChange={(e) => handleDigitChange(e.target.value)}
                   placeholder="••••••"
                   autoFocus
+                  style={{ WebkitTextSecurity: 'disc' } as any}
                   className="w-full h-14 tracking-[0.6em] text-center font-mono text-2xl font-bold bg-[#FFF8F6] border border-[#FF8FA3]/20 rounded-2xl text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/30 focus:border-[#FF8FA3] transition-all placeholder:tracking-normal placeholder:font-sans placeholder:text-sm placeholder:opacity-30"
                 />
               </div>
@@ -1948,163 +2075,226 @@ function ChatView({
   activeNudge?: { type: string, sender: string } | null,
   onDismissNudge?: () => void
 }) {
+  const [selectedMediaFiles, setSelectedMediaFiles] = useState<SelectedMediaFile[]>([]);
   const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
-  const [mediaPreviewFile, setMediaPreviewFile] = useState<File | null>(null);
-  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
-  const [mediaPreviewType, setMediaPreviewType] = useState<'image' | 'video' | 'audio' | 'file'>('image');
+  const [activeMediaList, setActiveMediaList] = useState<MediaAttachment[] | undefined>(undefined);
+  const [activeMediaIndex, setActiveMediaIndex] = useState<number>(0);
   const [showMediaPreviewModal, setShowMediaPreviewModal] = useState(false);
   const [isSendingMedia, setIsSendingMedia] = useState(false);
-  const [mediaUploadProgress, setMediaUploadProgress] = useState(0);
-  const [mediaUploadError, setMediaUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Mobile / Browser Hardware Back Button Overlay Closers inside ChatArea
+  useOverlayBack(!!activeMediaViewer, () => {
+    setActiveMediaViewer(null);
+    setActiveMediaList(undefined);
+  }, 'chat-media-viewer');
+  useOverlayBack(showMediaPreviewModal, () => {
+    setShowMediaPreviewModal(false);
+    setSelectedMediaFiles([]);
+  }, 'chat-media-preview-modal');
+  useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
+
+  const popularEmojis = ['❤️', '😂', '🥺', '💋', '💖', '🥰', '🍯', '🧸', '👑', '✨', '🤍', '😍', '😘', '🫂', '🌹', '🌸', '🤤', '🤭', '🔥', '💯', '👍', '💫', '🌙', '💌'];
+
+  const adjustTextareaHeight = useCallback(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 144; // ~6-7 rows
+    const newHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${Math.max(44, newHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
 
   const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
-    if (file.size > MAX_MEDIA_BYTES) {
-      alert('This file is larger than the 50 MB sending limit. Please choose a smaller file.');
+    const validFiles: SelectedMediaFile[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      if (isVideo || isImage) {
+        validFiles.push({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: isVideo ? 'video' : 'image'
+        });
+      }
+    }
+
+    if (validFiles.length === 0) {
+      alert('Please select valid image or video files.');
       return;
     }
 
-    const preview = URL.createObjectURL(file);
-    setMediaPreviewFile(file);
-    setMediaPreviewUrl(preview);
-    setMediaPreviewType(mediaTypeForFile(file));
+    setSelectedMediaFiles(validFiles);
     setShowMediaPreviewModal(true);
-    setMediaUploadError(null);
     onSetShowAttachmentMenu(false);
     
     // Clear input so selecting the same file again triggers change
     e.target.value = '';
   };
 
-  const handleSendMediaMessage = async (caption: string) => {
-    if (!mediaPreviewFile) return;
-    setIsSendingMedia(true);
-    setMediaUploadProgress(0);
-    setMediaUploadError(null);
-    let tempId: string | null = null;
+  const handleSendMediaMessage = async (caption: string, filesToSend: SelectedMediaFile[]) => {
+    if (!filesToSend || filesToSend.length === 0) return;
 
-    try {
-      const mediaId = `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const isVideo = mediaPreviewType === 'video';
-      
-      // 1. Process thumbnail / compression
-      let thumbnailDataUrl: string | undefined = undefined;
-      let finalBlob: Blob = mediaPreviewFile;
+    // 1. Immediately close modal & clean up inputs for instant WhatsApp-like feel
+    setShowMediaPreviewModal(false);
+    setSelectedMediaFiles([]);
+    setIsSendingMedia(false);
+    const replyContext = replyingTo ? {
+      id: replyingTo.id,
+      text: replyingTo.text,
+      sender_role: replyingTo.sender_role
+    } : null;
+    onSetReplyingTo(null);
 
-      if (isImage) {
-        try {
-          // WhatsApp standard quality compression: ~0.4MB max target, 1280px dimension, 80% quality
-          const compressed = await imageCompression(mediaPreviewFile, {
-            maxSizeMB: 0.45,
-            maxWidthOrHeight: 1280,
-            initialQuality: 0.8,
-            useWebWorker: true
-          });
-          finalBlob = compressed;
-
-          // Generate micro thumbnail for instant blur placeholder
-          const thumbBlob = await imageCompression(mediaPreviewFile, {
-            maxSizeMB: 0.02,
-            maxWidthOrHeight: 80,
-            initialQuality: 0.5,
-            useWebWorker: true
-          });
-          thumbnailDataUrl = await imageCompression.getDataUrlFromFile(thumbBlob);
-        } catch (compErr) {
-          console.warn('Compression fallback:', compErr);
-        }
-      }
-
-      // Save full quality media in local device-first IndexedDB
-      await saveLocalMedia(mediaId, finalBlob);
-
-      // Storage URLs keep Postgres change payloads small, so media reaches both
-      // devices reliably instead of exceeding Realtime's message-size limit.
-      const extension = finalBlob.type.split('/')[1] || (isVideo ? 'mp4' : 'jpg');
-      const storagePath = `${mediaId}.${extension}`;
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${supabaseUrl}/storage/v1/object/chat-media/${encodeURIComponent(storagePath)}`);
-        xhr.setRequestHeader('apikey', supabaseAnonKey);
-        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnonKey}`);
-        xhr.setRequestHeader('Content-Type', finalBlob.type || 'application/octet-stream');
-        xhr.upload.onprogress = (event) => { if (event.lengthComputable) setMediaUploadProgress(Math.round((event.loaded / event.total) * 100)); };
-        xhr.onerror = () => reject(new Error('Network error while uploading media.'));
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status}).`));
-        xhr.send(finalBlob);
-      });
-      setMediaUploadProgress(100);
-
-      const mediaAttachment: MediaAttachment = {
+    // 2. Generate immediate local attachments using native crystal-clear preview URLs
+    const tempId = `temp_media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const initialAttachments: MediaAttachment[] = filesToSend.map((item, idx) => {
+      const mediaId = `media_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 7)}`;
+      return {
         id: mediaId,
-        type: mediaPreviewType,
-        url: mediaPreviewUrl || '',
-        storagePath,
-        thumbnailUrl: thumbnailDataUrl,
-        fileName: mediaPreviewFile.name,
-        fileSize: finalBlob.size,
-        mimeType: finalBlob.type,
-        caption: caption || undefined
+        type: item.type,
+        url: item.previewUrl || URL.createObjectURL(item.file),
+        fileName: item.file.name,
+        fileSize: item.file.size,
+        mimeType: item.file.type,
       };
+    });
 
-      tempId = `temp-${Date.now()}`;
-      const msgData: any = {
-        id: tempId,
-        sender_role: role,
-        text: caption || '',
-        media: mediaAttachment,
-        timestamp: Date.now(),
-        reactions: {},
-        deliveryStatus: 'sending',
-        replyTo: replyingTo ? {
-          id: replyingTo.id,
-          text: replyingTo.text,
-          sender_role: replyingTo.sender_role
-        } : null
-      };
+    const initialPrimary: MediaAttachment = {
+      ...initialAttachments[0],
+      caption: caption || undefined,
+      mediaList: initialAttachments.length > 1 ? initialAttachments : undefined
+    };
 
-      setMessages(prev => [...prev, msgData]);
-      setTimeout(scrollToBottom, 50);
+    // 3. Immediately inject optimistic message into the chat state (0ms delay)
+    const optimisticMessage: any = {
+      id: tempId,
+      sender_role: role,
+      text: caption || '',
+      media: initialPrimary,
+      mediaList: initialAttachments.length > 1 ? initialAttachments : undefined,
+      timestamp: Date.now(),
+      reactions: {},
+      deliveryStatus: 'sending',
+      replyTo: replyContext
+    };
 
-      // Insert message with media into Supabase (and trigger realtime push to partner)
-      const { data: savedMessage, error } = await supabase.from('messages').insert([{
-        sender_role: role,
-        text: caption || '',
-        media: mediaAttachment,
-        created_at: new Date().toISOString(),
-        reactions: {},
-        reply_to: replyingTo ? replyingTo.id : null,
-        attachment_url: null
-      }]).select().single();
+    setMessages(prev => [...prev, optimisticMessage]);
+    setTimeout(() => scrollToBottom(false), 30);
 
-      if (error) throw error;
-      setMessages(prev => prev.map(message => message.id === tempId ? {
-        ...message, ...savedMessage, media: hydrateMessageMedia(savedMessage),
-        timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
-      } : message));
+    // 4. Background processing: Lossless visual compression, EXIF metadata stripping, local persistence & cloud upload
+    (async () => {
+      try {
+        const processedAttachments: MediaAttachment[] = [];
 
-      setShowMediaPreviewModal(false);
-      setMediaPreviewFile(null);
-      setMediaPreviewUrl(null);
-      onSetReplyingTo(null);
-    } catch (err) {
-      console.error('Error sending media:', err);
-      setMediaUploadError(err instanceof Error ? `${err.message} Tap send to retry.` : 'Upload failed. Tap send to retry.');
-      if (tempId) {
+        for (let i = 0; i < filesToSend.length; i++) {
+          const item = filesToSend[i];
+          const mediaId = initialAttachments[i].id;
+          const isVideo = item.type === 'video';
+          let finalBlob: Blob = item.file;
+          let previewThumbUrl: string | undefined = undefined;
+
+          if (!isVideo) {
+            try {
+              // High fidelity lossless visual compression & metadata stripping (max 2560px, 0.92 quality)
+              const result = await processImageLossless(item.file);
+              finalBlob = result.blob;
+              previewThumbUrl = result.previewDataUrl;
+            } catch (procErr) {
+              console.warn('Image processing fallback to raw file:', procErr);
+              finalBlob = item.file;
+            }
+          }
+
+          // Save full-res media in local device-first IndexedDB
+          await saveLocalMedia(mediaId, finalBlob);
+
+          // Upload to temporary cloud bridge in Supabase Storage if available
+          const extension = isVideo ? 'mp4' : 'jpg';
+          const storagePath = `${mediaId}.${extension}`;
+          let cloudUrl = '';
+
+          try {
+            const { error: uploadError } = await supabase.storage
+              .from('chat-media')
+              .upload(storagePath, finalBlob, { contentType: finalBlob.type, upsert: true });
+
+            if (!uploadError) {
+              const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+              if (publicUrlData?.publicUrl) {
+                cloudUrl = publicUrlData.publicUrl;
+              }
+            }
+          } catch (storageErr) {
+            console.warn('Supabase storage upload error:', storageErr);
+          }
+
+          // If storage is unavailable or failed, create a high-quality base64 DataURL
+          if (!cloudUrl || !cloudUrl.startsWith('http')) {
+            try {
+              cloudUrl = await blobToDataUrl(finalBlob);
+            } catch {
+              cloudUrl = initialAttachments[i].url;
+            }
+          }
+
+          processedAttachments.push({
+            id: mediaId,
+            type: isVideo ? 'video' : 'image',
+            url: cloudUrl || initialAttachments[i].url,
+            thumbnailUrl: previewThumbUrl,
+            fileName: item.file.name,
+            fileSize: finalBlob.size,
+            mimeType: finalBlob.type
+          });
+        }
+
+        const finalPrimaryAttachment: MediaAttachment = {
+          ...processedAttachments[0],
+          caption: caption || undefined,
+          mediaList: processedAttachments.length > 1 ? processedAttachments : undefined
+        };
+
+        // Serialize structured media into attachment_url for Supabase database
+        const attachmentPayload = JSON.stringify(finalPrimaryAttachment);
+
+        const { data: savedMessage, error } = await supabase.from('messages').insert([{
+          sender_role: role,
+          text: caption || '',
+          created_at: new Date().toISOString(),
+          reactions: {},
+          reply_to: replyContext ? replyContext.id : null,
+          attachment_url: attachmentPayload
+        }]).select().single();
+
+        if (error) throw error;
+
+        const hydratedMedia = hydrateMessageMedia(savedMessage);
+        setMessages(prev => prev.map(message => message.id === tempId ? {
+          ...message,
+          ...savedMessage,
+          media: hydratedMedia || finalPrimaryAttachment,
+          mediaList: hydratedMedia?.mediaList || processedAttachments,
+          timestamp: savedMessage.created_at || message.timestamp,
+          deliveryStatus: 'sent'
+        } : message));
+
+      } catch (err) {
+        console.error('Background media send error:', err);
         setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
       }
-    } finally {
-      setIsSendingMedia(false);
-    }
+    })();
   };
 
-  const isImage = mediaPreviewType === 'image';
   const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
   const [inputText, setInputText] = useState('');
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -2163,7 +2353,7 @@ function ChatView({
     if (isTabActive && messages.length > 0 && userProfile) {
       const interval = setInterval(() => {
         if (isTabActive && userProfile) {
-          supabase.from('users').update({ last_read_at: new Date().toISOString() }).eq('id', userProfile.uid);
+          supabase.from('users').update({ last_read_at: new Date().toISOString() }).eq('id', userProfile.uid).then(undefined, () => {});
         }
       }, 60000); 
       return () => clearInterval(interval);
@@ -2171,18 +2361,39 @@ function ChatView({
   }, [isTabActive, messages.length, userProfile?.uid]);
 
   useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputText, adjustTextareaHeight]);
+
+  useEffect(() => {
+    if (replyingTo) {
+      requestAnimationFrame(() => {
+        messageInputRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [replyingTo]);
+
+  useEffect(() => {
     if (editingMessage) {
       setInputText(editingMessage.text);
+      requestAnimationFrame(() => {
+        adjustTextareaHeight();
+        messageInputRef.current?.focus({ preventScroll: true });
+      });
     } else {
       setInputText("");
+      requestAnimationFrame(() => {
+        adjustTextareaHeight();
+      });
     }
-  }, [editingMessage]);
+  }, [editingMessage, adjustTextareaHeight]);
 
-  // Reply/edit is an explicit composer action: focus after the banner has rendered.
-  useEffect(() => {
-    if (!replyingTo && !editingMessage) return;
-    requestAnimationFrame(() => messageInputRef.current?.focus({ preventScroll: true }));
-  }, [replyingTo?.id, editingMessage?.id]);
+  const handleInsertEmoji = (emoji: string) => {
+    setInputText(prev => prev + emoji);
+    requestAnimationFrame(() => {
+      adjustTextareaHeight();
+      messageInputRef.current?.focus({ preventScroll: true });
+    });
+  };
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -2208,6 +2419,8 @@ function ChatView({
     e?.preventDefault();
     if (!inputText.trim()) return;
 
+    setShowEmojiPicker(false);
+
     if (editingMessage) {
       try {
         await supabase.from('messages').update({
@@ -2216,6 +2429,10 @@ function ChatView({
         }).eq('id', editingMessage.id);
         onSetEditingMessage(null);
         setInputText("");
+        requestAnimationFrame(() => {
+          adjustTextareaHeight();
+          messageInputRef.current?.focus({ preventScroll: true });
+        });
       } catch (err) {
         console.error("Edit error:", err);
       }
@@ -2225,6 +2442,9 @@ function ChatView({
     const text = inputText;
     const tempId = `temp-${Date.now()}`;
     setInputText("");
+    requestAnimationFrame(() => {
+      adjustTextareaHeight();
+    });
 
     const msgData: any = {
       id: tempId,
@@ -2405,7 +2625,11 @@ function ChatView({
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={onViewImage}
-                onViewMedia={(media) => setActiveMediaViewer(media)}
+                onViewMedia={(media, fullList, initialIndex) => {
+                  setActiveMediaViewer(media);
+                  setActiveMediaList(fullList || (media.mediaList) || [media]);
+                  setActiveMediaIndex(initialIndex || 0);
+                }}
                 isInteractionPoint={msg.id === interactionId}
                 showSeenText={msg.id === interactionId && showIndicatorSeenText}
                 partnerLastReadAt={partnerLastReadMillis}
@@ -2513,39 +2737,86 @@ function ChatView({
             </motion.div>
           )}
         </AnimatePresence>
+        {/* WhatsApp-style Quick Emoji Picker Drawer / Shelf */}
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: 10, height: 0 }}
+              className="px-4 py-2.5 bg-[var(--theme-surface)]/95 backdrop-blur-md border-t border-[var(--theme-border)] flex items-center gap-2 overflow-x-auto custom-scrollbar select-none"
+              onPointerDown={(e) => e.preventDefault()}
+            >
+              {popularEmojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => handleInsertEmoji(emoji)}
+                  className="text-2xl p-1.5 hover:bg-[var(--theme-accent)]/15 rounded-xl hover:scale-125 transition-all active:scale-95 shrink-0"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <form 
           onSubmit={sendMessage}
-          className="relative flex items-center px-4 gap-3 pb-4"
+          className="relative flex items-end px-3 lg:px-4 gap-2 pb-3.5 pt-1.5"
         >
+          {/* Plus attachment button */}
           <button 
             type="button"
+            onPointerDown={(e) => e.preventDefault()}
             onClick={() => onSetShowAttachmentMenu(true)}
-            className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-[var(--theme-surface)] border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/10 transition-all active:scale-95 shadow-sm"
+            className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)] border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/10 transition-all active:scale-95 shadow-sm"
             aria-label="Open attachments menu"
           >
             <Plus className="w-5 h-5" />
           </button>
           
-          <div className="relative flex-1">
-            <textarea
+          {/* WhatsApp-style Input Container */}
+          <div className="relative flex-1 flex items-end bg-[var(--theme-input-bg)] border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden">
+            {/* WhatsApp emoji toggle button */}
+            <button 
+              type="button"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => setShowEmojiPicker(prev => !prev)}
+              className={`p-2.5 mb-0.5 shrink-0 transition-colors ${showEmojiPicker ? 'text-[var(--theme-accent)]' : 'text-[var(--theme-text)]/50 hover:text-[var(--theme-accent)]'}`}
+              aria-label="Toggle emoji picker"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+
+            {/* Auto-expanding textarea */}
+            <textarea 
               ref={messageInputRef}
+              rows={1}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  sendMessage();
+              onFocus={() => setShowEmojiPicker(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
                 }
               }}
-              rows={editingMessage ? 6 : 1}
-              placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className={`w-full resize-none overflow-y-auto px-6 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-[box-shadow,border-color] duration-150 shadow-sm pr-12 placeholder-[var(--theme-text)]/40 ${editingMessage ? 'py-3 leading-6 min-h-36 max-h-36' : 'py-3.5 leading-5 min-h-12 max-h-28'}`}
+              placeholder={editingMessage ? "Edit message..." : `Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
+              className="w-full py-2.5 px-1 bg-transparent text-[var(--theme-text)] text-sm focus:outline-none placeholder-[var(--theme-text)]/40 resize-none custom-scrollbar leading-relaxed"
+              style={{ minHeight: '44px', maxHeight: '144px', boxSizing: 'border-box' }}
             />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-               <button 
+
+            {/* Feelings / Nudge Heart button inside container */}
+            <div className="pr-2 mb-1.5 shrink-0">
+              <button 
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={() => onSetShowNudgeMenu(true)}
-                className="p-1 text-[var(--theme-accent)]/70 hover:text-[var(--theme-accent)] transition-colors active:scale-90"
+                className="p-1.5 text-[var(--theme-accent)]/70 hover:text-[var(--theme-accent)] transition-colors active:scale-90"
                 aria-label="Send a feeling"
               >
                 <Heart className="w-5 h-5 fill-current" />
@@ -2553,12 +2824,14 @@ function ChatView({
             </div>
           </div>
 
+          {/* Send button */}
           <button 
             type="submit"
             onPointerDown={(event) => event.preventDefault()}
             disabled={!inputText.trim()}
-            className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white rounded-full hover:opacity-90 disabled:opacity-30 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation"
+            className="flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 disabled:opacity-30 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation"
             style={{ background: 'var(--theme-accent)', boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)' }}
+            aria-label="Send message"
           >
             <Send className="w-4 h-4 lg:w-5 lg:h-5 fill-white" />
           </button>
@@ -2577,7 +2850,8 @@ function ChatView({
       <input 
         type="file" 
         ref={fileInputRef} 
-        accept="image/*,video/*,audio/*,application/pdf"
+        multiple
+        accept="image/*,video/*" 
         className="hidden" 
         onChange={(e) => handleSelectMedia(e, false)} 
       />
@@ -2632,24 +2906,23 @@ function ChatView({
         isOpen={showMediaPreviewModal}
         onClose={() => {
           setShowMediaPreviewModal(false);
-          setMediaPreviewFile(null);
-          setMediaPreviewUrl(null);
-          setMediaUploadError(null);
+          setSelectedMediaFiles([]);
         }}
-        file={mediaPreviewFile}
-        previewUrl={mediaPreviewUrl}
-        mediaType={mediaPreviewType}
+        files={selectedMediaFiles}
         recipientName={role === 'owner' ? 'Nusrat' : 'Rahul'}
         onSend={handleSendMediaMessage}
         isSending={isSendingMedia}
-        uploadProgress={mediaUploadProgress}
-        uploadError={mediaUploadError}
       />
 
       {/* WhatsApp-style Fullscreen Media Viewer */}
       <FullscreenMediaViewer 
         media={activeMediaViewer}
-        onClose={() => setActiveMediaViewer(null)}
+        mediaList={activeMediaList}
+        initialIndex={activeMediaIndex}
+        onClose={() => {
+          setActiveMediaViewer(null);
+          setActiveMediaList(undefined);
+        }}
       />
 
       <BottomSheet
@@ -2964,7 +3237,7 @@ const MessageItem = React.memo(function MessageItem({
   userProfile: UserProfile | null,
   partnerProfile: UserProfile | null,
   onViewImage: (url: string) => void,
-  onViewMedia?: (media: MediaAttachment) => void,
+  onViewMedia?: (media: MediaAttachment, fullList?: MediaAttachment[], initialIndex?: number) => void,
   isInteractionPoint?: boolean,
   showSeenText?: boolean,
   partnerLastReadAt: number,
@@ -2984,6 +3257,9 @@ const MessageItem = React.memo(function MessageItem({
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<'top' | 'bottom'>('top');
   const [isSwiping, setIsSwiping] = useState(false);
+
+  // Close reaction picker on back button
+  useOverlayBack(showPicker, () => setShowPicker(false), `message-reaction-picker-${msg.id}`);
 
   const triggerHaptic = (duration: number = 24, minGapMs: number = 140) => {
     const now = Date.now();
@@ -3158,10 +3434,10 @@ const MessageItem = React.memo(function MessageItem({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const renderReceipt = () => {
+  const renderReceipt = (onDarkOverlay: boolean = false) => {
     if (!isOwn || msg.deleted) return null;
     if (msg.deliveryStatus === 'sending') {
-      return <Clock3 aria-label="Sending" className="w-3 h-3 text-current" />;
+      return <Clock3 aria-label="Sending" className={`w-3 h-3 ${onDarkOverlay ? 'text-white/80' : 'text-current'}`} />;
     }
     if (msg.deliveryStatus === 'failed') {
       return <Clock3 aria-label="Send failed" className="w-3 h-3 text-red-500" />;
@@ -3169,13 +3445,16 @@ const MessageItem = React.memo(function MessageItem({
 
     const wasRead = getMillis(msg.timestamp) > 0 && getMillis(msg.timestamp) <= partnerLastReadAt;
     if (wasRead) {
-      return <CheckCheck aria-label="Read" className="block w-4 h-4 flex-none overflow-visible text-sky-500 opacity-100" strokeWidth={2.35} />;
+      return <CheckCheck aria-label="Read" className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-sky-300' : 'text-sky-500'} opacity-100`} strokeWidth={2.35} />;
     }
     if (isPartnerOnline) {
-      return <CheckCheck aria-label="Delivered" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
+      return <CheckCheck aria-label="Delivered" className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-white/90' : 'text-current'}`} strokeWidth={2.35} />;
     }
-    return <Check aria-label="Sent" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
+    return <Check aria-label="Sent" className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-white/90' : 'text-current'}`} strokeWidth={2.35} />;
   };
+
+  const hasMedia = Boolean((msg.media && (msg.media.url || (msg.media.mediaList && msg.media.mediaList.length > 0))) || (msg.mediaList && msg.mediaList.length > 0));
+  const isMediaOnly = hasMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
 
   return (
     <div 
@@ -3282,6 +3561,7 @@ const MessageItem = React.memo(function MessageItem({
                       <motion.button 
                         key={e}
                         whileTap={{ scale: 0.8 }}
+                        onPointerDown={(eDown) => eDown.preventDefault()}
                         onClick={(eClick) => {
                           eClick.stopPropagation();
                           onReact(msg.id, e);
@@ -3303,9 +3583,9 @@ const MessageItem = React.memo(function MessageItem({
             </AnimatePresence>
 
             <div 
-              className={`px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px] leading-relaxed shadow-sm relative transition-all select-none max-w-full min-w-0 break-words ${
-                isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'
-              }`}
+              className={`leading-relaxed shadow-sm relative transition-all select-none max-w-full min-w-0 break-words ${
+                isMediaOnly ? 'p-[3px] rounded-[18px]' : 'px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px]'
+              } ${isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'}`}
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -3333,39 +3613,52 @@ const MessageItem = React.memo(function MessageItem({
                 </div>
               )}
 
-              {/* Media attachment (WhatsApp device-first photo/video) */}
-              {msg.media && !msg.deleted && (
-                <div className="mb-2">
+              {/* Media attachment (WhatsApp device-first photo/video + uniform dimension + collage) */}
+              {(msg.media || msg.mediaList) && !msg.deleted && (
+                <div className={!isMediaOnly ? "mb-2" : ""}>
                   <WhatsAppMediaBubble 
-                    media={msg.media} 
+                    media={msg.media || msg.mediaList![0]} 
+                    mediaList={msg.mediaList || (msg.media?.mediaList)}
                     isOwn={isOwn} 
-                    onOpenViewer={(media) => onViewMedia?.(media)} 
+                    onOpenViewer={(media, fullList, initialIndex) => onViewMedia?.(media, fullList, initialIndex)} 
                     deleted={msg.deleted}
+                    messageId={msg.id}
+                    senderRole={msg.sender_role}
+                    currentRole={role}
+                    deliveryStatus={msg.deliveryStatus}
+                    timestampOverlay={isMediaOnly ? (
+                      <div className="bg-black/45 backdrop-blur-sm px-2 py-0.5 rounded-full flex items-center gap-1 text-[10px] text-white/95 font-medium shadow-md">
+                        <span>{displayTime()}</span>
+                        {renderReceipt(true)}
+                      </div>
+                    ) : undefined}
                   />
                 </div>
               )}
 
-              <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px] select-none">
-                {msg.text ? (
-                  <span 
-                    className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
-                    style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                  >
-                    {msg.deleted ? (
-                      msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
-                    ) : (
-                      msg.text
-                    )}
-                    {msg.isEdited && !msg.deleted && (
-                      <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
-                    )}
-                  </span>
-                ) : null}
-                <div className={`ml-auto flex min-w-[2.5rem] shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none opacity-50 tracking-tight font-medium select-none`}>
-                  <span>{displayTime()}</span>
-                  {renderReceipt()}
+              {!isMediaOnly && (
+                <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px] select-none">
+                  {msg.text ? (
+                    <span 
+                      className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
+                      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+                    >
+                      {msg.deleted ? (
+                        msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
+                      ) : (
+                        msg.text
+                      )}
+                      {msg.isEdited && !msg.deleted && (
+                        <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
+                      )}
+                    </span>
+                  ) : null}
+                  <div className={`ml-auto flex min-w-[2.5rem] shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none opacity-50 tracking-tight font-medium select-none`}>
+                    <span>{displayTime()}</span>
+                    {renderReceipt(false)}
+                  </div>
                 </div>
-              </div>
+              )}
 
             {msg.gameInvite && !msg.deleted && (
               <div className="mt-4 pt-4 border-t border-black/5 flex flex-col gap-3">
@@ -3410,6 +3703,7 @@ const MessageItem = React.memo(function MessageItem({
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     key={emoji}
+                    onPointerDown={(e) => e.preventDefault()}
                     onClick={(e) => { 
                       e.stopPropagation(); 
                       onReact(msg.id, emoji);
@@ -3469,43 +3763,34 @@ function HeartFloating({ active }: { active?: boolean }) {
 
 function ProfileModal({ 
   profile, 
-  partnerProfile,
   onClose, 
   config, 
   isOwner, 
   onLogout,
-  onPartnerUpdated
+  onProfileUpdated
 }: { 
   profile: UserProfile, 
-  partnerProfile: UserProfile | null,
   onClose: () => void, 
   config: AppConfig | null, 
   isOwner: boolean, 
   onLogout: () => void,
-  onPartnerUpdated?: (partner: UserProfile) => void
+  onProfileUpdated?: (profile: UserProfile) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'me' | 'partner' | 'access'>('me');
+  const [activeTab, setActiveTab] = useState<'me' | 'access'>('me');
   
   // My profile state
-  const [name, setName] = useState(profile.display_name || "");
-  const [username, setUsername] = useState(profile.username || "");
-  const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
+  const [name, setName] = useState(profile.display_name || (profile.role === 'owner' ? 'Rahul' : 'Nusrat'));
+  const [username, setUsername] = useState(profile.username || (profile.email ? profile.email.split('@')[0] : (profile.role === 'owner' ? 'rahul' : 'nusrat')));
   const [photo, setPhoto] = useState(profile.photo_url || "");
-  
-  // Partner profile state
-  const partnerRole = profile.role === 'owner' ? 'partner' : 'owner';
-  const [partnerName, setPartnerName] = useState(partnerProfile?.display_name || (partnerRole === 'owner' ? 'Rahul' : 'Nusrat'));
-  const [partnerPhoto, setPartnerPhoto] = useState(partnerProfile?.photo_url || "");
-  const [partnerNickname, setPartnerNickname] = useState(profile.partnerNicknames?.[partnerProfile?.uid || ''] || "");
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
-  const [croppingTarget, setCroppingTarget] = useState<'me' | 'partner'>('me');
   const [tempImage, setTempImage] = useState<string | null>(null);
   
+  useOverlayBack(showCropper, () => setShowCropper(false), 'profile-modal-cropper');
+  
   const myFileInputRef = useRef<HTMLInputElement>(null);
-  const partnerFileInputRef = useRef<HTMLInputElement>(null);
 
   // Partner Management Logic (6-Digit Code + Email backup)
   const [partnerPasscode, setPartnerPasscode] = useState(config?.partner_passcode || '123456');
@@ -3536,10 +3821,9 @@ function ProfileModal({
     setEmails(emails.filter(e => e !== email));
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'me' | 'partner') => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCroppingTarget(target);
       const reader = new FileReader();
       reader.onload = () => {
         setTempImage(reader.result as string);
@@ -3563,11 +3847,7 @@ function ProfileModal({
       const reader = new FileReader();
       reader.onloadend = () => {
         const compressedBase64 = reader.result as string;
-        if (croppingTarget === 'me') {
-          setPhoto(compressedBase64);
-        } else {
-          setPartnerPhoto(compressedBase64);
-        }
+        setPhoto(compressedBase64);
         setShowCropper(false);
       };
       reader.readAsDataURL(compressedFile);
@@ -3578,69 +3858,36 @@ function ProfileModal({
   };
 
   const saveMyProfile = async () => {
-    const normalizedUsername = normalizeUsername(username);
-    const validationError = usernameError(normalizedUsername);
-    if (validationError) { setUsernameFeedback(validationError); return; }
     setIsSaving(true);
     try {
-      const { data: existing, error: lookupError } = await supabase.from('users').select('id').eq('username', normalizedUsername).neq('id', profile.uid).limit(1);
-      if (lookupError) throw lookupError;
-      if (existing?.length) { setUsernameFeedback('That username is already in use. Please choose another.'); return; }
-      const { error: updateError } = await supabase.from('users').update({
-        display_name: name.trim(),
-        username: normalizedUsername,
+      const cleanName = name.trim();
+      const cleanUsername = username.trim().toLowerCase().replace(/^@+/, '').replace(/\s+/g, '');
+
+      await supabase.from('users').update({
+        display_name: cleanName,
+        username: cleanUsername,
         photo_url: photo
       }).eq('id', profile.uid);
-      if (updateError) throw updateError;
       
-      setSaveSuccessMsg("My Profile updated!");
+      const updated: UserProfile = {
+        ...profile,
+        display_name: cleanName,
+        username: cleanUsername,
+        photo_url: photo
+      };
+
+      if (onProfileUpdated) {
+        onProfileUpdated(updated);
+      }
+
+      setSaveSuccessMsg("Profile updated!");
       setTimeout(() => {
         setSaveSuccessMsg(null);
         onClose();
       }, 800);
     } catch (err) {
       console.error(err);
-      if ((err as any)?.code === '23505') setUsernameFeedback('That username is already in use. Please choose another.');
-      else alert("Failed to save.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const savePartnerProfile = async () => {
-    setIsSaving(true);
-    try {
-      // 1. Update Partner's Global Profile in DB
-      await supabase.from('users').update({
-        display_name: partnerName.trim(),
-        photo_url: partnerPhoto
-      }).eq('role', partnerRole);
-
-      // 2. Update Custom Nickname on My User Record
-      const partnerUid = partnerProfile?.uid || partnerProfile?.id;
-      if (partnerUid) {
-        const updatedNicknames = { ...(profile.partnerNicknames || {}), [partnerUid]: partnerNickname.trim() };
-        await supabase.from('users').update({
-          partnerNicknames: updatedNicknames
-        }).eq('id', profile.uid);
-      }
-
-      if (onPartnerUpdated && partnerProfile) {
-        onPartnerUpdated({
-          ...partnerProfile,
-          display_name: partnerName.trim(),
-          photo_url: partnerPhoto
-        });
-      }
-
-      setSaveSuccessMsg("Partner Profile updated!");
-      setTimeout(() => {
-        setSaveSuccessMsg(null);
-        onClose();
-      }, 800);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save partner profile.");
+      alert("Failed to save profile.");
     } finally {
       setIsSaving(false);
     }
@@ -3677,7 +3924,7 @@ function ProfileModal({
           <button onClick={onClose} className="p-2 -ml-2 text-[#6E6E6E]">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h2 className="text-xl font-bold text-[#1a1a1a]">Settings & Profiles</h2>
+          <h2 className="text-xl font-bold text-[#1a1a1a]">Personal Profile</h2>
         </div>
         {saveSuccessMsg && (
           <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 animate-pulse">
@@ -3686,32 +3933,27 @@ function ProfileModal({
         )}
       </div>
 
-      <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2">
-        <button 
-          onClick={() => setActiveTab('me')}
-          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
-        >
-          My Profile
-        </button>
-        <button 
-          onClick={() => setActiveTab('partner')}
-          className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'partner' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
-        >
-          Partner's Profile
-        </button>
-        {isOwner && (
+      {isOwner && (
+        <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2">
+          <button 
+            onClick={() => setActiveTab('me')}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'me' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
+          >
+            My Profile
+          </button>
           <button 
             onClick={() => setActiveTab('access')}
             className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'access' ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]' : 'border-transparent text-[var(--theme-text)]/50'}`}
           >
             PIN Access
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[var(--theme-bg)] text-[var(--theme-text)]">
         {activeTab === 'me' && (
-          <div className="max-w-md mx-auto space-y-8">
+          <div className="max-w-md mx-auto space-y-7">
+            {/* Avatar Section */}
             <div className="flex flex-col items-center">
               <div className="relative group">
                 <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/30 shadow-md relative ring-4 ring-[var(--theme-accent)]/15">
@@ -3727,48 +3969,58 @@ function ProfileModal({
                   type="button"
                   onClick={() => myFileInputRef.current?.click()}
                   className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform"
+                  title="Change photo"
                 >
                   <Camera className="w-5 h-5" />
                 </button>
                 <input 
-                  type="file" ref={myFileInputRef} onChange={(e) => handleFileChange(e, 'me')} 
+                  type="file" ref={myFileInputRef} onChange={handleFileChange} 
                   accept="image/*" className="hidden" 
                 />
               </div>
-              <p className="mt-4 text-[11px] font-bold text-[var(--theme-text)]/60 uppercase tracking-widest">Tap camera to change your photo</p>
+              <p className="mt-3 text-[11px] font-bold text-[var(--theme-text)]/60 uppercase tracking-widest">Tap camera to change photo</p>
             </div>
 
-            <div className="space-y-6">
+            {/* Form Fields */}
+            <div className="space-y-5">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Your Display Name</label>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">
+                  Display Name
+                </label>
                 <input 
-                  value={name} onChange={(e) => setName(e.target.value)}
-                  placeholder="How your partner sees you..."
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="How you appear in chat..."
                   className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
                 />
               </div>
+
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Username</label>
-                <input
-                  value={username}
-                  onChange={(e) => { setUsername(e.target.value); setUsernameFeedback(null); }}
-                  placeholder="e.g. bodruddoja4"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
-                />
-                <p className={`mt-2 text-xs ${usernameFeedback ? 'text-red-500' : 'text-[var(--theme-text)]/55'}`}>{usernameFeedback || '3–30 lowercase letters, numbers, or underscores. Your internal account ID stays unchanged.'}</p>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">
+                  Visual Username / Handle
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-4 text-[var(--theme-accent)] font-bold text-[15px] select-none">@</span>
+                  <input 
+                    value={username} 
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, '').replace(/^@+/, ''))}
+                    placeholder="username"
+                    className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl pl-9 pr-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium font-mono"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-[var(--theme-text)]/60 ml-1">
+                  Displayed underneath your name in Nicknames & chat profile
+                </p>
               </div>
               
-              <div className="pt-6 border-t border-[var(--theme-border)] flex flex-col gap-4">
+              <div className="pt-4 border-t border-[var(--theme-border)] flex flex-col gap-3.5">
                 <button 
                   type="button"
                   onClick={saveMyProfile}
                   disabled={isSaving}
                   className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  {isSaving ? "Saving..." : "Save My Profile"}
+                  {isSaving ? "Saving..." : "Save Changes"}
                 </button>
                 <button 
                   type="button"
@@ -3777,72 +4029,6 @@ function ProfileModal({
                 >
                   <LogOut className="w-4 h-4" />
                   Logout Session
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'partner' && (
-          <div className="max-w-md mx-auto space-y-8">
-            <div className="flex flex-col items-center">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/30 shadow-md relative ring-4 ring-[var(--theme-accent)]/15">
-                  {partnerPhoto ? (
-                    <img src={partnerPhoto} alt="Partner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
-                      {partnerName?.[0] || '?'}
-                    </div>
-                  )}
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => partnerFileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform"
-                >
-                  <Camera className="w-5 h-5" />
-                </button>
-                <input 
-                  type="file" ref={partnerFileInputRef} onChange={(e) => handleFileChange(e, 'partner')} 
-                  accept="image/*" className="hidden" 
-                />
-              </div>
-              <p className="mt-4 text-[11px] font-bold text-[var(--theme-accent)] uppercase tracking-widest">
-                Edit {partnerName}'s Photo & Profile
-              </p>
-              <p className="mt-1 text-[10px] text-[var(--theme-text)]/60 text-center">
-                Both of you can update each other's photo anytime!
-              </p>
-            </div>
-
-            <div className="space-y-5">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Partner's Display Name</label>
-                <input 
-                  value={partnerName} onChange={(e) => setPartnerName(e.target.value)}
-                  placeholder="Partner's display name..."
-                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Custom Nickname (Only visible to you)</label>
-                <input 
-                  value={partnerNickname} onChange={(e) => setPartnerNickname(e.target.value)}
-                  placeholder="e.g. My Queen, My Love..."
-                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
-                />
-              </div>
-              
-              <div className="pt-6 border-t border-[var(--theme-border)]">
-                <button 
-                  type="button"
-                  onClick={savePartnerProfile}
-                  disabled={isSaving}
-                  className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isSaving ? "Updating Partner..." : `Save ${partnerName}'s Profile`}
                 </button>
               </div>
             </div>
@@ -4211,6 +4397,13 @@ function PartnerInfoModal({
   const [cropTarget, setCropTarget] = useState<'partner' | 'me'>('partner');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  // Subview & overlay closers for PartnerInfoModal
+  useOverlayBack(view === 'nicknames', () => setView('main'), 'partner-nicknames-view');
+  useOverlayBack(showCustomiseModal, () => setShowCustomiseModal(false), 'partner-customise-theme');
+  useOverlayBack(showWhoCanEditModal, () => setShowWhoCanEditModal(false), 'who-can-edit-modal');
+  useOverlayBack(!!editingTarget, () => setEditingTarget(null), 'edit-nickname-sheet');
+  useOverlayBack(showCropper, () => setShowCropper(false), 'partner-photo-cropper');
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 2500);
@@ -4331,7 +4524,16 @@ function PartnerInfoModal({
   const sharedPhotos = useMemo(() => {
     const photos: string[] = [];
     messages.forEach((m: any) => {
-      if (m.attachment_url && (typeof m.attachment_url === 'string') && (m.attachment_url.startsWith('data:image') || m.attachment_url.startsWith('http'))) {
+      const media = m.media || hydrateMessageMedia(m);
+      if (media?.mediaList && media.mediaList.length > 0) {
+        media.mediaList.forEach((item: any) => {
+          if (item.type === 'image' && item.url) {
+            photos.push(item.url);
+          }
+        });
+      } else if (media?.url && media.type === 'image') {
+        photos.push(media.url);
+      } else if (m.attachment_url && (typeof m.attachment_url === 'string') && (m.attachment_url.startsWith('data:image') || m.attachment_url.startsWith('http'))) {
         photos.push(m.attachment_url);
       }
       if (m.image_url && typeof m.image_url === 'string') {
@@ -4341,8 +4543,8 @@ function PartnerInfoModal({
     return photos;
   }, [messages]);
 
-  const partnerHandle = partner.username || (partner.email ? partner.email.split('@')[0] : '_btw.nusrat_');
-  const myHandle = myProfile?.username || (myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey');
+  const partnerHandle = partner.username || (partner.email ? partner.email.split('@')[0] : (partner.role === 'owner' ? 'rahul' : 'nusrat'));
+  const myHandle = myProfile?.username || (myProfile?.email ? myProfile.email.split('@')[0] : (myProfile?.role === 'owner' ? 'rahul' : 'nusrat'));
 
   return (
     <div 

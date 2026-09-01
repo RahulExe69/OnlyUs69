@@ -1,41 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, FileAudio, FileText } from 'lucide-react';
+import { X, Send, Play, FileVideo, Image as ImageIcon, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatFileSize } from '../lib/mediaStore';
+
+export interface SelectedMediaFile {
+  file: File;
+  previewUrl: string;
+  type: 'image' | 'video';
+}
 
 interface MediaSendPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  file: File | null;
-  previewUrl: string | null;
-  mediaType: 'image' | 'video' | 'audio' | 'file';
+  files: SelectedMediaFile[];
   recipientName: string;
-  onSend: (caption: string) => void;
+  onSend: (caption: string, files: SelectedMediaFile[]) => void;
+  onAddMoreFiles?: (newFiles: FileList | null) => void;
   isSending: boolean;
-  uploadProgress: number;
-  uploadError?: string | null;
 }
 
 export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
   isOpen,
   onClose,
-  file,
-  previewUrl,
-  mediaType,
+  files,
   recipientName,
   onSend,
-  isSending,
-  uploadProgress,
-  uploadError
+  onAddMoreFiles,
+  isSending
 }) => {
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [caption, setCaption] = useState('');
 
-  if (!isOpen || !previewUrl) return null;
+  useEffect(() => {
+    if (files.length > 0 && selectedIndex >= files.length) {
+      setSelectedIndex(0);
+    }
+  }, [files.length, selectedIndex]);
+
+  if (!isOpen || files.length === 0) return null;
+
+  const currentFile = files[selectedIndex] || files[0];
+
+  const totalSize = files.reduce((acc, f) => acc + (f.file?.size || 0), 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSending) return;
-    onSend(caption.trim());
+    onSend(caption.trim(), files);
     setCaption('');
   };
 
@@ -55,13 +66,11 @@ export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
           
           <div className="flex flex-col items-center">
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Send to {recipientName}
+              Send to {recipientName} {files.length > 1 && `(${files.length} items)`}
             </span>
-            {file && (
-              <span className="text-[10px] text-white/60 font-medium">
-                {formatFileSize(file.size)}
-              </span>
-            )}
+            <span className="text-[10px] text-white/60 font-medium">
+              {formatFileSize(totalSize)}
+            </span>
           </div>
 
           <div className="w-10" />
@@ -69,35 +78,67 @@ export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
 
         {/* Center Preview */}
         <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">
-          {mediaType === 'image' ? (
+          {/* Previous / Next buttons if multiple files */}
+          {files.length > 1 && selectedIndex > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedIndex(i => i - 1)}
+              className="absolute left-3 z-30 p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 active:scale-95 transition-all"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+
+          {files.length > 1 && selectedIndex < files.length - 1 && (
+            <button
+              type="button"
+              onClick={() => setSelectedIndex(i => i + 1)}
+              className="absolute right-3 z-30 p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 active:scale-95 transition-all"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+
+          {currentFile.type === 'image' ? (
             <img 
-              src={previewUrl} 
+              src={currentFile.previewUrl} 
               alt="Preview" 
-              className="max-h-[65vh] max-w-full object-contain rounded-2xl shadow-2xl"
+              className="max-h-[58vh] max-w-full object-contain rounded-2xl shadow-2xl transition-all"
             />
-          ) : mediaType === 'video' ? (
+          ) : (
             <video 
-              src={previewUrl} 
+              src={currentFile.previewUrl} 
               controls 
               playsInline 
-              className="max-h-[65vh] max-w-full rounded-2xl shadow-2xl"
+              className="max-h-[58vh] max-w-full rounded-2xl shadow-2xl"
             />
-          ) : mediaType === 'audio' ? (
-            <div className="w-full max-w-md rounded-2xl bg-white/10 p-8 text-center"><FileAudio className="w-14 h-14 mx-auto mb-4 text-[var(--theme-accent)]" /><p className="mb-5 font-semibold break-all">{file?.name}</p><audio src={previewUrl} controls className="w-full" /></div>
-          ) : (
-            <div className="w-full max-w-md rounded-2xl bg-white/10 p-8 text-center"><FileText className="w-14 h-14 mx-auto mb-4 text-[var(--theme-accent)]" /><p className="font-semibold break-all">{file?.name}</p><p className="mt-2 text-sm text-white/60">This file will be sent as an attachment.</p></div>
           )}
         </div>
 
+        {/* Thumbnail Selector Strip for Multiple Photos */}
+        {files.length > 1 && (
+          <div className="flex items-center justify-center gap-2 px-4 py-2 bg-black/50 overflow-x-auto max-w-full">
+            {files.map((item, idx) => (
+              <div
+                key={idx}
+                onClick={() => setSelectedIndex(idx)}
+                className={`relative w-12 h-12 rounded-xl overflow-hidden cursor-pointer border-2 transition-all flex-shrink-0 ${
+                  idx === selectedIndex ? 'border-[var(--theme-accent)] scale-105 opacity-100 shadow-md' : 'border-transparent opacity-50 hover:opacity-80'
+                }`}
+              >
+                <img src={item.previewUrl} alt="thumb" className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Bottom Caption Input & Send Button */}
         <form onSubmit={handleSubmit} className="p-4 pb-8 max-w-xl w-full mx-auto flex items-center gap-3">
-          {isSending && <div className="absolute bottom-24 left-6 right-6 mx-auto max-w-xl"><div className="mb-1 flex justify-between text-xs font-bold text-white"><span>Sending media</span><span>{uploadProgress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full bg-[var(--theme-accent)] transition-all" style={{ width: `${uploadProgress}%` }} /></div></div>}
-          {uploadError && <p role="alert" className="absolute bottom-24 left-6 right-6 mx-auto max-w-xl rounded-xl bg-red-500/90 px-3 py-2 text-xs font-semibold text-white">{uploadError}</p>}
           <input 
             type="text"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            placeholder="Add a caption..."
+            placeholder={files.length > 1 ? `Add a caption for ${files.length} items...` : "Add a caption..."}
             disabled={isSending}
             autoFocus
             className="flex-1 px-5 py-3.5 bg-white/10 text-white placeholder-white/40 border border-white/20 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)] transition-all"

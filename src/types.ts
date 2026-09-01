@@ -13,8 +13,7 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   display_name?: string;
-  /** A stable, user-selected public handle. This is never used as the user ID. */
-  username?: string;
+  username?: string; // Visual username / handle (e.g. @bodruddoja4, @rahul)
   photo_url?: string;
   is_typing?: boolean;
   last_seen?: any;
@@ -25,10 +24,8 @@ export interface UserProfile {
 
 export interface MediaAttachment {
   id: string;
-  type: 'image' | 'video' | 'audio' | 'file';
-  /** Ephemeral signed URL or a local object URL; never a permanent public URL. */
-  url: string;
-  storagePath?: string;
+  type: 'image' | 'video';
+  url: string; // Base64 data url or direct media URI stored on device
   thumbnail?: string; // blur placeholder
   thumbnailUrl?: string;
   fileName?: string;
@@ -38,6 +35,7 @@ export interface MediaAttachment {
   duration?: number; // duration in seconds for video
   width?: number;
   height?: number;
+  mediaList?: MediaAttachment[]; // Multiple items support
 }
 
 export interface Message {
@@ -52,13 +50,14 @@ export interface Message {
   hidden_for_partner?: boolean;
   isEdited?: boolean;
   media?: MediaAttachment;
+  mediaList?: MediaAttachment[]; // For multi-photo albums / collages
   /** Local-only while an optimistic message is waiting for Supabase. */
   deliveryStatus?: 'sending' | 'sent' | 'failed';
   replyTo?: {
     id: string;
     text: string;
     sender_role: UserRole;
-    mediaType?: 'image' | 'video' | 'audio' | 'file';
+    mediaType?: 'image' | 'video';
   };
   gameInvite?: {
     gameType: 'tictactoe';

@@ -19,18 +19,9 @@ ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS media jsonb,
 ADD COLUMN IF NOT EXISTS attachment_url text;
 
-ALTER TABLE IF EXISTS users
-ADD COLUMN IF NOT EXISTS username text;
-
--- Usernames are handles, not primary keys: profile and message references keep
--- using the immutable users.id value.
-CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique
-ON users (lower(username))
-WHERE username IS NOT NULL;
-
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('chat-media', 'chat-media', false, 52428800, ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'application/pdf'])
-ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = 52428800;
+VALUES ('chat-media', 'chat-media', true, 52428800, ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'])
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 2. Ensure initial row exists
 INSERT INTO app_config (id, owner_email, partner_allowed_emails, partner_passcode)
