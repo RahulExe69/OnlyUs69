@@ -25,6 +25,7 @@ html, body {
 
 body {
   touch-action: pan-y;
+  font-family: var(--theme-font);
 }
 
 @theme {
@@ -157,6 +158,33 @@ body {
 :root[data-chat-theme="ocean"] .chat-theme .chat-bubble-partner { border-radius: 18px 18px 18px 4px; }
 :root[data-chat-theme="sunset"] .chat-theme .chat-bubble-owner { border-radius: 28px 28px 28px 8px; }
 :root[data-chat-theme="sunset"] .chat-theme .chat-bubble-partner { border-radius: 28px 28px 8px 28px; }
+
+/* These themes deliberately change the interface silhouette, not only its palette. */
+:root[data-chat-theme="doodle"] .chat-theme,
+:root[data-chat-theme="doodle"] .theme-settings,
+:root[data-chat-theme="doodle"] .theme-customize-sheet { letter-spacing: .015em; }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="doodle"] .theme-accent-button,
+:root[data-chat-theme="doodle"] .theme-icon-button { border: 2px solid var(--theme-text); border-radius: 18px 22px 17px 24px; box-shadow: 3px 3px 0 color-mix(in srgb, var(--theme-text) 70%, transparent); }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-owner { transform: rotate(-.35deg); }
+:root[data-chat-theme="doodle"] .chat-theme .chat-bubble-partner { transform: rotate(.3deg); }
+
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-partner { border-radius: 0; border-left: 3px solid var(--theme-accent); box-shadow: 7px 7px 0 rgba(0,0,0,.22); }
+:root[data-chat-theme="noir"] .chat-theme .chat-bubble-owner { border-left: 0; border-right: 3px solid var(--theme-accent); }
+
+:root[data-chat-theme="forest"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="forest"] .chat-theme .chat-bubble-partner { border-radius: 24px 7px 24px 7px; border-width: 1px; }
+
+:root[data-chat-theme="cyber"] .theme-chat-decoration { background-size: 24px 24px, 24px 24px, auto; opacity: 1; }
+:root[data-chat-theme="cyber"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="cyber"] .chat-theme .chat-bubble-partner { border-radius: 2px; border: 1px solid var(--theme-accent); box-shadow: 4px 4px 0 rgba(255,60,172,.38); }
+:root[data-chat-theme="cyber"] .theme-accent-button,
+:root[data-chat-theme="cyber"] .theme-icon-button { border-radius: 2px; box-shadow: 2px 2px 0 rgba(255,60,172,.55); }
+
+:root[data-chat-theme="aurora"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="aurora"] .chat-theme .chat-bubble-partner { border-radius: 24px; backdrop-filter: blur(12px); border-color: color-mix(in srgb, var(--theme-accent) 32%, white); }
 
 .theme-settings { background: var(--theme-surface); color: var(--theme-text); }
 .theme-settings input { background: var(--theme-input-bg) !important; border-color: var(--theme-border) !important; color: var(--theme-text) !important; }

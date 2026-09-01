@@ -70,6 +70,21 @@ const THEMES = {
   },
   sunset: {
     name: 'Soft Bloom', note: 'Warm peach layers with a golden hour glow.', bg: '#FFF5EC', text: '#56352C', header: 'rgba(255, 249, 242, .88)', owner: '#CD6C58', ownerText: '#FFFFFF', partner: '#F8DDC8', partnerText: '#70473A', input: '#FFFCF8', surface: '#FFFAF5', accent: '#CD6C58', border: 'rgba(205, 108, 88, .18)', decoration: 'radial-gradient(circle at 12% 8%, rgba(255,201,142,.42), transparent 28%), radial-gradient(circle at 89% 84%, rgba(232,130,112,.2), transparent 30%)', font: '"Palatino Linotype", "Book Antiqua", serif'
+  },
+  doodle: {
+    name: 'Doodle Day', note: 'Playful hand-drawn lines, stickers, and cheerful color.', bg: '#FFFBE7', text: '#263238', header: 'rgba(255, 253, 236, .92)', owner: '#FF6B6B', ownerText: '#FFFFFF', partner: '#FFFFFF', partnerText: '#263238', input: '#FFFFFF', surface: '#FFFDF3', accent: '#2878B5', border: 'rgba(38, 50, 56, .28)', decoration: 'radial-gradient(circle at 12% 16%, #FFD93D 0 2px, transparent 3px), radial-gradient(circle at 86% 12%, #6BCB77 0 3px, transparent 4px), radial-gradient(circle at 80% 82%, #4D96FF 0 2px, transparent 3px), repeating-linear-gradient(38deg, transparent 0 26px, rgba(38,50,56,.09) 27px 28px, transparent 29px 54px)', font: '"Comic Sans MS", "Marker Felt", cursive'
+  },
+  noir: {
+    name: 'Film Noir', note: 'Ink-black contrast with a classic editorial edge.', bg: '#161616', text: '#F4EBDD', header: 'rgba(20, 20, 20, .92)', owner: '#E0B85C', ownerText: '#1A1712', partner: '#2A2926', partnerText: '#F4EBDD', input: '#242321', surface: '#1D1C1A', accent: '#E0B85C', border: 'rgba(224, 184, 92, .34)', decoration: 'linear-gradient(115deg, transparent 0 42%, rgba(224,184,92,.1) 42.3% 43%, transparent 43.3%), radial-gradient(ellipse at 82% 8%, rgba(255,255,255,.08), transparent 30%)', font: 'Georgia, "Times New Roman", serif'
+  },
+  forest: {
+    name: 'Enchanted Forest', note: 'Mossy layers and firefly light after rain.', bg: '#102A24', text: '#EBF7DD', header: 'rgba(15, 44, 37, .88)', owner: '#C9E265', ownerText: '#19352A', partner: '#1E4537', partnerText: '#E5F6DB', input: '#183C31', surface: '#16352C', accent: '#C9E265', border: 'rgba(201, 226, 101, .25)', decoration: 'radial-gradient(circle at 12% 18%, rgba(201,226,101,.38) 0 2px, transparent 3px), radial-gradient(circle at 76% 23%, rgba(201,226,101,.34) 0 1px, transparent 3px), radial-gradient(circle at 90% 76%, rgba(89,166,114,.3), transparent 30%), repeating-linear-gradient(130deg, transparent 0 42px, rgba(201,226,101,.05) 43px 45px, transparent 46px 88px)', font: '"Trebuchet MS", "Segoe UI", sans-serif'
+  },
+  cyber: {
+    name: 'Neon Arcade', note: 'Electric gridlines and unapologetic arcade energy.', bg: '#0B0920', text: '#F4F0FF', header: 'rgba(14, 10, 38, .9)', owner: '#FF3CAC', ownerText: '#FFFFFF', partner: '#1B1740', partnerText: '#73F7FF', input: '#151135', surface: '#100D2A', accent: '#73F7FF', border: 'rgba(115, 247, 255, .4)', decoration: 'linear-gradient(rgba(115,247,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(115,247,255,.12) 1px, transparent 1px), radial-gradient(circle at 50% 105%, rgba(255,60,172,.42), transparent 45%)', font: '"Courier New", monospace'
+  },
+  aurora: {
+    name: 'Aurora Drift', note: 'A luminous northern-sky wash with soft glass.', bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif'
   }
 };
 
@@ -92,6 +107,8 @@ const applyTheme = (themeName: ThemeName) => {
   root.style.setProperty('--theme-border', theme.border);
   root.style.setProperty('--theme-decoration', theme.decoration);
   root.style.setProperty('--theme-font', theme.font);
+  // Keeps installed-PWA chrome and mobile browser UI in the same visual system.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.accent);
 };
 
 const getMillis = (ts: any) => {
@@ -3504,28 +3521,28 @@ function ThemeCustomizeSheet({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden relative"
+            className="theme-customize-sheet fixed bottom-0 left-0 right-0 z-[130] rounded-t-[2.2rem] max-w-2xl mx-auto shadow-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 pt-3 pb-4 border-b border-neutral-200">
-              <div className="w-12 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+            <div className="px-5 pt-3 pb-4 border-b border-[var(--theme-border)]">
+              <div className="w-12 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto mb-4" />
               <div className="relative flex items-center justify-center">
-                <h3 className="text-[24px] font-bold text-[#111111]">Customise</h3>
+                <h3 className="text-[24px] font-bold text-[var(--theme-text)]">Customise</h3>
                 <button
                   onClick={closeSheet}
-                  className="absolute right-0 p-1 text-neutral-500 hover:text-neutral-700"
+                  className="absolute right-0 p-1 text-[var(--theme-text)]/55 hover:text-[var(--theme-accent)]"
                   aria-label="Close customise"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-center text-[13px] text-neutral-500 mt-2">
+              <p className="text-center text-[13px] text-[var(--theme-text)]/60 mt-2">
                 Themes already include matching colors, wallpaper mood, and font.
               </p>
             </div>
 
-            <div className="custom-scrollbar overflow-y-auto px-4 pt-4 pb-24 max-h-[68dvh]">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="custom-scrollbar overflow-y-auto px-3 sm:px-4 pt-3 pb-24 max-h-[68dvh]">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
                   const theme = THEMES[themeName];
                   const isSelected = pendingTheme === themeName;
@@ -3536,29 +3553,29 @@ function ThemeCustomizeSheet({
                       type="button"
                       onClick={() => setPendingTheme(themeName)}
                       disabled={isThemeSaving}
-                      className={`rounded-2xl p-2.5 text-left border transition-all ${isSelected ? 'border-[#111111] shadow-md' : 'border-neutral-200'} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
+                      className={`theme-choice ${isSelected ? 'theme-choice-active' : ''} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
                     >
                       <div
-                        className="relative h-36 rounded-[1.1rem] overflow-hidden border border-black/5"
+                        className="theme-choice-preview"
                         style={{ background: theme.decoration, backgroundColor: theme.bg }}
                       >
                         <span className="theme-preview-header" style={{ background: theme.header }} />
                         <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
                         <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
                         {(isSelected || isApplied) && (
-                          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 text-white flex items-center justify-center">
+                          <span className="theme-choice-check">
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-[14px] font-semibold text-[#111111] leading-tight truncate">{theme.name}</p>
+                      <p className="mt-2 text-[12px] sm:text-[14px] font-semibold text-[var(--theme-text)] leading-tight truncate">{theme.name}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-neutral-200 px-4 py-3 grid grid-cols-2 gap-3">
+            <div className="absolute bottom-0 left-0 right-0 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] px-4 py-3 grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -3566,7 +3583,7 @@ function ThemeCustomizeSheet({
                   setPreviewTheme(pendingTheme);
                 }}
                 disabled={isThemeSaving}
-                className="h-12 rounded-2xl bg-[#F1F3F7] text-[#111111] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
+                className="h-12 rounded-2xl bg-[var(--theme-accent)]/10 text-[var(--theme-text)] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
               >
                 Preview
               </button>
@@ -3574,7 +3591,7 @@ function ThemeCustomizeSheet({
                 type="button"
                 onClick={applySelectedTheme}
                 disabled={isThemeSaving || pendingTheme === currentTheme}
-                className="h-12 rounded-2xl bg-[#4F46E5] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+                className="h-12 rounded-2xl bg-[var(--theme-accent)] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
               >
                 {isThemeSaving ? 'Applying...' : 'Apply'}
               </button>
