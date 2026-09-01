@@ -41,11 +41,15 @@ const socketService = {
   onMessageUpdated: () => {},
   onMessageDeleted: () => {}
 };
-import { AppConfig, UserRole, UserProfile, Message } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2 } from 'lucide-react';
+import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
+import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
+import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
+import { MediaSendPreviewModal } from './components/MediaSendPreviewModal';
+import { saveLocalMedia, getLocalMedia } from './lib/mediaStore';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -1913,15 +1917,199 @@ function ChatView({
   activeNudge?: { type: string, sender: string } | null,
   onDismissNudge?: () => void
 }) {
-  const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
-  const [inputText, setInputText] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
+  const [mediaPreviewFile, setMediaPreviewFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [mediaPreviewType, setMediaPreviewType] = useState<'image' | 'video'>('image');
+  const [showMediaPreviewModal, setShowMediaPreviewModal] = useState(false);
+  const [isSendingMedia, setIsSendingMedia] = useState(false);
 
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isVideo && !isImage) {
+      alert('Please select an image or video file.');
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setMediaPreviewFile(file);
+    setMediaPreviewUrl(preview);
+    setMediaPreviewType(isVideo ? 'video' : 'image');
+    setShowMediaPreviewModal(true);
+    onSetShowAttachmentMenu(false);
+    
+    // Clear input so selecting the same file again triggers change
+    e.target.value = '';
+  };
+
+  const handleSendMediaMessage = async (caption: string) => {
+    if (!mediaPreviewFile) return;
+    setIsSendingMedia(true);
+
+    try {
+      const mediaId = `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const isVideo = mediaPreviewType === 'video';
+      
+      // 1. Process thumbnail / compression
+      let thumbnailDataUrl: string | undefined = undefined;
+      let finalBlob: Blob = mediaPreviewFile;
+
+      if (isImage) {
+        try {
+          // WhatsApp standard quality compression: ~0.4MB max target, 1280px dimension, 80% quality
+          const compressed = await imageCompression(mediaPreviewFile, {
+            maxSizeMB: 0.45,
+            maxWidthOrHeight: 1280,
+            initialQuality: 0.8,
+            useWebWorker: true
+          });
+          finalBlob = compressed;
+
+          // Generate micro thumbnail for instant blur placeholder
+          const thumbBlob = await imageCompression(mediaPreviewFile, {
+            maxSizeMB: 0.02,
+            maxWidthOrHeight: 80,
+            initialQuality: 0.5,
+            useWebWorker: true
+          });
+          thumbnailDataUrl = await imageCompression.getDataUrlFromFile(thumbBlob);
+        } catch (compErr) {
+          console.warn('Compression fallback:', compErr);
+        }
+      }
+
+      // Convert blob to Data URL for peer-to-peer delivery if reasonable size (< 3.5MB), or save locally in IndexedDB
+      let payloadUrl: string | undefined = undefined;
+      
+      const fileDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(finalBlob);
+      });
+
+      // Save full quality media in local device-first IndexedDB
+      await saveLocalMedia(mediaId, finalBlob);
+
+      // In WhatsApp style, the data payload carries the image/video data URL so partner device automatically caches & renders it
+      payloadUrl = fileDataUrl;
+
+      const mediaAttachment: MediaAttachment = {
+        id: mediaId,
+        type: isVideo ? 'video' : 'image',
+        url: payloadUrl,
+        thumbnailUrl: thumbnailDataUrl,
+        fileName: mediaPreviewFile.name,
+        fileSize: finalBlob.size,
+        mimeType: finalBlob.type,
+        caption: caption || undefined
+      };
+
+      const tempId = `temp-${Date.now()}`;
+      const msgData: any = {
+        id: tempId,
+        sender_role: role,
+        text: caption || '',
+        media: mediaAttachment,
+        timestamp: Date.now(),
+        reactions: {},
+        replyTo: replyingTo ? {
+          id: replyingTo.id,
+          text: replyingTo.text,
+          sender_role: replyingTo.sender_role
+        } : null
+      };
+
+      setMessages(prev => [...prev, msgData]);
+      setTimeout(scrollToBottom, 50);
+
+      // Insert message with media into Supabase (and trigger realtime push to partner)
+      const { error } = await supabase.from('messages').insert([{
+        sender_role: role,
+        text: caption || '',
+        media: mediaAttachment,
+        created_at: new Date().toISOString(),
+        reactions: {},
+        reply_to: replyingTo ? replyingTo.id : null,
+        attachment_url: payloadUrl
+      }]).select().single();
+
+      if (error) {
+        console.warn('Supabase insert message error:', error);
+      }
+
+      setShowMediaPreviewModal(false);
+      setMediaPreviewFile(null);
+      setMediaPreviewUrl(null);
+      onSetReplyingTo(null);
+    } catch (err) {
+      console.error('Error sending media:', err);
+    } finally {
+      setIsSendingMedia(false);
     }
   };
+
+  const isImage = mediaPreviewType === 'image';
+  const [partnerLastReadAt, setPartnerLastReadAt] = useState<number>(0);
+  const [inputText, setInputText] = useState('');
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [unreadCountBelow, setUnreadCountBelow] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevMessagesCountRef = useRef(messages.length);
+
+  const checkIfNearBottom = () => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    // Considered near bottom if within 120px of bottom
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    const near = distanceFromBottom < 120;
+    setIsNearBottom(near);
+    if (near) {
+      setUnreadCountBelow(0);
+    }
+  };
+
+  const scrollToBottom = (smooth = true) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+      setUnreadCountBelow(0);
+      setIsNearBottom(true);
+    }
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => checkIfNearBottom();
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesCountRef.current) {
+      const lastMsg = messages[messages.length - 1];
+      const isMyMessage = lastMsg.sender_role === role;
+      
+      // If user is near bottom or user just sent a message, auto-scroll down smoothly
+      if (isNearBottom || isMyMessage) {
+        setTimeout(() => scrollToBottom(true), 60);
+      } else {
+        // User is scrolled up reading past history -> show WhatsApp / Instagram style new messages pill
+        setUnreadCountBelow(prev => prev + (messages.length - prevMessagesCountRef.current));
+      }
+    }
+    prevMessagesCountRef.current = messages.length;
+  }, [messages.length, isNearBottom, role]);
 
   useEffect(() => {
     if (isTabActive && messages.length > 0 && userProfile) {
@@ -2155,6 +2343,7 @@ function ChatView({
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={onViewImage}
+                onViewMedia={(media) => setActiveMediaViewer(media)}
                 isInteractionPoint={msg.id === interactionId}
                 showSeenText={msg.id === interactionId && showIndicatorSeenText}
                 partnerLastReadAt={partnerLastReadMillis}
@@ -2168,6 +2357,32 @@ function ChatView({
         <AnimatePresence>
           {activeNudge && (
             <NudgeOverlay nudge={activeNudge} onDismiss={onDismissNudge} />
+          )}
+        </AnimatePresence>
+
+        {/* Scroll to bottom & New messages indicator pill */}
+        <AnimatePresence>
+          {(!isNearBottom || unreadCountBelow > 0) && (
+            <motion.div
+              initial={{ opacity: 0, y: 15, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 15, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+              className="absolute bottom-4 right-4 z-30 pointer-events-auto"
+            >
+              <button
+                onClick={() => scrollToBottom(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[var(--theme-accent)] text-white shadow-lg shadow-[var(--theme-accent)]/30 hover:scale-105 active:scale-95 transition-all text-xs font-bold cursor-pointer border border-white/20"
+                aria-label="Scroll to newest messages"
+              >
+                <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                {unreadCountBelow > 0 ? (
+                  <span>{unreadCountBelow} new {unreadCountBelow === 1 ? 'message' : 'messages'}</span>
+                ) : (
+                  <span>Latest</span>
+                )}
+              </button>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -2279,17 +2494,89 @@ function ChatView({
         </form>
       </div>
 
+      {/* Hidden file inputs for Camera and Gallery */}
+      <input 
+        type="file" 
+        ref={cameraInputRef} 
+        accept="image/*,video/*" 
+        capture="environment" 
+        className="hidden" 
+        onChange={(e) => handleSelectMedia(e, true)} 
+      />
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        accept="image/*,video/*" 
+        className="hidden" 
+        onChange={(e) => handleSelectMedia(e, false)} 
+      />
+
       <BottomSheet 
         isOpen={showAttachmentMenu} 
         onClose={() => onSetShowAttachmentMenu(false)}
         title="Share with Love"
       >
         <div className="grid grid-cols-4 gap-4 p-4 lg:p-6">
-          <AttachmentOption icon={<Camera className="w-6 h-6" />} label="Camera" color="bg-[var(--theme-accent)] text-white" onClick={() => onSetShowAttachmentMenu(false)} />
-          <AttachmentOption icon={<ImageIcon className="w-6 h-6" />} label="Gallery" color="bg-[var(--theme-bubble-partner)] text-[var(--theme-bubble-partner-text)]" onClick={() => onSetShowAttachmentMenu(false)} />
-          <AttachmentOption icon={<Music className="w-6 h-6" />} label="Audio" color="bg-[var(--theme-surface)] text-[var(--theme-accent)] border border-[var(--theme-border)]" onClick={() => onSetShowAttachmentMenu(false)} />
+          <AttachmentOption 
+            icon={<Camera className="w-6 h-6" />} 
+            label="Camera" 
+            color="bg-[var(--theme-accent)] text-white" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              cameraInputRef.current?.click();
+            }} 
+          />
+          <AttachmentOption 
+            icon={<ImageIcon className="w-6 h-6" />} 
+            label="Photos & Videos" 
+            color="bg-[var(--theme-bubble-partner)] text-[var(--theme-bubble-partner-text)]" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              fileInputRef.current?.click();
+            }} 
+          />
+          <AttachmentOption 
+            icon={<Video className="w-6 h-6" />} 
+            label="Video" 
+            color="bg-[var(--theme-surface)] text-[var(--theme-accent)] border border-[var(--theme-border)]" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              fileInputRef.current?.click();
+            }} 
+          />
+          <AttachmentOption 
+            icon={<Sparkles className="w-6 h-6" />} 
+            label="Feelings" 
+            color="bg-[#FF8FA3]/20 text-[#FF8FA3]" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              onSetShowNudgeMenu(true);
+            }} 
+          />
         </div>
       </BottomSheet>
+
+      {/* Media Send Preview Modal (WhatsApp Style) */}
+      <MediaSendPreviewModal 
+        isOpen={showMediaPreviewModal}
+        onClose={() => {
+          setShowMediaPreviewModal(false);
+          setMediaPreviewFile(null);
+          setMediaPreviewUrl(null);
+        }}
+        file={mediaPreviewFile}
+        previewUrl={mediaPreviewUrl}
+        mediaType={mediaPreviewType}
+        recipientName={role === 'owner' ? 'Nusrat' : 'Rahul'}
+        onSend={handleSendMediaMessage}
+        isSending={isSendingMedia}
+      />
+
+      {/* WhatsApp-style Fullscreen Media Viewer */}
+      <FullscreenMediaViewer 
+        media={activeMediaViewer}
+        onClose={() => setActiveMediaViewer(null)}
+      />
 
       <BottomSheet
         isOpen={showNudgeMenu}
@@ -2583,6 +2870,7 @@ const MessageItem = React.memo(function MessageItem({
   userProfile,
   partnerProfile,
   onViewImage,
+  onViewMedia,
   isInteractionPoint,
   showSeenText,
   partnerLastReadAt,
@@ -2601,6 +2889,7 @@ const MessageItem = React.memo(function MessageItem({
   userProfile: UserProfile | null,
   partnerProfile: UserProfile | null,
   onViewImage: (url: string) => void,
+  onViewMedia?: (media: MediaAttachment) => void,
   isInteractionPoint?: boolean,
   showSeenText?: boolean,
   partnerLastReadAt: number,
@@ -2949,20 +3238,34 @@ const MessageItem = React.memo(function MessageItem({
                 </div>
               )}
 
+              {/* Media attachment (WhatsApp device-first photo/video) */}
+              {msg.media && !msg.deleted && (
+                <div className="mb-2">
+                  <WhatsAppMediaBubble 
+                    media={msg.media} 
+                    isOwn={isOwn} 
+                    onOpenViewer={(media) => onViewMedia?.(media)} 
+                    deleted={msg.deleted}
+                  />
+                </div>
+              )}
+
               <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px] select-none">
-                <span 
-                  className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
-                  style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                >
-                  {msg.deleted ? (
-                    msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
-                  ) : (
-                    msg.text
-                  )}
-                  {msg.isEdited && !msg.deleted && (
-                    <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
-                  )}
-                </span>
+                {msg.text ? (
+                  <span 
+                    className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
+                    style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+                  >
+                    {msg.deleted ? (
+                      msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
+                    ) : (
+                      msg.text
+                    )}
+                    {msg.isEdited && !msg.deleted && (
+                      <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
+                    )}
+                  </span>
+                ) : null}
                 <div className={`flex items-center gap-1 opacity-50 text-[10px] ml-auto h-4 mb-[-2px] tracking-tight font-medium select-none`}>
                   <span>{displayTime()}</span>
                   {isOwn && !msg.deleted && <RotateCcw className="w-2.5 h-2.5" />}
@@ -3260,10 +3563,8 @@ function ProfileModal({
   };
 
   return (
-    <motion.div 
-      initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="theme-settings fixed inset-0 z-[100] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)]"
+    <div 
+      className="theme-settings fixed inset-0 z-[100] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] animate-in fade-in duration-100"
     >
       <div className="h-20 flex-shrink-0 border-b border-[var(--theme-border)] flex items-center justify-between px-6 bg-[var(--theme-bg)]/50">
         <div className="flex items-center gap-4">
@@ -3544,7 +3845,7 @@ function ProfileModal({
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
@@ -3578,12 +3879,8 @@ function ThemeCustomizePage({
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-          className="theme-customize-page fixed inset-0 z-[140] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden font-sans"
+        <div
+          className="theme-customize-page fixed inset-0 z-[140] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden font-sans animate-in fade-in duration-100"
         >
           {/* Header Bar */}
           <header className="h-16 sm:h-20 px-4 sm:px-6 flex items-center justify-between border-b border-[var(--theme-border)] bg-[var(--theme-surface)]/90 backdrop-blur-md flex-shrink-0 z-20">
@@ -3740,7 +4037,7 @@ function ThemeCustomizePage({
               </button>
             </div>
           </div>
-        </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );
@@ -3929,12 +4226,8 @@ function PartnerInfoModal({
   const myHandle = myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey';
 
   return (
-    <motion.div 
-      initial={{ x: '100%' }} 
-      animate={{ x: 0 }} 
-      exit={{ x: '100%' }}
-      transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-      className="theme-settings fixed inset-0 z-[110] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden"
+    <div 
+      className="theme-settings fixed inset-0 z-[110] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden animate-in fade-in duration-100"
     >
       {/* Toast Notification */}
       <AnimatePresence>
@@ -4376,7 +4669,7 @@ function PartnerInfoModal({
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 

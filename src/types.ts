@@ -21,6 +21,21 @@ export interface UserProfile {
   theme?: 'light' | 'dark' | 'romantic' | 'lavender' | 'ocean' | 'sunset' | 'doodle' | 'noir' | 'forest' | 'cyber' | 'aurora';
 }
 
+export interface MediaAttachment {
+  id: string;
+  type: 'image' | 'video';
+  url: string; // Base64 data url or direct media URI stored on device
+  thumbnail?: string; // blur placeholder
+  thumbnailUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  caption?: string;
+  duration?: number; // duration in seconds for video
+  width?: number;
+  height?: number;
+}
+
 export interface Message {
   id: string;
   sender_role: UserRole;
@@ -32,10 +47,12 @@ export interface Message {
   hidden_for_owner?: boolean;
   hidden_for_partner?: boolean;
   isEdited?: boolean;
+  media?: MediaAttachment;
   replyTo?: {
     id: string;
     text: string;
     sender_role: UserRole;
+    mediaType?: 'image' | 'video';
   };
   gameInvite?: {
     gameType: 'tictactoe';
@@ -43,3 +60,4 @@ export interface Message {
     status: 'pending' | 'active' | 'finished';
   };
 }
+
