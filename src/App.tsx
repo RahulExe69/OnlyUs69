@@ -54,22 +54,40 @@ import imageCompression from 'browser-image-compression';
 
 const THEMES = {
   light: {
-    name: 'Clean Slate', note: 'Crisp, bright, and quietly minimal.', bg: '#F7F9FC', text: '#172033', header: 'rgba(255, 255, 255, .84)', owner: '#4263EB', ownerText: '#FFFFFF', partner: '#E8EDF6', partnerText: '#263247', input: '#FFFFFF', surface: '#FFFFFF', accent: '#4263EB', border: 'rgba(66, 99, 235, .16)', decoration: 'linear-gradient(135deg, rgba(66,99,235,.08), transparent 38%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
+    name: 'Clean Slate', note: 'Crisp, bright, and quietly minimal.', bg: '#F7F9FC', text: '#172033', header: 'rgba(255, 255, 255, .84)', owner: '#4263EB', ownerText: '#FFFFFF', partner: '#E8EDF6', partnerText: '#263247', input: '#FFFFFF', surface: '#FFFFFF', accent: '#4263EB', border: 'rgba(66, 99, 235, .16)', decoration: 'linear-gradient(135deg, rgba(66,99,235,.08), transparent 38%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif', chrome: '#4263EB'
   },
   dark: {
-    name: 'Moonlight', note: 'A cinematic night chat with glowing edges.', bg: '#11121B', text: '#F6F4FF', header: 'rgba(24, 25, 39, .86)', owner: '#B69CFF', ownerText: '#171322', partner: '#28293A', partnerText: '#F0EDFF', input: '#202130', surface: '#1B1C29', accent: '#B69CFF', border: 'rgba(182, 156, 255, .22)', decoration: 'radial-gradient(circle at 16% 8%, rgba(182,156,255,.2), transparent 28%), radial-gradient(circle at 88% 76%, rgba(84,193,255,.12), transparent 24%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
+    name: 'Moonlight', note: 'A cinematic night chat with glowing edges.', bg: '#11121B', text: '#F6F4FF', header: 'rgba(24, 25, 39, .86)', owner: '#B69CFF', ownerText: '#171322', partner: '#28293A', partnerText: '#F0EDFF', input: '#202130', surface: '#1B1C29', accent: '#B69CFF', border: 'rgba(182, 156, 255, .22)', decoration: 'radial-gradient(circle at 16% 8%, rgba(182,156,255,.2), transparent 28%), radial-gradient(circle at 88% 76%, rgba(84,193,255,.12), transparent 24%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif', chrome: '#1B1C29'
   },
   romantic: {
-    name: 'Only Us', note: 'Soft rose curves made for your shared space.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
+    name: 'Only Us', note: 'Soft rose curves made for your shared space.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif', chrome: '#E45F84'
   },
   lavender: {
-    name: 'Lavender Haze', note: 'Velvety violet layers with a handwritten feel.', bg: '#F7F3FF', text: '#332748', header: 'rgba(249, 246, 255, .88)', owner: '#8062C7', ownerText: '#FFFFFF', partner: '#E8DFFF', partnerText: '#51406D', input: '#FEFCFF', surface: '#FCFAFF', accent: '#8062C7', border: 'rgba(128, 98, 199, .18)', decoration: 'radial-gradient(ellipse at 14% 8%, rgba(194,167,255,.38), transparent 30%), radial-gradient(ellipse at 88% 84%, rgba(232,223,255,.9), transparent 32%)', font: '"Georgia", "Times New Roman", serif'
+    name: 'Lavender Haze', note: 'Velvety violet layers with a handwritten feel.', bg: '#F7F3FF', text: '#332748', header: 'rgba(249, 246, 255, .88)', owner: '#8062C7', ownerText: '#FFFFFF', partner: '#E8DFFF', partnerText: '#51406D', input: '#FEFCFF', surface: '#FCFAFF', accent: '#8062C7', border: 'rgba(128, 98, 199, .18)', decoration: 'radial-gradient(ellipse at 14% 8%, rgba(194,167,255,.38), transparent 30%), radial-gradient(ellipse at 88% 84%, rgba(232,223,255,.9), transparent 32%)', font: '"Georgia", "Times New Roman", serif', chrome: '#8062C7'
   },
   ocean: {
-    name: 'Ocean Eyes', note: 'Cool blue glass and gentle tidal movement.', bg: '#EDF8F8', text: '#173D43', header: 'rgba(242, 252, 252, .82)', owner: '#247C86', ownerText: '#FFFFFF', partner: '#D4EEEC', partnerText: '#26565C', input: '#FCFFFF', surface: '#F8FFFF', accent: '#247C86', border: 'rgba(36, 124, 134, .18)', decoration: 'radial-gradient(ellipse at 90% 4%, rgba(115,211,221,.34), transparent 34%), repeating-radial-gradient(ellipse at 0 100%, transparent 0 18px, rgba(36,124,134,.06) 19px 21px, transparent 38px)', font: '"Trebuchet MS", "Inter", sans-serif'
+    name: 'Ocean Eyes', note: 'Cool blue glass and gentle tidal movement.', bg: '#EDF8F8', text: '#173D43', header: 'rgba(242, 252, 252, .82)', owner: '#247C86', ownerText: '#FFFFFF', partner: '#D4EEEC', partnerText: '#26565C', input: '#FCFFFF', surface: '#F8FFFF', accent: '#247C86', border: 'rgba(36, 124, 134, .18)', decoration: 'radial-gradient(ellipse at 90% 4%, rgba(115,211,221,.34), transparent 34%), repeating-radial-gradient(ellipse at 0 100%, transparent 0 18px, rgba(36,124,134,.06) 19px 21px, transparent 38px)', font: '"Trebuchet MS", "Inter", sans-serif', chrome: '#247C86'
   },
   sunset: {
-    name: 'Soft Bloom', note: 'Warm peach layers with a golden hour glow.', bg: '#FFF5EC', text: '#56352C', header: 'rgba(255, 249, 242, .88)', owner: '#CD6C58', ownerText: '#FFFFFF', partner: '#F8DDC8', partnerText: '#70473A', input: '#FFFCF8', surface: '#FFFAF5', accent: '#CD6C58', border: 'rgba(205, 108, 88, .18)', decoration: 'radial-gradient(circle at 12% 8%, rgba(255,201,142,.42), transparent 28%), radial-gradient(circle at 89% 84%, rgba(232,130,112,.2), transparent 30%)', font: '"Palatino Linotype", "Book Antiqua", serif'
+    name: 'Soft Bloom', note: 'Warm peach layers with a golden hour glow.', bg: '#FFF5EC', text: '#56352C', header: 'rgba(255, 249, 242, .88)', owner: '#CD6C58', ownerText: '#FFFFFF', partner: '#F8DDC8', partnerText: '#70473A', input: '#FFFCF8', surface: '#FFFAF5', accent: '#CD6C58', border: 'rgba(205, 108, 88, .18)', decoration: 'radial-gradient(circle at 12% 8%, rgba(255,201,142,.42), transparent 28%), radial-gradient(circle at 89% 84%, rgba(232,130,112,.2), transparent 30%)', font: '"Palatino Linotype", "Book Antiqua", serif', chrome: '#CD6C58'
+  },
+  doodle: {
+    name: 'Doodle Pop', note: 'Hand-drawn outlines, paper grain, and comic energy.', bg: '#FFFDF5', text: '#1F1A15', header: 'rgba(255, 252, 240, .9)', owner: '#FF6D6D', ownerText: '#1A0B0B', partner: '#FFE28A', partnerText: '#2B230E', input: '#FFFFFF', surface: '#FFF9EA', accent: '#1F1A15', border: 'rgba(31, 26, 21, .35)', decoration: 'repeating-linear-gradient(-18deg, rgba(31,26,21,.06) 0 3px, transparent 3px 12px), radial-gradient(circle at 85% 12%, rgba(90,195,255,.2), transparent 24%), radial-gradient(circle at 8% 82%, rgba(255,109,109,.18), transparent 28%)', font: '"Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive', chrome: '#FFE28A'
+  },
+  neon: {
+    name: 'Neon Grid', note: 'Retro-futuristic glow with deep synthwave contrast.', bg: '#0A0619', text: '#F6EEFF', header: 'rgba(16, 10, 37, .9)', owner: '#FF2FB3', ownerText: '#FFE7FA', partner: '#1A213D', partnerText: '#8CFBFF', input: '#111933', surface: '#0F1430', accent: '#24F3FF', border: 'rgba(36, 243, 255, .35)', decoration: 'linear-gradient(135deg, rgba(255,47,179,.18), transparent 45%), repeating-linear-gradient(0deg, transparent 0 21px, rgba(36,243,255,.08) 21px 22px), repeating-linear-gradient(90deg, transparent 0 21px, rgba(36,243,255,.08) 21px 22px)', font: '"Rajdhani", "Inter", sans-serif', chrome: '#0F1430'
+  },
+  noir: {
+    name: 'Noir Ink', note: 'Monochrome luxury with bold editorial spacing.', bg: '#0E0E0F', text: '#F4F4F2', header: 'rgba(20, 20, 22, .92)', owner: '#F4F4F2', ownerText: '#111111', partner: '#1B1B1D', partnerText: '#EFEFED', input: '#161618', surface: '#141416', accent: '#E6C27A', border: 'rgba(230, 194, 122, .26)', decoration: 'radial-gradient(circle at 20% 0%, rgba(230,194,122,.17), transparent 35%), linear-gradient(180deg, rgba(255,255,255,.03), transparent 35%)', font: '"Playfair Display", "Georgia", serif', chrome: '#141416'
+  },
+  forest: {
+    name: 'Moss Cabin', note: 'Cozy woodland tones with textured organic depth.', bg: '#EFF6EC', text: '#1D3325', header: 'rgba(243, 251, 239, .88)', owner: '#4E7D4F', ownerText: '#FFFFFF', partner: '#D8E9D2', partnerText: '#284A30', input: '#FAFFF8', surface: '#F6FDF2', accent: '#3A6B3E', border: 'rgba(58, 107, 62, .2)', decoration: 'radial-gradient(circle at 90% 8%, rgba(119,174,122,.25), transparent 28%), repeating-radial-gradient(circle at 0 100%, transparent 0 18px, rgba(58,107,62,.08) 18px 20px, transparent 20px 40px)', font: '"Avenir Next", "Trebuchet MS", sans-serif', chrome: '#3A6B3E'
+  },
+  retro: {
+    name: 'Retro Arcade', note: 'Pixel-era color blocks and high-energy contrast.', bg: '#1D1738', text: '#FFEED2', header: 'rgba(37, 29, 67, .9)', owner: '#FF8F1F', ownerText: '#2B1200', partner: '#2F2A52', partnerText: '#8BFF8F', input: '#261F47', surface: '#241D43', accent: '#8BFF8F', border: 'rgba(139, 255, 143, .3)', decoration: 'repeating-linear-gradient(45deg, rgba(139,255,143,.1) 0 10px, transparent 10px 20px), radial-gradient(circle at 12% 14%, rgba(255,143,31,.28), transparent 35%)', font: '"Press Start 2P", "Courier New", monospace', chrome: '#241D43'
+  },
+  aurora: {
+    name: 'Aurora Mist', note: 'Dreamy frosted gradients with northern-light motion.', bg: '#EEF8FF', text: '#1A2D40', header: 'rgba(241, 252, 255, .88)', owner: '#3D83D8', ownerText: '#FFFFFF', partner: '#D8EDFF', partnerText: '#244866', input: '#FCFEFF', surface: '#F7FCFF', accent: '#5D4FE9', border: 'rgba(93, 79, 233, .2)', decoration: 'radial-gradient(ellipse at 18% 10%, rgba(93,79,233,.18), transparent 32%), radial-gradient(ellipse at 84% 78%, rgba(75,214,206,.26), transparent 36%), linear-gradient(120deg, rgba(109,171,255,.08), transparent 52%)', font: '"Manrope", "Inter", sans-serif', chrome: '#5D4FE9'
   }
 };
 
@@ -92,6 +110,19 @@ const applyTheme = (themeName: ThemeName) => {
   root.style.setProperty('--theme-border', theme.border);
   root.style.setProperty('--theme-decoration', theme.decoration);
   root.style.setProperty('--theme-font', theme.font);
+  root.style.colorScheme = ['dark', 'neon', 'noir', 'retro'].includes(themeName) ? 'dark' : 'light';
+  document.body.style.backgroundColor = theme.bg;
+
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  const browserColor = theme.chrome || theme.accent;
+  if (themeColorMeta) {
+    themeColorMeta.setAttribute('content', browserColor);
+  } else {
+    const meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    meta.setAttribute('content', browserColor);
+    document.head.appendChild(meta);
+  }
 };
 
 const getMillis = (ts: any) => {
@@ -3504,28 +3535,28 @@ function ThemeCustomizeSheet({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden relative"
+            className="theme-customize-sheet fixed bottom-0 left-0 right-0 z-[130] rounded-t-[2.2rem] max-w-md mx-auto overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 pt-3 pb-4 border-b border-neutral-200">
-              <div className="w-12 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+            <div className="px-5 pt-3 pb-4 border-b border-[var(--theme-border)]">
+              <div className="w-12 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto mb-4" />
               <div className="relative flex items-center justify-center">
-                <h3 className="text-[24px] font-bold text-[#111111]">Customise</h3>
+                <h3 className="text-[24px] font-bold text-[var(--theme-text)]">Customise</h3>
                 <button
                   onClick={closeSheet}
-                  className="absolute right-0 p-1 text-neutral-500 hover:text-neutral-700"
+                  className="absolute right-0 p-1 text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]"
                   aria-label="Close customise"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-center text-[13px] text-neutral-500 mt-2">
+              <p className="text-center text-[13px] text-[var(--theme-text)]/68 mt-2">
                 Themes already include matching colors, wallpaper mood, and font.
               </p>
             </div>
 
-            <div className="custom-scrollbar overflow-y-auto px-4 pt-4 pb-24 max-h-[68dvh]">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="custom-scrollbar overflow-y-auto px-3.5 pt-4 pb-24 h-[18.5rem]">
+              <div className="grid grid-cols-3 gap-2.5">
                 {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
                   const theme = THEMES[themeName];
                   const isSelected = pendingTheme === themeName;
@@ -3536,29 +3567,29 @@ function ThemeCustomizeSheet({
                       type="button"
                       onClick={() => setPendingTheme(themeName)}
                       disabled={isThemeSaving}
-                      className={`rounded-2xl p-2.5 text-left border transition-all ${isSelected ? 'border-[#111111] shadow-md' : 'border-neutral-200'} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
+                      className={`rounded-2xl p-2 text-left border transition-all ${isSelected ? 'border-[var(--theme-accent)] shadow-md' : 'border-[var(--theme-border)]'} ${isThemeSaving ? 'opacity-60 cursor-wait' : ''}`}
                     >
                       <div
-                        className="relative h-36 rounded-[1.1rem] overflow-hidden border border-black/5"
+                        className="relative h-24 rounded-[1rem] overflow-hidden border border-black/5"
                         style={{ background: theme.decoration, backgroundColor: theme.bg }}
                       >
                         <span className="theme-preview-header" style={{ background: theme.header }} />
                         <span className="theme-preview-bubble theme-preview-partner" style={{ background: theme.partner }} />
                         <span className="theme-preview-bubble theme-preview-owner" style={{ background: theme.owner }} />
                         {(isSelected || isApplied) && (
-                          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 text-white flex items-center justify-center">
+                          <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center">
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-[14px] font-semibold text-[#111111] leading-tight truncate">{theme.name}</p>
+                      <p className="mt-1.5 text-[12px] font-semibold text-[var(--theme-text)] leading-tight truncate">{theme.name}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-neutral-200 px-4 py-3 grid grid-cols-2 gap-3">
+            <div className="absolute bottom-0 left-0 right-0 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] px-4 py-3 grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -3566,7 +3597,7 @@ function ThemeCustomizeSheet({
                   setPreviewTheme(pendingTheme);
                 }}
                 disabled={isThemeSaving}
-                className="h-12 rounded-2xl bg-[#F1F3F7] text-[#111111] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
+                className="h-12 rounded-2xl bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
               >
                 Preview
               </button>
@@ -3574,7 +3605,7 @@ function ThemeCustomizeSheet({
                 type="button"
                 onClick={applySelectedTheme}
                 disabled={isThemeSaving || pendingTheme === currentTheme}
-                className="h-12 rounded-2xl bg-[#4F46E5] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+                className="h-12 rounded-2xl bg-[var(--theme-accent)] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
               >
                 {isThemeSaving ? 'Applying...' : 'Apply'}
               </button>
