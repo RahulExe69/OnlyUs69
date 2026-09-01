@@ -13,6 +13,8 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   display_name?: string;
+  /** A stable, user-selected public handle. This is never used as the user ID. */
+  username?: string;
   photo_url?: string;
   is_typing?: boolean;
   last_seen?: any;
@@ -23,8 +25,10 @@ export interface UserProfile {
 
 export interface MediaAttachment {
   id: string;
-  type: 'image' | 'video';
-  url: string; // Base64 data url or direct media URI stored on device
+  type: 'image' | 'video' | 'audio' | 'file';
+  /** Ephemeral signed URL or a local object URL; never a permanent public URL. */
+  url: string;
+  storagePath?: string;
   thumbnail?: string; // blur placeholder
   thumbnailUrl?: string;
   fileName?: string;
@@ -54,7 +58,7 @@ export interface Message {
     id: string;
     text: string;
     sender_role: UserRole;
-    mediaType?: 'image' | 'video';
+    mediaType?: 'image' | 'video' | 'audio' | 'file';
   };
   gameInvite?: {
     gameType: 'tictactoe';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Download, Eye, Maximize2, AlertCircle, FileVideo, Image as ImageIcon } from 'lucide-react';
+import { Play, Volume2, VolumeX, Maximize2, AlertCircle, FileVideo, Image as ImageIcon, FileAudio, FileText } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { MediaAttachment, UserRole } from '../types';
 import { getLocalMedia, saveLocalMedia, formatFileSize } from '../lib/mediaStore';
 
@@ -26,15 +27,19 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
   useEffect(() => {
     let isMounted = true;
     async function loadMedia() {
-      if (media.url && media.url.length > 50) {
-        setLocalUrl(media.url);
-        setIsLoading(false);
-        // Also ensure it's saved locally for device persistence
-        saveLocalMedia(media.id, media.url);
-        return;
-      }
-
       try {
+        if (media.storagePath) {
+          const { data, error } = await supabase.storage.from('chat-media').createSignedUrl(media.storagePath, 60 * 60);
+          if (error) throw error;
+          if (isMounted && data?.signedUrl) { setLocalUrl(data.signedUrl); setIsLoading(false); }
+          return;
+        }
+        if (media.url && media.url.length > 50) {
+          setLocalUrl(media.url);
+          setIsLoading(false);
+          saveLocalMedia(media.id, media.url);
+          return;
+        }
         const cached = await getLocalMedia(media.id);
         if (isMounted && cached) {
           setLocalUrl(cached);
@@ -51,7 +56,7 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [media.id, media.url]);
+  }, [media.id, media.url, media.storagePath]);
 
   if (deleted) return null;
 
@@ -77,7 +82,7 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
 
   return (
     <div 
-      onClick={() => onOpenViewer(media)}
+      onClick={() => onOpenViewer({ ...media, url: localUrl || media.url })}
       className="relative rounded-2xl overflow-hidden cursor-pointer group select-none max-w-[280px] sm:max-w-[320px] bg-black/10 transition-transform active:scale-[0.99]"
       style={{ aspectRatio: media.width && media.height ? `${media.width}/${media.height}` : '4/3', maxHeight: '340px' }}
     >
@@ -106,7 +111,7 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
             <span className="text-xs font-semibold opacity-80">Photo</span>
           </div>
         )
-      ) : (
+      ) : media.type === 'video' ? (
         /* Video Media */
         <div className="relative w-full h-full bg-black flex items-center justify-center">
           {localUrl ? (
@@ -164,6 +169,10 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
             </div>
           </div>
         </div>
+      ) : media.type === 'audio' ? (
+        <div className="min-w-[220px] p-4 text-[var(--theme-text)]" onClick={(event) => event.stopPropagation()}><div className="flex items-center gap-2 mb-2"><FileAudio className="w-5 h-5" /><span className="text-sm font-semibold truncate">{media.fileName || 'Audio'}</span></div>{localUrl ? <audio controls src={localUrl} className="w-full" onError={() => setHasError(true)} /> : <span className="text-xs">Loading audio…</span>}<span className="mt-2 block text-[10px] opacity-70">{formatFileSize(media.fileSize || 0)}</span></div>
+      ) : (
+        <div className="min-w-[220px] p-4 text-[var(--theme-text)]"><div className="flex items-center gap-2"><FileText className="w-5 h-5" /><span className="text-sm font-semibold truncate">{media.fileName || 'File'}</span></div><p className="mt-2 text-xs opacity-70">{formatFileSize(media.fileSize || 0)} · Tap to open</p></div>
       )}
 
       {/* Fullscreen hover badge on desktop */}
