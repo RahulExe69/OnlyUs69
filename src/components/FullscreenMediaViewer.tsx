@@ -66,7 +66,7 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
 
-      const ext = media.type === 'video' ? 'mp4' : 'jpg';
+      const ext = media.fileName?.split('.').pop() || (media.type === 'video' ? 'mp4' : media.type === 'audio' ? 'mp3' : media.type === 'file' ? 'bin' : 'jpg');
       const filename = media.fileName || `OnlyUs_${Date.now()}.${ext}`;
 
       const a = document.createElement('a');
@@ -83,7 +83,7 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
       // Fallback
       const a = document.createElement('a');
       a.href = media.url;
-      a.download = media.fileName || `OnlyUs_${Date.now()}.${media.type === 'video' ? 'mp4' : 'jpg'}`;
+      a.download = media.fileName || `OnlyUs_${Date.now()}.${media.type === 'video' ? 'mp4' : media.type === 'audio' ? 'mp3' : media.type === 'file' ? 'bin' : 'jpg'}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -124,7 +124,7 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
             </button>
             <div className="flex flex-col">
               <span className="text-xs font-bold text-white/90 truncate max-w-[180px] sm:max-w-[280px]">
-                {media.fileName || (media.type === 'video' ? 'Video' : 'Photo')}
+                {media.fileName || (media.type === 'video' ? 'Video' : media.type === 'audio' ? 'Audio' : media.type === 'file' ? 'File' : 'Photo')}
               </span>
               {media.fileSize ? (
                 <span className="text-[10px] text-white/60 font-medium">{formatFileSize(media.fileSize)}</span>
@@ -193,7 +193,7 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
               onDragEnd={scale === 1 ? handleDragEnd : undefined}
               className="max-h-[82vh] max-w-[95vw] object-contain rounded-2xl shadow-2xl transition-transform duration-100 cursor-grab active:cursor-grabbing select-none"
             />
-          ) : (
+          ) : media.type === 'video' ? (
             <motion.div 
               style={{ y: dragY }}
               drag="y"
@@ -213,6 +213,10 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
                 onPause={() => setIsPlaying(false)}
               />
             </motion.div>
+          ) : media.type === 'audio' ? (
+            <audio src={media.url} controls autoPlay className="w-full max-w-md" />
+          ) : (
+            <div className="rounded-2xl bg-white/10 p-8 text-center text-white"><p className="font-semibold">{media.fileName || 'Attachment'}</p><p className="mt-2 text-sm text-white/60">Use the download button to save this file.</p></div>
           )}
         </div>
 

@@ -49,7 +49,8 @@ import { ExternalHubView } from './components/ExternalHubView';
 import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
 import { MediaSendPreviewModal } from './components/MediaSendPreviewModal';
-import { saveLocalMedia, getLocalMedia } from './lib/mediaStore';
+import { saveLocalMedia, getLocalMedia, MAX_MEDIA_BYTES, mediaTypeForFile } from './lib/mediaStore';
+import { supabaseUrl, supabaseAnonKey } from './lib/supabase';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -161,6 +162,14 @@ const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
+const USERNAME_PATTERN = /^[a-z][a-z0-9_]{2,29}$/;
+const normalizeUsername = (value: string) => value.trim().toLowerCase();
+const usernameError = (value: string) => {
+  const username = normalizeUsername(value);
+  if (!USERNAME_PATTERN.test(username)) return 'Use 3–30 lowercase letters, numbers, or underscores; start with a letter.';
+  return null;
+};
+
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -250,6 +259,7 @@ export default function App() {
   }, []);
 
   const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+    if (tab !== 'chat') (document.activeElement as HTMLElement | null)?.blur();
     const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
 
     if (hasAndroidBridge) {
@@ -711,6 +721,7 @@ export default function App() {
           email: (email || "").trim().toLowerCase(),
           role,
           display_name: user?.user_metadata?.full_name || (role === 'owner' ? 'Rahul' : 'Nusrat'),
+          username: normalizeUsername((email || (role === 'owner' ? 'rahul' : 'nusrat')).split('@')[0]).replace(/[^a-z0-9_]/g, '_').slice(0, 30),
           photo_url: user?.user_metadata?.avatar_url || "",
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString(),
@@ -1940,31 +1951,31 @@ function ChatView({
   const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
   const [mediaPreviewFile, setMediaPreviewFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
-  const [mediaPreviewType, setMediaPreviewType] = useState<'image' | 'video'>('image');
+  const [mediaPreviewType, setMediaPreviewType] = useState<'image' | 'video' | 'audio' | 'file'>('image');
   const [showMediaPreviewModal, setShowMediaPreviewModal] = useState(false);
   const [isSendingMedia, setIsSendingMedia] = useState(false);
+  const [mediaUploadProgress, setMediaUploadProgress] = useState(0);
+  const [mediaUploadError, setMediaUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const isVideo = file.type.startsWith('video/');
-    const isImage = file.type.startsWith('image/');
-
-    if (!isVideo && !isImage) {
-      alert('Please select an image or video file.');
+    if (file.size > MAX_MEDIA_BYTES) {
+      alert('This file is larger than the 50 MB sending limit. Please choose a smaller file.');
       return;
     }
 
     const preview = URL.createObjectURL(file);
     setMediaPreviewFile(file);
     setMediaPreviewUrl(preview);
-    setMediaPreviewType(isVideo ? 'video' : 'image');
+    setMediaPreviewType(mediaTypeForFile(file));
     setShowMediaPreviewModal(true);
+    setMediaUploadError(null);
     onSetShowAttachmentMenu(false);
     
     // Clear input so selecting the same file again triggers change
@@ -1974,6 +1985,8 @@ function ChatView({
   const handleSendMediaMessage = async (caption: string) => {
     if (!mediaPreviewFile) return;
     setIsSendingMedia(true);
+    setMediaUploadProgress(0);
+    setMediaUploadError(null);
     let tempId: string | null = null;
 
     try {
@@ -2015,17 +2028,24 @@ function ChatView({
       // devices reliably instead of exceeding Realtime's message-size limit.
       const extension = finalBlob.type.split('/')[1] || (isVideo ? 'mp4' : 'jpg');
       const storagePath = `${mediaId}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(storagePath, finalBlob, { contentType: finalBlob.type, upsert: false });
-      if (uploadError) throw uploadError;
-      const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
-      const payloadUrl = publicUrlData.publicUrl;
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${supabaseUrl}/storage/v1/object/chat-media/${encodeURIComponent(storagePath)}`);
+        xhr.setRequestHeader('apikey', supabaseAnonKey);
+        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnonKey}`);
+        xhr.setRequestHeader('Content-Type', finalBlob.type || 'application/octet-stream');
+        xhr.upload.onprogress = (event) => { if (event.lengthComputable) setMediaUploadProgress(Math.round((event.loaded / event.total) * 100)); };
+        xhr.onerror = () => reject(new Error('Network error while uploading media.'));
+        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status}).`));
+        xhr.send(finalBlob);
+      });
+      setMediaUploadProgress(100);
 
       const mediaAttachment: MediaAttachment = {
         id: mediaId,
-        type: isVideo ? 'video' : 'image',
-        url: payloadUrl,
+        type: mediaPreviewType,
+        url: mediaPreviewUrl || '',
+        storagePath,
         thumbnailUrl: thumbnailDataUrl,
         fileName: mediaPreviewFile.name,
         fileSize: finalBlob.size,
@@ -2060,7 +2080,7 @@ function ChatView({
         created_at: new Date().toISOString(),
         reactions: {},
         reply_to: replyingTo ? replyingTo.id : null,
-        attachment_url: payloadUrl
+        attachment_url: null
       }]).select().single();
 
       if (error) throw error;
@@ -2075,6 +2095,7 @@ function ChatView({
       onSetReplyingTo(null);
     } catch (err) {
       console.error('Error sending media:', err);
+      setMediaUploadError(err instanceof Error ? `${err.message} Tap send to retry.` : 'Upload failed. Tap send to retry.');
       if (tempId) {
         setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
       }
@@ -2156,6 +2177,12 @@ function ChatView({
       setInputText("");
     }
   }, [editingMessage]);
+
+  // Reply/edit is an explicit composer action: focus after the banner has rendered.
+  useEffect(() => {
+    if (!replyingTo && !editingMessage) return;
+    requestAnimationFrame(() => messageInputRef.current?.focus({ preventScroll: true }));
+  }, [replyingTo?.id, editingMessage?.id]);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -2500,13 +2527,19 @@ function ChatView({
           </button>
           
           <div className="relative flex-1">
-            <input 
+            <textarea
               ref={messageInputRef}
-              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+              rows={editingMessage ? 6 : 1}
               placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-[box-shadow,border-color] duration-150 shadow-sm pr-12 placeholder-[var(--theme-text)]/40"
+              className={`w-full resize-none overflow-y-auto px-6 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-[box-shadow,border-color] duration-150 shadow-sm pr-12 placeholder-[var(--theme-text)]/40 ${editingMessage ? 'py-3 leading-6 min-h-36 max-h-36' : 'py-3.5 leading-5 min-h-12 max-h-28'}`}
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
                <button 
@@ -2544,7 +2577,7 @@ function ChatView({
       <input 
         type="file" 
         ref={fileInputRef} 
-        accept="image/*,video/*" 
+        accept="image/*,video/*,audio/*,application/pdf"
         className="hidden" 
         onChange={(e) => handleSelectMedia(e, false)} 
       />
@@ -2601,6 +2634,7 @@ function ChatView({
           setShowMediaPreviewModal(false);
           setMediaPreviewFile(null);
           setMediaPreviewUrl(null);
+          setMediaUploadError(null);
         }}
         file={mediaPreviewFile}
         previewUrl={mediaPreviewUrl}
@@ -2608,6 +2642,8 @@ function ChatView({
         recipientName={role === 'owner' ? 'Nusrat' : 'Rahul'}
         onSend={handleSendMediaMessage}
         isSending={isSendingMedia}
+        uploadProgress={mediaUploadProgress}
+        uploadError={mediaUploadError}
       />
 
       {/* WhatsApp-style Fullscreen Media Viewer */}
@@ -3452,6 +3488,8 @@ function ProfileModal({
   
   // My profile state
   const [name, setName] = useState(profile.display_name || "");
+  const [username, setUsername] = useState(profile.username || "");
+  const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
   const [photo, setPhoto] = useState(profile.photo_url || "");
   
   // Partner profile state
@@ -3540,12 +3578,20 @@ function ProfileModal({
   };
 
   const saveMyProfile = async () => {
+    const normalizedUsername = normalizeUsername(username);
+    const validationError = usernameError(normalizedUsername);
+    if (validationError) { setUsernameFeedback(validationError); return; }
     setIsSaving(true);
     try {
-      await supabase.from('users').update({
+      const { data: existing, error: lookupError } = await supabase.from('users').select('id').eq('username', normalizedUsername).neq('id', profile.uid).limit(1);
+      if (lookupError) throw lookupError;
+      if (existing?.length) { setUsernameFeedback('That username is already in use. Please choose another.'); return; }
+      const { error: updateError } = await supabase.from('users').update({
         display_name: name.trim(),
+        username: normalizedUsername,
         photo_url: photo
-      }).eq('role', profile.role);
+      }).eq('id', profile.uid);
+      if (updateError) throw updateError;
       
       setSaveSuccessMsg("My Profile updated!");
       setTimeout(() => {
@@ -3554,7 +3600,8 @@ function ProfileModal({
       }, 800);
     } catch (err) {
       console.error(err);
-      alert("Failed to save.");
+      if ((err as any)?.code === '23505') setUsernameFeedback('That username is already in use. Please choose another.');
+      else alert("Failed to save.");
     } finally {
       setIsSaving(false);
     }
@@ -3699,6 +3746,19 @@ function ProfileModal({
                   placeholder="How your partner sees you..."
                   className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
                 />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">Username</label>
+                <input
+                  value={username}
+                  onChange={(e) => { setUsername(e.target.value); setUsernameFeedback(null); }}
+                  placeholder="e.g. bodruddoja4"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
+                />
+                <p className={`mt-2 text-xs ${usernameFeedback ? 'text-red-500' : 'text-[var(--theme-text)]/55'}`}>{usernameFeedback || '3–30 lowercase letters, numbers, or underscores. Your internal account ID stays unchanged.'}</p>
               </div>
               
               <div className="pt-6 border-t border-[var(--theme-border)] flex flex-col gap-4">
@@ -4281,8 +4341,8 @@ function PartnerInfoModal({
     return photos;
   }, [messages]);
 
-  const partnerHandle = partner.email ? partner.email.split('@')[0] : '_btw.nusrat_';
-  const myHandle = myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey';
+  const partnerHandle = partner.username || (partner.email ? partner.email.split('@')[0] : '_btw.nusrat_');
+  const myHandle = myProfile?.username || (myProfile?.email ? myProfile.email.split('@')[0] : 'rafurumikey');
 
   return (
     <div 

@@ -14,7 +14,7 @@ const SUPABASE_URL = 'https://vrstmtjfqlbfyxtsothf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyc3RtdGpmcWxiZnl4dHNvdGhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3ODc2MTIsImV4cCI6MjA5MjM2MzYxMn0.hThpbqIhYdxyR7Ze9UcBW5gHkX5WnTeTJM7cMfvM6wc';
 
 // Use environment variables if present, otherwise fall back to the hardcoded keys
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY;
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL;
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

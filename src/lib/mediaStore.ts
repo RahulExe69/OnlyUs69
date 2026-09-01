@@ -5,6 +5,15 @@ const DB_NAME = 'onlyus_media_store';
 const STORE_NAME = 'media_blobs';
 const DB_VERSION = 1;
 
+export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
+
+export function mediaTypeForFile(file: File): 'image' | 'video' | 'audio' | 'file' {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function getDB(): Promise<IDBDatabase> {

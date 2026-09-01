@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, Play, FileVideo, Image as ImageIcon } from 'lucide-react';
+import { X, Send, FileAudio, FileText } from 'lucide-react';
 import { formatFileSize } from '../lib/mediaStore';
 
 interface MediaSendPreviewModalProps {
@@ -8,10 +8,12 @@ interface MediaSendPreviewModalProps {
   onClose: () => void;
   file: File | null;
   previewUrl: string | null;
-  mediaType: 'image' | 'video';
+  mediaType: 'image' | 'video' | 'audio' | 'file';
   recipientName: string;
   onSend: (caption: string) => void;
   isSending: boolean;
+  uploadProgress: number;
+  uploadError?: string | null;
 }
 
 export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
@@ -22,7 +24,9 @@ export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
   mediaType,
   recipientName,
   onSend,
-  isSending
+  isSending,
+  uploadProgress,
+  uploadError
 }) => {
   const [caption, setCaption] = useState('');
 
@@ -71,18 +75,24 @@ export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
               alt="Preview" 
               className="max-h-[65vh] max-w-full object-contain rounded-2xl shadow-2xl"
             />
-          ) : (
+          ) : mediaType === 'video' ? (
             <video 
               src={previewUrl} 
               controls 
               playsInline 
               className="max-h-[65vh] max-w-full rounded-2xl shadow-2xl"
             />
+          ) : mediaType === 'audio' ? (
+            <div className="w-full max-w-md rounded-2xl bg-white/10 p-8 text-center"><FileAudio className="w-14 h-14 mx-auto mb-4 text-[var(--theme-accent)]" /><p className="mb-5 font-semibold break-all">{file?.name}</p><audio src={previewUrl} controls className="w-full" /></div>
+          ) : (
+            <div className="w-full max-w-md rounded-2xl bg-white/10 p-8 text-center"><FileText className="w-14 h-14 mx-auto mb-4 text-[var(--theme-accent)]" /><p className="font-semibold break-all">{file?.name}</p><p className="mt-2 text-sm text-white/60">This file will be sent as an attachment.</p></div>
           )}
         </div>
 
         {/* Bottom Caption Input & Send Button */}
         <form onSubmit={handleSubmit} className="p-4 pb-8 max-w-xl w-full mx-auto flex items-center gap-3">
+          {isSending && <div className="absolute bottom-24 left-6 right-6 mx-auto max-w-xl"><div className="mb-1 flex justify-between text-xs font-bold text-white"><span>Sending media</span><span>{uploadProgress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full bg-[var(--theme-accent)] transition-all" style={{ width: `${uploadProgress}%` }} /></div></div>}
+          {uploadError && <p role="alert" className="absolute bottom-24 left-6 right-6 mx-auto max-w-xl rounded-xl bg-red-500/90 px-3 py-2 text-xs font-semibold text-white">{uploadError}</p>}
           <input 
             type="text"
             value={caption}
