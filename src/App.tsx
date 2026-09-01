@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -143,6 +143,20 @@ const getMillis = (ts: any) => {
 const parseDate = (ts: any): Date => {
   const millis = getMillis(ts);
   return millis > 0 ? new Date(millis) : new Date();
+};
+
+// Older rows only have attachment_url. Keep them visible while the structured
+// media payload is rolled out, rather than dropping a partner's photo.
+const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
+  if (raw.media?.url) return raw.media as MediaAttachment;
+  if (!raw.attachment_url) return undefined;
+  const isVideo = /^data:video\//.test(raw.attachment_url) || /\.(mp4|mov|webm)(?:\?|$)/i.test(raw.attachment_url);
+  return {
+    id: raw.id,
+    type: isVideo ? 'video' : 'image',
+    url: raw.attachment_url,
+    fileName: isVideo ? 'Shared video' : 'Shared photo',
+  };
 };
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
@@ -379,6 +393,7 @@ export default function App() {
           }
           return {
             ...m,
+            media: hydrateMessageMedia(m),
             timestamp: m.created_at || m.timestamp || new Date().toISOString(),
             replyTo: replyToObj
           };
@@ -429,6 +444,7 @@ export default function App() {
 
             const msg = {
               ...raw,
+              media: hydrateMessageMedia(raw),
               timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
               replyTo: replyToObj
             } as Message;
@@ -472,6 +488,7 @@ export default function App() {
 
             const msg = {
               ...raw,
+              media: hydrateMessageMedia(raw),
               timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
               replyTo: replyToObj
             } as Message;
@@ -1535,6 +1552,7 @@ export default function App() {
                 onSetActiveGame={setActiveGame}
                 onSendGameInvite={sendGameInvite}
                 socketTypingUsers={socketTypingUsers}
+                isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
                 chatRoomId={chatRoomId}
                 quotaExceeded={quotaExceeded}
                 setQuotaExceeded={setQuotaExceeded}
@@ -1871,6 +1889,7 @@ function ChatView({
   onSetActiveGame,
   onSendGameInvite,
   socketTypingUsers,
+  isPartnerOnline,
   chatRoomId,
   quotaExceeded,
   setQuotaExceeded,
@@ -1906,6 +1925,7 @@ function ChatView({
   onSetActiveGame: (game: { id: string, type: 'tictactoe' } | null) => void,
   onSendGameInvite: (type?: 'tictactoe') => Promise<void>,
   socketTypingUsers: string[],
+  isPartnerOnline: boolean,
   chatRoomId: string,
   quotaExceeded: boolean,
   setQuotaExceeded: (val: boolean) => void,
@@ -1926,6 +1946,7 @@ function ChatView({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
     const file = e.target.files?.[0];
@@ -1953,6 +1974,7 @@ function ChatView({
   const handleSendMediaMessage = async (caption: string) => {
     if (!mediaPreviewFile) return;
     setIsSendingMedia(true);
+    let tempId: string | null = null;
 
     try {
       const mediaId = `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1986,20 +2008,19 @@ function ChatView({
         }
       }
 
-      // Convert blob to Data URL for peer-to-peer delivery if reasonable size (< 3.5MB), or save locally in IndexedDB
-      let payloadUrl: string | undefined = undefined;
-      
-      const fileDataUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(finalBlob);
-      });
-
       // Save full quality media in local device-first IndexedDB
       await saveLocalMedia(mediaId, finalBlob);
 
-      // In WhatsApp style, the data payload carries the image/video data URL so partner device automatically caches & renders it
-      payloadUrl = fileDataUrl;
+      // Storage URLs keep Postgres change payloads small, so media reaches both
+      // devices reliably instead of exceeding Realtime's message-size limit.
+      const extension = finalBlob.type.split('/')[1] || (isVideo ? 'mp4' : 'jpg');
+      const storagePath = `${mediaId}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from('chat-media')
+        .upload(storagePath, finalBlob, { contentType: finalBlob.type, upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+      const payloadUrl = publicUrlData.publicUrl;
 
       const mediaAttachment: MediaAttachment = {
         id: mediaId,
@@ -2012,7 +2033,7 @@ function ChatView({
         caption: caption || undefined
       };
 
-      const tempId = `temp-${Date.now()}`;
+      tempId = `temp-${Date.now()}`;
       const msgData: any = {
         id: tempId,
         sender_role: role,
@@ -2020,6 +2041,7 @@ function ChatView({
         media: mediaAttachment,
         timestamp: Date.now(),
         reactions: {},
+        deliveryStatus: 'sending',
         replyTo: replyingTo ? {
           id: replyingTo.id,
           text: replyingTo.text,
@@ -2031,7 +2053,7 @@ function ChatView({
       setTimeout(scrollToBottom, 50);
 
       // Insert message with media into Supabase (and trigger realtime push to partner)
-      const { error } = await supabase.from('messages').insert([{
+      const { data: savedMessage, error } = await supabase.from('messages').insert([{
         sender_role: role,
         text: caption || '',
         media: mediaAttachment,
@@ -2041,9 +2063,11 @@ function ChatView({
         attachment_url: payloadUrl
       }]).select().single();
 
-      if (error) {
-        console.warn('Supabase insert message error:', error);
-      }
+      if (error) throw error;
+      setMessages(prev => prev.map(message => message.id === tempId ? {
+        ...message, ...savedMessage, media: hydrateMessageMedia(savedMessage),
+        timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
+      } : message));
 
       setShowMediaPreviewModal(false);
       setMediaPreviewFile(null);
@@ -2051,6 +2075,9 @@ function ChatView({
       onSetReplyingTo(null);
     } catch (err) {
       console.error('Error sending media:', err);
+      if (tempId) {
+        setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
+      }
     } finally {
       setIsSendingMedia(false);
     }
@@ -2178,6 +2205,7 @@ function ChatView({
       text: text,
       timestamp: Date.now(),
       reactions: {},
+      deliveryStatus: 'sending',
       replyTo: replyingTo ? {
         id: replyingTo.id,
         text: replyingTo.text,
@@ -2186,10 +2214,13 @@ function ChatView({
     };
 
     setMessages(prev => [...prev, msgData]);
-    setTimeout(scrollToBottom, 50);
+    requestAnimationFrame(() => {
+      scrollToBottom(false);
+      messageInputRef.current?.focus({ preventScroll: true });
+    });
 
     try {
-      const { error } = await supabase.from('messages').insert([{
+      const { data: savedMessage, error } = await supabase.from('messages').insert([{
         sender_role: role,
         text: text,
         created_at: new Date().toISOString(),
@@ -2199,10 +2230,14 @@ function ChatView({
       }]).select().single();
       
       if (error) throw error;
+      setMessages(prev => prev.map(message => message.id === tempId ? {
+        ...message, ...savedMessage, timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
+      } : message));
       
       onSetReplyingTo(null);
     } catch (err: any) {
       console.error("Supabase insert error:", err);
+      setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
     }
   };
 
@@ -2347,6 +2382,7 @@ function ChatView({
                 isInteractionPoint={msg.id === interactionId}
                 showSeenText={msg.id === interactionId && showIndicatorSeenText}
                 partnerLastReadAt={partnerLastReadMillis}
+                isPartnerOnline={isPartnerOnline}
                 onJoinGame={(game) => onSetActiveGame(game)}
                 onTriggerNudge={onSendNudge}
               />
@@ -2465,11 +2501,12 @@ function ChatView({
           
           <div className="relative flex-1">
             <input 
+              ref={messageInputRef}
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder={`Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-all shadow-sm pr-12 placeholder-[var(--theme-text)]/40"
+              className="w-full px-6 py-4 bg-[var(--theme-input-bg)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] text-sm focus:outline-none focus:ring-4 focus:ring-[var(--theme-accent)]/15 transition-[box-shadow,border-color] duration-150 shadow-sm pr-12 placeholder-[var(--theme-text)]/40"
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
                <button 
@@ -2485,8 +2522,9 @@ function ChatView({
 
           <button 
             type="submit"
+            onPointerDown={(event) => event.preventDefault()}
             disabled={!inputText.trim()}
-            className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white rounded-full hover:opacity-90 disabled:opacity-30 transition-all active:scale-95 shadow-lg"
+            className="flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white rounded-full hover:opacity-90 disabled:opacity-30 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation"
             style={{ background: 'var(--theme-accent)', boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)' }}
           >
             <Send className="w-4 h-4 lg:w-5 lg:h-5 fill-white" />
@@ -2874,6 +2912,7 @@ const MessageItem = React.memo(function MessageItem({
   isInteractionPoint,
   showSeenText,
   partnerLastReadAt,
+  isPartnerOnline,
   onJoinGame,
   onTriggerNudge
 }: { 
@@ -2893,6 +2932,7 @@ const MessageItem = React.memo(function MessageItem({
   isInteractionPoint?: boolean,
   showSeenText?: boolean,
   partnerLastReadAt: number,
+  isPartnerOnline: boolean,
   onJoinGame?: (game: { id: string, type: 'tictactoe' }) => void,
   onTriggerNudge?: (type: string) => void,
   key?: React.Key
@@ -3082,6 +3122,25 @@ const MessageItem = React.memo(function MessageItem({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const renderReceipt = () => {
+    if (!isOwn || msg.deleted) return null;
+    if (msg.deliveryStatus === 'sending') {
+      return <Clock3 aria-label="Sending" className="w-3 h-3 text-current" />;
+    }
+    if (msg.deliveryStatus === 'failed') {
+      return <Clock3 aria-label="Send failed" className="w-3 h-3 text-red-500" />;
+    }
+
+    const wasRead = getMillis(msg.timestamp) > 0 && getMillis(msg.timestamp) <= partnerLastReadAt;
+    if (wasRead) {
+      return <CheckCheck aria-label="Read" className="block w-4 h-4 flex-none overflow-visible text-sky-500 opacity-100" strokeWidth={2.35} />;
+    }
+    if (isPartnerOnline) {
+      return <CheckCheck aria-label="Delivered" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
+    }
+    return <Check aria-label="Sent" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
+  };
+
   return (
     <div 
       ref={itemRef}
@@ -3266,9 +3325,9 @@ const MessageItem = React.memo(function MessageItem({
                     )}
                   </span>
                 ) : null}
-                <div className={`flex items-center gap-1 opacity-50 text-[10px] ml-auto h-4 mb-[-2px] tracking-tight font-medium select-none`}>
+                <div className={`ml-auto flex min-w-[2.5rem] shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none opacity-50 tracking-tight font-medium select-none`}>
                   <span>{displayTime()}</span>
-                  {isOwn && !msg.deleted && <RotateCcw className="w-2.5 h-2.5" />}
+                  {renderReceipt()}
                 </div>
               </div>
 

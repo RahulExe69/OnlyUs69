@@ -158,6 +158,8 @@ The OnlyUs ecosystem is complemented by two bespoke native Android APKs built fo
 | `deleted` | `boolean` | Flag indicating whether the message is deleted for everyone |
 | `hidden_for_owner` | `boolean` | Soft delete flag for the owner |
 | `hidden_for_partner` | `boolean` | Soft delete flag for the partner |
+| `media` | `jsonb` | Shared media metadata, including the public Storage URL and media type |
+| `attachment_url` | `text` | Backward-compatible media URL used to hydrate older photo messages |
 | `gameInvite` | `jsonb` | Interactive game session data `{ gameType, sessionId, status }` |
 
 ### `games` Table
