@@ -3133,12 +3133,12 @@ const MessageItem = React.memo(function MessageItem({
 
     const wasRead = getMillis(msg.timestamp) > 0 && getMillis(msg.timestamp) <= partnerLastReadAt;
     if (wasRead) {
-      return <CheckCheck aria-label="Read" className="w-3.5 h-3.5 text-sky-500 opacity-100" strokeWidth={2.6} />;
+      return <CheckCheck aria-label="Read" className="block w-4 h-4 flex-none overflow-visible text-sky-500 opacity-100" strokeWidth={2.35} />;
     }
     if (isPartnerOnline) {
-      return <CheckCheck aria-label="Delivered" className="w-3.5 h-3.5 text-current" strokeWidth={2.6} />;
+      return <CheckCheck aria-label="Delivered" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
     }
-    return <Check aria-label="Sent" className="w-3.5 h-3.5 text-current" strokeWidth={2.6} />;
+    return <Check aria-label="Sent" className="block w-4 h-4 flex-none overflow-visible text-current" strokeWidth={2.35} />;
   };
 
   return (
@@ -3325,7 +3325,7 @@ const MessageItem = React.memo(function MessageItem({
                     )}
                   </span>
                 ) : null}
-                <div className={`flex items-center gap-1 opacity-50 text-[10px] ml-auto h-4 mb-[-2px] tracking-tight font-medium select-none`}>
+                <div className={`ml-auto flex min-w-[2.5rem] shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none opacity-50 tracking-tight font-medium select-none`}>
                   <span>{displayTime()}</span>
                   {renderReceipt()}
                 </div>
