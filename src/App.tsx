@@ -3483,25 +3483,20 @@ function ThemeCustomizeSheet({
   isThemeSaving?: boolean;
 }) {
   const [pendingTheme, setPendingTheme] = useState<ThemeName>(currentTheme);
-  const [previewTheme, setPreviewTheme] = useState<ThemeName | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setPendingTheme(currentTheme);
-      setPreviewTheme(null);
     }
   }, [isOpen, currentTheme]);
 
   const closeSheet = () => {
-    if (previewTheme) applyTheme(currentTheme);
-    setPreviewTheme(null);
     onClose();
   };
 
   const applySelectedTheme = async () => {
     if (pendingTheme === currentTheme || isThemeSaving) return;
     await onThemeSelect(pendingTheme);
-    setPreviewTheme(null);
     onClose();
   };
 
@@ -3575,23 +3570,12 @@ function ThemeCustomizeSheet({
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] px-4 py-3 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  applyTheme(pendingTheme);
-                  setPreviewTheme(pendingTheme);
-                }}
-                disabled={isThemeSaving}
-                className="h-12 rounded-2xl bg-[var(--theme-accent)]/10 text-[var(--theme-text)] text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-60"
-              >
-                Preview
-              </button>
+            <div className="absolute bottom-0 left-0 right-0 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] px-4 py-3">
               <button
                 type="button"
                 onClick={applySelectedTheme}
                 disabled={isThemeSaving || pendingTheme === currentTheme}
-                className="h-12 rounded-2xl bg-[var(--theme-accent)] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
+                className="w-full h-12 rounded-2xl bg-[var(--theme-accent)] text-white text-[16px] font-semibold active:scale-95 transition-all disabled:opacity-50"
               >
                 {isThemeSaving ? 'Applying...' : 'Apply'}
               </button>
@@ -3789,7 +3773,7 @@ function PartnerInfoModal({
       animate={{ x: 0 }} 
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-      className="fixed inset-0 z-[110] flex flex-col bg-white text-[#111111] overflow-hidden"
+      className="theme-settings fixed inset-0 z-[110] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden"
     >
       {/* Toast Notification */}
       <AnimatePresence>
