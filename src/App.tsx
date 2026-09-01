@@ -4103,7 +4103,7 @@ function PartnerInfoModal({
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden"
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-[2.2rem] max-w-md mx-auto shadow-2xl overflow-hidden relative"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 pt-3 pb-4 border-b border-neutral-200">
@@ -4121,13 +4121,13 @@ function PartnerInfoModal({
                 <div className="mt-5 grid grid-cols-2 text-center">
                   <button
                     onClick={() => setCustomiseTab('theme')}
-                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-3 ${customiseTab === 'theme' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
+                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-2 ${customiseTab === 'theme' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
                   >
                     Theme
                   </button>
                   <button
                     onClick={() => setCustomiseTab('font')}
-                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-3 ${customiseTab === 'font' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
+                    className={`pb-2 text-[14px] font-semibold transition-colors border-b-2 ${customiseTab === 'font' ? 'text-[#111111] border-[#111111]' : 'text-neutral-400 border-transparent'}`}
                   >
                     Font
                   </button>
