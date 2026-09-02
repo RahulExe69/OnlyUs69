@@ -64,7 +64,7 @@ export async function processImageLossless(file: File): Promise<ProcessedImageRe
       if (!ctx) {
         resolve({
           blob: file,
-          previewDataUrl: objectUrl,
+          previewDataUrl: '',
           width: originWidth,
           height: originHeight,
           size: file.size,

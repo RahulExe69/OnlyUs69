@@ -31,6 +31,19 @@ export const MediaSendPreviewModal: React.FC<MediaSendPreviewModalProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [caption, setCaption] = useState('');
 
+  // Clean up object URLs when modal is closed or unmounted
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => {
+        if (f.previewUrl && f.previewUrl.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(f.previewUrl);
+          } catch (_) {}
+        }
+      });
+    };
+  }, [files]);
+
   useEffect(() => {
     if (files.length > 0 && selectedIndex >= files.length) {
       setSelectedIndex(0);
