@@ -15,6 +15,8 @@ interface WhatsAppMediaBubbleProps {
   currentRole?: UserRole;
   deliveryStatus?: 'sending' | 'sent' | 'failed';
   timestampOverlay?: React.ReactNode;
+  selectionActive?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
@@ -27,7 +29,9 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
   senderRole,
   currentRole = 'owner',
   deliveryStatus,
-  timestampOverlay
+  timestampOverlay,
+  selectionActive = false,
+  onToggleSelect
 }) => {
   const items = (mediaList && mediaList.length > 0) 
     ? mediaList 
@@ -46,6 +50,8 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
         currentRole={currentRole}
         deliveryStatus={deliveryStatus}
         timestampOverlay={timestampOverlay}
+        selectionActive={selectionActive}
+        onToggleSelect={onToggleSelect}
       />
     );
   }
@@ -59,6 +65,8 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
       currentRole={currentRole}
       deliveryStatus={deliveryStatus}
       timestampOverlay={timestampOverlay}
+      selectionActive={selectionActive}
+      onToggleSelect={onToggleSelect}
     />
   );
 };
@@ -74,9 +82,11 @@ const SingleMediaBubble: React.FC<{
   currentRole: UserRole;
   deliveryStatus?: 'sending' | 'sent' | 'failed';
   timestampOverlay?: React.ReactNode;
-}> = ({ media, isOwn, onOpenViewer, messageId, currentRole, deliveryStatus, timestampOverlay }) => {
-  const [localUrl, setLocalUrl] = useState<string | null>(media.url && media.url.startsWith('blob:') ? media.url : null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  selectionActive?: boolean;
+  onToggleSelect?: () => void;
+}> = ({ media, isOwn, onOpenViewer, messageId, currentRole, deliveryStatus, timestampOverlay, selectionActive, onToggleSelect }) => {
+  const [localUrl, setLocalUrl] = useState<string | null>(media.url || media.thumbnailUrl || null);
+  const [isLoading, setIsLoading] = useState<boolean>(!media.url && !media.thumbnailUrl);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isRequestingRestore, setIsRequestingRestore] = useState<boolean>(false);
@@ -87,25 +97,33 @@ const SingleMediaBubble: React.FC<{
     let isMounted = true;
 
     async function resolveMedia() {
-      setIsLoading(true);
-      // 1. Check local device IndexedDB first
+      // 1. If direct data URL or blob URL is already provided, use it and cache to IndexedDB
+      if (media.url && (media.url.startsWith('data:') || media.url.startsWith('blob:'))) {
+        if (isMounted) {
+          setLocalUrl(media.url);
+          setIsLoading(false);
+          setHasError(false);
+        }
+        saveLocalMedia(media.id, media.url).catch(() => {});
+        return;
+      }
+
+      // 2. Check local device IndexedDB first
       const cached = await getLocalMedia(media.id);
       if (isMounted && cached) {
         setLocalUrl(cached);
         setIsLoading(false);
+        setHasError(false);
         return;
       }
 
-      // 2. If not in local IndexedDB but remote URL is present -> download & cache
+      // 3. If not in local IndexedDB but remote HTTP URL is present -> download & cache
       if (media.url && media.url.startsWith('http')) {
         const downloadedLocalUrl = await downloadAndCacheRemoteMedia(media.id, media.url);
         if (isMounted) {
-          if (downloadedLocalUrl) {
-            setLocalUrl(downloadedLocalUrl);
-          } else {
-            setLocalUrl(media.url);
-          }
+          setLocalUrl(downloadedLocalUrl || media.url);
           setIsLoading(false);
+          setHasError(false);
         }
         return;
       }
@@ -114,6 +132,17 @@ const SingleMediaBubble: React.FC<{
         if (isMounted) {
           setLocalUrl(media.url);
           setIsLoading(false);
+          setHasError(false);
+        }
+        return;
+      }
+
+      // 4. Fallback to thumbnail URL if available
+      if (media.thumbnailUrl) {
+        if (isMounted) {
+          setLocalUrl(media.thumbnailUrl);
+          setIsLoading(false);
+          setHasError(false);
         }
         return;
       }
@@ -142,10 +171,14 @@ const SingleMediaBubble: React.FC<{
       isMounted = false;
       window.removeEventListener(`onlyus_media_synced_${media.id}`, handlePeerRestored);
     };
-  }, [media.id, media.url]);
+  }, [media.id, media.url, media.thumbnailUrl]);
 
   const handleRequestRestore = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (selectionActive) {
+      onToggleSelect?.();
+      return;
+    }
     setIsRequestingRestore(true);
     await requestPeerMediaRestore(supabase, media.id, messageId, currentRole);
     setTimeout(() => {
@@ -155,6 +188,10 @@ const SingleMediaBubble: React.FC<{
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (selectionActive) {
+      onToggleSelect?.();
+      return;
+    }
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
@@ -168,6 +205,10 @@ const SingleMediaBubble: React.FC<{
 
   const toggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (selectionActive) {
+      onToggleSelect?.();
+      return;
+    }
     if (!videoRef.current) return;
     videoRef.current.muted = !isMuted;
     setIsMuted(!isMuted);
@@ -175,6 +216,10 @@ const SingleMediaBubble: React.FC<{
 
   const handleQuickSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (selectionActive) {
+      onToggleSelect?.();
+      return;
+    }
     const targetUrl = localUrl || media.url;
     if (!targetUrl) return;
     try {
@@ -201,7 +246,14 @@ const SingleMediaBubble: React.FC<{
 
   return (
     <div 
-      onClick={() => onOpenViewer(media)}
+      onClick={(e) => {
+        if (selectionActive) {
+          e.stopPropagation();
+          onToggleSelect?.();
+          return;
+        }
+        onOpenViewer(media);
+      }}
       className="relative rounded-[16px] overflow-hidden cursor-pointer group select-none w-[260px] sm:w-[300px] h-[210px] sm:h-[240px] bg-black/15 shadow-sm transition-transform active:scale-[0.99]"
     >
       {/* Thumbnail or Blurred placeholder */}
@@ -215,13 +267,17 @@ const SingleMediaBubble: React.FC<{
 
       {/* Actual Media Container */}
       {media.type === 'image' ? (
-        localUrl ? (
+        (localUrl || media.url || media.thumbnailUrl) ? (
           <img 
-            src={localUrl} 
+            src={localUrl || media.url || media.thumbnailUrl} 
             alt={media.fileName || 'Shared photo'} 
             className="w-full h-full object-cover group-hover:brightness-95 transition-all duration-200"
             loading="lazy"
-            onError={() => setHasError(true)}
+            onError={() => {
+              if (!localUrl && !media.url && !media.thumbnailUrl) {
+                setHasError(true);
+              }
+            }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-black/20 text-white p-4">
@@ -232,16 +288,20 @@ const SingleMediaBubble: React.FC<{
       ) : (
         /* Video Media */
         <div className="relative w-full h-full bg-black flex items-center justify-center">
-          {localUrl ? (
+          {(localUrl || media.url) ? (
             <video 
               ref={videoRef}
-              src={localUrl}
+              src={localUrl || media.url}
               className="w-full h-full object-cover"
               playsInline
               muted={isMuted}
               loop
               onEnded={() => setIsPlaying(false)}
-              onError={() => setHasError(true)}
+              onError={() => {
+                if (!localUrl && !media.url) {
+                  setHasError(true);
+                }
+              }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center text-white/70">
@@ -315,7 +375,7 @@ const SingleMediaBubble: React.FC<{
       )}
 
       {/* Re-download from partner's cache banner if missing or expired */}
-      {(hasError || (!localUrl && !isLoading)) && (
+      {(hasError || (!localUrl && !media.url && !media.thumbnailUrl && !isLoading)) && (
         <div 
           onClick={handleRequestRestore}
           className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-4 text-center cursor-pointer hover:bg-black/85 transition-all z-20"
@@ -352,10 +412,20 @@ const CollageMediaBubble: React.FC<{
   currentRole: UserRole;
   deliveryStatus?: 'sending' | 'sent' | 'failed';
   timestampOverlay?: React.ReactNode;
-}> = ({ items, isOwn, onOpenViewer, messageId, currentRole, deliveryStatus, timestampOverlay }) => {
+  selectionActive?: boolean;
+  onToggleSelect?: () => void;
+}> = ({ items, isOwn, onOpenViewer, messageId, currentRole, deliveryStatus, timestampOverlay, selectionActive, onToggleSelect }) => {
   const totalCount = items.length;
   const displayItems = items.slice(0, 4);
   const remainingCount = totalCount - 4;
+
+  const handleMediaClick = (media: MediaAttachment, idx: number) => {
+    if (selectionActive) {
+      onToggleSelect?.();
+      return;
+    }
+    onOpenViewer(media, items, idx);
+  };
 
   return (
     <div className="relative rounded-[16px] overflow-hidden select-none w-[260px] sm:w-[300px] bg-black/10 shadow-sm">
@@ -366,7 +436,7 @@ const CollageMediaBubble: React.FC<{
             <CollageThumbnail
               key={item.id || idx}
               media={item}
-              onClick={() => onOpenViewer(item, items, idx)}
+              onClick={() => handleMediaClick(item, idx)}
             />
           ))}
         </div>
@@ -378,20 +448,20 @@ const CollageMediaBubble: React.FC<{
           <div className="w-1/2 h-full">
             <CollageThumbnail
               media={items[0]}
-              onClick={() => onOpenViewer(items[0], items, 0)}
+              onClick={() => handleMediaClick(items[0], 0)}
             />
           </div>
           <div className="w-1/2 h-full flex flex-col gap-[2px]">
             <div className="h-1/2 w-full">
               <CollageThumbnail
                 media={items[1]}
-                onClick={() => onOpenViewer(items[1], items, 1)}
+                onClick={() => handleMediaClick(items[1], 1)}
               />
             </div>
             <div className="h-1/2 w-full">
               <CollageThumbnail
                 media={items[2]}
-                onClick={() => onOpenViewer(items[2], items, 2)}
+                onClick={() => handleMediaClick(items[2], 2)}
               />
             </div>
           </div>
@@ -407,11 +477,14 @@ const CollageMediaBubble: React.FC<{
               <div key={item.id || idx} className="relative w-full h-full overflow-hidden">
                 <CollageThumbnail
                   media={item}
-                  onClick={() => onOpenViewer(item, items, idx)}
+                  onClick={() => handleMediaClick(item, idx)}
                 />
                 {isLast && remainingCount > 0 && (
                   <div 
-                    onClick={() => onOpenViewer(item, items, idx)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMediaClick(item, idx);
+                    }}
                     className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center text-white cursor-pointer hover:bg-black/70 transition-all z-10"
                   >
                     <span className="text-3xl font-bold tracking-tight text-white drop-shadow-md">

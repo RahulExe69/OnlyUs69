@@ -49,7 +49,7 @@ export async function saveLocalMedia(mediaId: string, dataUrlOrBlob: string | Bl
   } catch (err) {
     console.warn('Failed to save to local IndexedDB:', err);
     try {
-      if (typeof dataUrlOrBlob === 'string' && dataUrlOrBlob.length < 2000000) {
+      if (typeof dataUrlOrBlob === 'string' && dataUrlOrBlob.length < 25000) {
         localStorage.setItem(`media_${mediaId}`, dataUrlOrBlob);
       }
     } catch (_) {}

@@ -86,20 +86,30 @@ export async function processImageLossless(file: File): Promise<ProcessedImageRe
             blob = file;
           }
 
-          // 3. Crisp medium thumbnail (400px width) for fast previews
+          // 3. Compact micro thumbnail (120px max dimension, ~3KB-5KB) for fast instant placeholders
           const thumbCanvas = document.createElement('canvas');
-          const thumbWidth = Math.min(400, targetWidth);
-          const thumbHeight = Math.round((targetHeight * thumbWidth) / targetWidth);
-          thumbCanvas.width = thumbWidth;
-          thumbCanvas.height = thumbHeight;
+          const maxThumbDim = 120;
+          let thumbWidth = targetWidth;
+          let thumbHeight = targetHeight;
+          if (targetWidth > maxThumbDim || targetHeight > maxThumbDim) {
+            if (targetWidth > targetHeight) {
+              thumbWidth = maxThumbDim;
+              thumbHeight = Math.round((targetHeight * maxThumbDim) / targetWidth);
+            } else {
+              thumbHeight = maxThumbDim;
+              thumbWidth = Math.round((targetWidth * maxThumbDim) / targetHeight);
+            }
+          }
+          thumbCanvas.width = Math.max(1, thumbWidth);
+          thumbCanvas.height = Math.max(1, thumbHeight);
           const thumbCtx = thumbCanvas.getContext('2d', { alpha: false });
 
           let previewDataUrl = '';
           if (thumbCtx) {
             thumbCtx.imageSmoothingEnabled = true;
-            thumbCtx.imageSmoothingQuality = 'high';
+            thumbCtx.imageSmoothingQuality = 'medium';
             thumbCtx.drawImage(canvas, 0, 0, thumbWidth, thumbHeight);
-            previewDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.85);
+            previewDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.65);
           }
 
           resolve({

@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -52,6 +52,7 @@ import { MediaSendPreviewModal, SelectedMediaFile } from './components/MediaSend
 import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/mediaStore';
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
+import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
@@ -150,14 +151,17 @@ const parseDate = (ts: any): Date => {
 // Older rows only have attachment_url. Keep them visible while the structured
 // media payload is rolled out, rather than dropping a partner's photo.
 const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
-  if (raw.media?.url || (raw.media?.mediaList && raw.media.mediaList.length > 0)) {
+  if (raw.media?.url || (raw.media?.mediaList && raw.media.mediaList.length > 0) || raw.media?.thumbnailUrl) {
+    if (raw.media && !raw.media.url && raw.media.thumbnailUrl) {
+      raw.media.url = raw.media.thumbnailUrl;
+    }
     return raw.media as MediaAttachment;
   }
   if (raw.mediaList && raw.mediaList.length > 0) {
     return {
       id: raw.id,
       type: raw.mediaList[0].type || 'image',
-      url: raw.mediaList[0].url,
+      url: raw.mediaList[0].url || raw.mediaList[0].thumbnailUrl || '',
       mediaList: raw.mediaList,
       fileName: raw.mediaList[0].fileName || 'Shared album'
     };
@@ -170,14 +174,17 @@ const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
       try {
         const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === 'object') {
-          if (parsed.mediaList || parsed.url) {
+          if (parsed.mediaList || parsed.url || parsed.thumbnailUrl) {
+            if (!parsed.url && parsed.thumbnailUrl) {
+              parsed.url = parsed.thumbnailUrl;
+            }
             return parsed as MediaAttachment;
           }
           if (Array.isArray(parsed) && parsed.length > 0) {
             return {
               id: raw.id,
               type: parsed[0].type || 'image',
-              url: parsed[0].url,
+              url: parsed[0].url || parsed[0].thumbnailUrl || '',
               mediaList: parsed,
               fileName: parsed[0].fileName || 'Shared album'
             };
@@ -211,8 +218,7 @@ export default function App() {
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => {
-    const cached = localStorage.getItem('cached_msgs');
-    return cached ? JSON.parse(cached) : [];
+    return loadCachedMessages();
   });
   const [messagesLoading, setMessagesLoading] = useState(messages.length === 0);
   const [showSettings, setShowSettings] = useState(false);
@@ -404,9 +410,7 @@ export default function App() {
 
   useEffect(() => {
     if (messages.length > 0) {
-      // Keep only last 100 for cache
-      const toCache = messages.slice(-100);
-      localStorage.setItem('cached_msgs', JSON.stringify(toCache));
+      cacheMessages(messages);
     }
   }, [messages]);
 
@@ -423,7 +427,8 @@ export default function App() {
         const { data, error: msgErr } = await supabase
           .from('messages')
           .select('*')
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false })
+          .limit(1000);
 
         if (isCancelled) return;
 
@@ -436,25 +441,24 @@ export default function App() {
             }, delay);
           }
         } else if (data) {
-          // Filter out any previous test feeling messages so the chat is spotless
-          const filteredData = data.filter((m: any) => 
-            !m.text?.includes('Sent you a') && 
-            !m.text?.includes('Tickled you') && 
-            !m.text?.includes('Miss you so much')
-          );
+          // Reverse so messages are in ascending chronological order [oldest ... newest]
+          const chronologicalData = [...data].reverse();
 
           const msgMap = new Map<string, any>();
-          filteredData.forEach((m: any) => msgMap.set(m.id, m));
+          chronologicalData.forEach((m: any) => {
+            if (m && m.id) msgMap.set(m.id, m);
+          });
 
-          const mappedData = filteredData.map((m: any) => {
+          const mappedData = chronologicalData.map((m: any) => {
             let replyToObj = null;
             if (m.reply_to) {
               const orig = msgMap.get(m.reply_to);
               if (orig) {
+                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
                 replyToObj = {
                   id: orig.id,
                   text: orig.deleted 
-                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
                     : orig.text,
                   sender_role: orig.sender_role
                 };
@@ -466,7 +470,7 @@ export default function App() {
                 };
               }
             }
-            const hydrated = hydrateMessageMedia(m);
+            const hydrated = m.deleted ? undefined : hydrateMessageMedia(m);
             return {
               ...m,
               media: hydrated,
@@ -475,13 +479,19 @@ export default function App() {
               replyTo: replyToObj
             };
           });
-          setMessages(mappedData as Message[]);
-          localStorage.setItem('cached_msgs', JSON.stringify(mappedData));
 
-          // Clean up database records of feeling messages in the background safely
-          supabase.from('messages').delete().ilike('text', '%Sent you a%').then(undefined, () => {});
-          supabase.from('messages').delete().ilike('text', '%Tickled you%').then(undefined, () => {});
-          supabase.from('messages').delete().ilike('text', '%Miss you so much%').then(undefined, () => {});
+          // Deduplicate by ID to guarantee unique keys
+          const uniqueMapped: Message[] = [];
+          const seenIds = new Set<string>();
+          for (const item of mappedData) {
+            if (item && item.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              uniqueMapped.push(item as Message);
+            }
+          }
+
+          setMessages(uniqueMapped);
+          cacheMessages(uniqueMapped);
         }
       } catch (err: any) {
         console.warn("Network fetch exception when syncing messages (retrying):", err?.message || err);
@@ -504,21 +514,18 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const raw = payload.new;
-
-          // Ignore any feeling texts if inserted by mistake
-          if (raw.text?.includes('Sent you a') || raw.text?.includes('Tickled you') || raw.text?.includes('Miss you so much')) {
-            return;
-          }
+          if (!raw || !raw.id) return;
 
           setMessages(prev => {
             let replyToObj = null;
             if (raw.reply_to) {
               const orig = prev.find(m => m.id === raw.reply_to);
               if (orig) {
+                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
                 replyToObj = {
                   id: orig.id,
                   text: orig.deleted 
-                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
                     : orig.text,
                   sender_role: orig.sender_role
                 };
@@ -531,7 +538,7 @@ export default function App() {
               }
             }
 
-            const hydrated = hydrateMessageMedia(raw);
+            const hydrated = raw.deleted ? undefined : hydrateMessageMedia(raw);
             const msg = {
               ...raw,
               media: hydrated,
@@ -540,9 +547,11 @@ export default function App() {
               replyTo: replyToObj
             } as Message;
 
-            const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === msg.text && m.sender_role === msg.sender_role));
-            const isDuplicate = filtered.some(m => m.id === msg.id);
-            if (isDuplicate) return filtered;
+            // Remove any optimistic temp message that matches
+            const filtered = prev.filter(m => 
+              m.id !== msg.id && 
+              !(m.id.startsWith('temp') && (m.text === msg.text || (m.media && msg.media)) && m.sender_role === msg.sender_role)
+            );
 
             if (typeof window !== 'undefined' && typeof window.AndroidBridge?.onNewMessage === 'function') {
               try {
@@ -561,10 +570,11 @@ export default function App() {
             if (raw.reply_to) {
               const orig = prev.find(m => m.id === raw.reply_to);
               if (orig) {
+                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
                 replyToObj = {
                   id: orig.id,
                   text: orig.deleted 
-                    ? (orig.deletedBy === orig.sender_role ? 'You deleted this message' : 'This message was deleted') 
+                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
                     : orig.text,
                   sender_role: orig.sender_role
                 };
@@ -577,7 +587,7 @@ export default function App() {
               }
             }
 
-            const hydrated = hydrateMessageMedia(raw);
+            const hydrated = raw.deleted ? undefined : hydrateMessageMedia(raw);
             const msg = {
               ...raw,
               media: hydrated,
@@ -1313,10 +1323,20 @@ export default function App() {
         setMessages(prev => {
           const updated = prev.map(m => 
             messagesToProcess.some(sm => sm.id === m.id && sm.sender_role === userProfile?.role)
-              ? { ...m, deleted: true, deletedBy: userProfile?.role, text: "", reactions: {} }
+              ? { 
+                  ...m, 
+                  deleted: true, 
+                  deletedBy: userProfile?.role, 
+                  text: "", 
+                  attachment_url: null,
+                  media: undefined,
+                  mediaList: undefined,
+                  gameInvite: null,
+                  reactions: {} 
+                }
               : m
           );
-          localStorage.setItem('cached_msgs', JSON.stringify(updated.slice(-100)));
+          cacheMessages(updated);
           return updated;
         });
 
@@ -1331,6 +1351,8 @@ export default function App() {
             chunks.map(async (chunk) => {
               const { error: updateError } = await supabase.from('messages').update({
                 text: "",
+                attachment_url: null,
+                gameInvite: null,
                 deleted: true,
                 deletedBy: userProfile?.role,
                 reactions: {}
@@ -1351,7 +1373,7 @@ export default function App() {
               ? { ...m, [visibilityField]: true } 
               : m
           );
-          localStorage.setItem('cached_msgs', JSON.stringify(updated.slice(-100)));
+          cacheMessages(updated);
           return updated;
         });
 
@@ -1758,7 +1780,7 @@ export default function App() {
                 Delete for me
               </button>
               
-              {selectedMessages.length === 1 && selectedMessages.every(m => m.sender_role === userProfile?.role && !m.deleted) && (
+              {selectedMessages.length > 0 && selectedMessages.every(m => m.sender_role === userProfile?.role && !m.deleted) && (
                 <button 
                   onClick={() => deleteSelected(true)}
                   className="w-full py-4 text-sm font-bold text-red-400 hover:bg-red-50 rounded-2xl transition-colors"
@@ -2156,7 +2178,7 @@ function ChatView({
     onSetReplyingTo(null);
 
     // 2. Generate immediate local attachments using native crystal-clear preview URLs
-    const tempId = `temp_media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const tempId = `temp-media-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const initialAttachments: MediaAttachment[] = filesToSend.map((item, idx) => {
       const mediaId = `media_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 7)}`;
       return {
@@ -2202,6 +2224,7 @@ function ChatView({
           const isVideo = item.type === 'video';
           let finalBlob: Blob = item.file;
           let previewThumbUrl: string | undefined = undefined;
+          let base64DataUrl = '';
 
           if (!isVideo) {
             try {
@@ -2209,10 +2232,14 @@ function ChatView({
               const result = await processImageLossless(item.file);
               finalBlob = result.blob;
               previewThumbUrl = result.previewDataUrl;
+              base64DataUrl = await blobToDataUrl(finalBlob);
             } catch (procErr) {
               console.warn('Image processing fallback to raw file:', procErr);
               finalBlob = item.file;
+              base64DataUrl = await blobToDataUrl(finalBlob);
             }
+          } else {
+            base64DataUrl = await blobToDataUrl(finalBlob);
           }
 
           // Save full-res media in local device-first IndexedDB
@@ -2238,20 +2265,14 @@ function ChatView({
             console.warn('Supabase storage upload error:', storageErr);
           }
 
-          // If storage is unavailable or failed, create a high-quality base64 DataURL
-          if (!cloudUrl || !cloudUrl.startsWith('http')) {
-            try {
-              cloudUrl = await blobToDataUrl(finalBlob);
-            } catch {
-              cloudUrl = initialAttachments[i].url;
-            }
-          }
+          // If cloudUrl is available use it, otherwise use direct high-quality base64DataUrl
+          const finalUrl = (cloudUrl && cloudUrl.startsWith('http')) ? cloudUrl : base64DataUrl;
 
           processedAttachments.push({
             id: mediaId,
             type: isVideo ? 'video' : 'image',
-            url: cloudUrl || initialAttachments[i].url,
-            thumbnailUrl: previewThumbUrl,
+            url: finalUrl,
+            thumbnailUrl: previewThumbUrl || (finalUrl.length < 50000 ? finalUrl : undefined),
             fileName: item.file.name,
             fileSize: finalBlob.size,
             mimeType: finalBlob.type
@@ -2264,7 +2285,7 @@ function ChatView({
           mediaList: processedAttachments.length > 1 ? processedAttachments : undefined
         };
 
-        // Serialize structured media into attachment_url for Supabase database
+        // Serialize compact structured media into attachment_url for Supabase database
         const attachmentPayload = JSON.stringify(finalPrimaryAttachment);
 
         const { data: savedMessage, error } = await supabase.from('messages').insert([{
@@ -2279,14 +2300,20 @@ function ChatView({
         if (error) throw error;
 
         const hydratedMedia = hydrateMessageMedia(savedMessage);
-        setMessages(prev => prev.map(message => message.id === tempId ? {
-          ...message,
-          ...savedMessage,
-          media: hydratedMedia || finalPrimaryAttachment,
-          mediaList: hydratedMedia?.mediaList || processedAttachments,
-          timestamp: savedMessage.created_at || message.timestamp,
-          deliveryStatus: 'sent'
-        } : message));
+        setMessages(prev => {
+          const isAlreadyInList = prev.some(m => m.id === savedMessage.id);
+          if (isAlreadyInList) {
+            return prev.filter(m => m.id !== tempId);
+          }
+          return prev.map(message => message.id === tempId ? {
+            ...message,
+            ...savedMessage,
+            media: hydratedMedia || finalPrimaryAttachment,
+            mediaList: hydratedMedia?.mediaList || processedAttachments,
+            timestamp: savedMessage.created_at || message.timestamp,
+            deliveryStatus: 'sent'
+          } : message);
+        });
 
       } catch (err) {
         console.error('Background media send error:', err);
@@ -2366,9 +2393,11 @@ function ChatView({
 
   useEffect(() => {
     if (replyingTo) {
-      requestAnimationFrame(() => {
-        messageInputRef.current?.focus({ preventScroll: true });
-      });
+      if (typeof document !== 'undefined' && document.activeElement !== messageInputRef.current) {
+        requestAnimationFrame(() => {
+          messageInputRef.current?.focus({ preventScroll: true });
+        });
+      }
     }
   }, [replyingTo]);
 
@@ -2441,10 +2470,22 @@ function ChatView({
 
     const text = inputText;
     const tempId = `temp-${Date.now()}`;
+    const activeReply = replyingTo;
     setInputText("");
+    onSetReplyingTo(null);
     requestAnimationFrame(() => {
       adjustTextareaHeight();
     });
+
+    // Soft keyboard reset to alphabets (WhatsApp behavior):
+    // Blurring and immediately focusing in the same event tick signals the virtual keyboard
+    // engine (Gboard, iOS, Samsung) to reset from numeric/symbol/emoji layers back to the primary alphabet layer
+    if (messageInputRef.current) {
+      messageInputRef.current.blur();
+      requestAnimationFrame(() => {
+        messageInputRef.current?.focus({ preventScroll: true });
+      });
+    }
 
     const msgData: any = {
       id: tempId,
@@ -2453,17 +2494,16 @@ function ChatView({
       timestamp: Date.now(),
       reactions: {},
       deliveryStatus: 'sending',
-      replyTo: replyingTo ? {
-        id: replyingTo.id,
-        text: replyingTo.text,
-        sender_role: replyingTo.sender_role
+      replyTo: activeReply ? {
+        id: activeReply.id,
+        text: activeReply.text,
+        sender_role: activeReply.sender_role
       } : null
     };
 
     setMessages(prev => [...prev, msgData]);
     requestAnimationFrame(() => {
       scrollToBottom(false);
-      messageInputRef.current?.focus({ preventScroll: true });
     });
 
     try {
@@ -2477,9 +2517,15 @@ function ChatView({
       }]).select().single();
       
       if (error) throw error;
-      setMessages(prev => prev.map(message => message.id === tempId ? {
-        ...message, ...savedMessage, timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
-      } : message));
+      setMessages(prev => {
+        const isExisting = prev.some(m => m.id === savedMessage.id);
+        if (isExisting) {
+          return prev.filter(m => m.id !== tempId);
+        }
+        return prev.map(message => message.id === tempId ? {
+          ...message, ...savedMessage, timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
+        } : message);
+      });
       
       onSetReplyingTo(null);
     } catch (err: any) {
@@ -2492,10 +2538,15 @@ function ChatView({
 
   const [messageLimit, setMessageLimit] = useState(50);
 
-  const visibleMessages = messages.filter(m => {
-    if (role === 'owner') return !m.hidden_for_owner;
-    return !m.hidden_for_partner;
-  });
+  const visibleMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.filter(m => {
+      if (!m || !m.id || seen.has(m.id)) return false;
+      seen.add(m.id);
+      if (role === 'owner') return !m.hidden_for_owner;
+      return !m.hidden_for_partner;
+    });
+  }, [messages, role]);
 
   const displayedMessages = visibleMessages.slice(-messageLimit);
   const hasMoreMessages = visibleMessages.length > messageLimit;
@@ -2624,8 +2675,12 @@ function ChatView({
                 onReply={onSetReplyingTo}
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
-                onViewImage={onViewImage}
+                onViewImage={(url) => {
+                  if (selectedMessages.length > 0) return;
+                  onViewImage(url);
+                }}
                 onViewMedia={(media, fullList, initialIndex) => {
+                  if (selectedMessages.length > 0) return;
                   setActiveMediaViewer(media);
                   setActiveMediaList(fullList || (media.mediaList) || [media]);
                   setActiveMediaIndex(initialIndex || 0);
@@ -2797,6 +2852,11 @@ function ChatView({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onFocus={() => setShowEmojiPicker(false)}
+              inputMode="text"
+              autoCapitalize="sentences"
+              autoComplete="on"
+              autoCorrect="on"
+              spellCheck={true}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   if (typeof window !== 'undefined' && window.innerWidth >= 768) {
@@ -3278,11 +3338,12 @@ const MessageItem = React.memo(function MessageItem({
     if (replyId && allMessages) {
       const original = allMessages.find(m => m.id === replyId);
       if (original) {
+        const isOrigDeletedByMe = original.deletedBy ? original.deletedBy === role : original.sender_role === role;
         return {
           id: original.id,
           text: original.deleted 
-            ? (original.deletedBy === original.sender_role ? 'You deleted this message' : 'This message was deleted') 
-            : original.text,
+            ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
+            : (original.text || (original.media ? '📷 Photo' : 'Original message')),
           sender_role: original.sender_role
         };
       }
@@ -3293,7 +3354,7 @@ const MessageItem = React.memo(function MessageItem({
     }
     
     return msg.replyTo || null;
-  }, [msg.replyTo, (msg as any).reply_to, allMessages]);
+  }, [msg.replyTo, (msg as any).reply_to, allMessages, role]);
 
   // Close picker on outside click release (pointerup) or scroll
   useEffect(() => {
@@ -3358,8 +3419,15 @@ const MessageItem = React.memo(function MessageItem({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSwiping) return;
-    if (e.pointerType === 'touch') {
+
+    // When typing and keyboard is open, touching anywhere on messages shouldn't steal focus from the textarea
+    const isInputActive = typeof document !== 'undefined' && 
+      (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT');
+    if (isInputActive) {
       e.preventDefault();
+    }
+
+    if (e.pointerType === 'touch') {
       if (typeof window !== 'undefined' && window.getSelection) {
         try { window.getSelection()?.removeAllRanges(); } catch (_) {}
       }
@@ -3455,6 +3523,7 @@ const MessageItem = React.memo(function MessageItem({
 
   const hasMedia = Boolean((msg.media && (msg.media.url || (msg.media.mediaList && msg.media.mediaList.length > 0))) || (msg.mediaList && msg.mediaList.length > 0));
   const isMediaOnly = hasMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
+  const isDeletedByMe = Boolean((msg.deletedBy && msg.deletedBy === role) || (!msg.deletedBy && msg.sender_role === role));
 
   return (
     <div 
@@ -3522,7 +3591,17 @@ const MessageItem = React.memo(function MessageItem({
         }}
       >
         {!isOwn && (
-          <div className="flex-shrink-0 mr-2 self-end mb-1 cursor-pointer active:scale-95 transition-transform" onClick={(e) => { e.stopPropagation(); partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url); }}>
+          <div 
+            className="flex-shrink-0 mr-2 self-end mb-1 cursor-pointer active:scale-95 transition-transform" 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              if (selectionActive || isSelected) {
+                onToggleSelect(msg);
+                return;
+              }
+              partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url); 
+            }}
+          >
             {partnerProfile?.photo_url ? (
               <img 
                 src={partnerProfile.photo_url} 
@@ -3620,7 +3699,15 @@ const MessageItem = React.memo(function MessageItem({
                     media={msg.media || msg.mediaList![0]} 
                     mediaList={msg.mediaList || (msg.media?.mediaList)}
                     isOwn={isOwn} 
-                    onOpenViewer={(media, fullList, initialIndex) => onViewMedia?.(media, fullList, initialIndex)} 
+                    selectionActive={selectionActive || isSelected}
+                    onToggleSelect={() => onToggleSelect(msg)}
+                    onOpenViewer={(media, fullList, initialIndex) => {
+                      if (selectionActive || isSelected) {
+                        onToggleSelect(msg);
+                        return;
+                      }
+                      onViewMedia?.(media, fullList, initialIndex);
+                    }} 
                     deleted={msg.deleted}
                     messageId={msg.id}
                     senderRole={msg.sender_role}
@@ -3637,18 +3724,19 @@ const MessageItem = React.memo(function MessageItem({
               )}
 
               {!isMediaOnly && (
-                <div className="flex flex-wrap items-end gap-x-2 gap-y-1 min-w-[60px] select-none">
-                  {msg.text ? (
+                <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 min-w-[70px] select-none">
+                  {msg.deleted ? (
+                    <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
+                      <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                      <span>{isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
+                    </div>
+                  ) : msg.text ? (
                     <span 
-                      className={`whitespace-pre-wrap flex-1 break-words select-none ${msg.deleted ? 'italic opacity-60' : ''}`}
+                      className="whitespace-pre-wrap flex-1 break-words select-none"
                       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
                     >
-                      {msg.deleted ? (
-                        msg.deletedBy === role ? 'You deleted this message' : 'This message was deleted'
-                      ) : (
-                        msg.text
-                      )}
-                      {msg.isEdited && !msg.deleted && (
+                      {msg.text}
+                      {msg.isEdited && (
                         <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>
                       )}
                     </span>
@@ -3688,7 +3776,7 @@ const MessageItem = React.memo(function MessageItem({
           </div>
 
           {/* Reactions display - Instagram Style */}
-          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+          {msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0 && (
             <div className={`absolute -bottom-3 flex -space-x-1.5 ${isOwn ? 'right-2' : 'left-5'} z-20`}>
               {Object.entries(
                 Object.values(msg.reactions).reduce((acc: any, emoji) => {
