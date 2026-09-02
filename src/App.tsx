@@ -64,7 +64,10 @@ import { NudgeOverlay } from './components/NudgeOverlay';
 import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './components/BottomSheet';
 import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
 import { MessageItem } from './components/MessageItem';
+import { PlayTogetherHub } from './components/PlayTogetherHub';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
+const ConnectHearts = lazy(() => import('./components/ConnectHeartsModal'));
+const DotsAndBoxes = lazy(() => import('./components/DotsAndBoxesModal'));
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -126,7 +129,7 @@ export default function App() {
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showGamesMenu, setShowGamesMenu] = useState(false);
   const [showNudgeMenu, setShowNudgeMenu] = useState(false);
-  const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' } | null>(null);
+  const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null>(null);
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
   const [socketOnlineRoles, setSocketOnlineRoles] = useState<string[]>([]);
@@ -476,25 +479,30 @@ export default function App() {
     };
   }, [user?.id]);
 
-  const sendGameInvite = async (type: 'tictactoe' = 'tictactoe') => {
+  const sendGameInvite = async (type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' = 'tictactoe') => {
     if (!userProfile) return;
     const sessionId = Math.random().toString(36).substring(7);
     const senderName = userProfile.role === 'owner' ? 'Rahul' : 'Nusrat';
+    const gameTitle = type === 'connecthearts' 
+      ? 'Connect Hearts 💖' 
+      : type === 'dotsandboxes' 
+      ? 'Dots & Hearts 💕' 
+      : 'Tic Tac Toe 🎮';
     
     try {
       await supabase.from('messages').insert([{ 
         sender_role: userProfile.role,
-        text: `🎮 ${senderName} invited you to play Tic Tac Toe`,
+        text: `🎮 ${senderName} invited you to play ${gameTitle}`,
         created_at: new Date().toISOString(), 
         reactions: {},
         gameInvite: {
-          gameType: 'tictactoe',
+          gameType: type,
           sessionId: sessionId,
           status: 'pending'
         }
        }]);
       setShowGamesMenu(false);
-      setActiveGame({ id: sessionId, type: 'tictactoe' });
+      setActiveGame({ id: sessionId, type });
     } catch (err) {
       console.error("Error sending game invite:", err);
     }
@@ -1964,9 +1972,9 @@ function ChatView({
   onSetShowAttachmentMenu: (val: boolean) => void,
   showGamesMenu: boolean,
   onSetShowGamesMenu: (val: boolean) => void,
-  activeGame: { id: string, type: 'tictactoe' } | null,
-  onSetActiveGame: (game: { id: string, type: 'tictactoe' } | null) => void,
-  onSendGameInvite: (type?: 'tictactoe') => Promise<void>,
+  activeGame: { id: string, type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null,
+  onSetActiveGame: (game: { id: string, type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null) => void,
+  onSendGameInvite: (type?: 'tictactoe' | 'connecthearts' | 'dotsandboxes') => Promise<void>,
   socketTypingUsers: string[],
   isPartnerOnline: boolean,
   chatRoomId: string,
@@ -2438,6 +2446,15 @@ function ChatView({
 
   const sendGameInvite = onSendGameInvite;
 
+  const latestPartnerMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.sender_role !== role && !messages[i]?.deleted) {
+        return messages[i];
+      }
+    }
+    return null;
+  }, [messages, role]);
+
   const [messageLimit, setMessageLimit] = useState(50);
 
   const visibleMessages = useMemo(() => {
@@ -2815,27 +2832,20 @@ function ChatView({
         </div>
       </BottomSheet>
 
-      <BottomSheet 
+      <PlayTogetherHub 
         isOpen={showGamesMenu} 
         onClose={() => onSetShowGamesMenu(false)}
-        title="Play Together"
-      >
-        <div className="p-4 space-y-3 pb-6">
-          <GameCard 
-            title="Tic Tac Toe"
-            subtitle={`Play with ${role === 'owner' ? 'Nusrat' : 'Rahul'} 💖`}
-            icon={<Gamepad2 className="w-5 h-5" />}
-            color="bg-[var(--theme-accent)]"
-            isActive={true}
-            onClick={() => sendGameInvite('tictactoe')}
-          />
-        </div>
-      </BottomSheet>
+        onLaunchGame={(type) => sendGameInvite(type)}
+        role={role}
+        userProfile={userProfile}
+        partnerProfile={partnerProfile}
+        isPartnerOnline={isPartnerOnline}
+      />
 
       {activeGame && activeGame.type === 'tictactoe' && (
         <Suspense fallback={
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-white/60 backdrop-blur-md">
-            <div className="w-8 h-8 border-3 border-[#FF8FA3]/20 border-t-[#FF8FA3] rounded-full animate-spin" />
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
+            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
           </div>
         }>
           <TicTacToe 
@@ -2843,7 +2853,51 @@ function ChatView({
             role={role} 
             userProfile={userProfile}
             partnerProfile={partnerProfile}
+            latestPartnerMessage={latestPartnerMessage}
+            isPartnerOnline={isPartnerOnline}
             onClose={() => onSetActiveGame(null)} 
+            onSendNudge={onSendNudge}
+            onSendMainChatMessage={(text) => handleSendMessage(text)}
+          />
+        </Suspense>
+      )}
+
+      {activeGame && activeGame.type === 'connecthearts' && (
+        <Suspense fallback={
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
+            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
+          </div>
+        }>
+          <ConnectHearts 
+            sessionId={activeGame.id} 
+            role={role} 
+            userProfile={userProfile}
+            partnerProfile={partnerProfile}
+            latestPartnerMessage={latestPartnerMessage}
+            isPartnerOnline={isPartnerOnline}
+            onClose={() => onSetActiveGame(null)} 
+            onSendNudge={onSendNudge}
+            onSendMainChatMessage={(text) => handleSendMessage(text)}
+          />
+        </Suspense>
+      )}
+
+      {activeGame && activeGame.type === 'dotsandboxes' && (
+        <Suspense fallback={
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
+            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
+          </div>
+        }>
+          <DotsAndBoxes 
+            sessionId={activeGame.id} 
+            role={role} 
+            userProfile={userProfile}
+            partnerProfile={partnerProfile}
+            latestPartnerMessage={latestPartnerMessage}
+            isPartnerOnline={isPartnerOnline}
+            onClose={() => onSetActiveGame(null)} 
+            onSendNudge={onSendNudge}
+            onSendMainChatMessage={(text) => handleSendMessage(text)}
           />
         </Suspense>
       )}

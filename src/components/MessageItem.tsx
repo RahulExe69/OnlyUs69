@@ -24,7 +24,7 @@ interface MessageItemProps {
   showSeenText?: boolean;
   partnerLastReadAt: number;
   isPartnerOnline: boolean;
-  onJoinGame?: (game: { id: string; type: 'tictactoe' }) => void;
+  onJoinGame?: (game: { id: string; type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' }) => void;
   onTriggerNudge?: (type: string) => void;
   onFocusInput?: () => void;
 }
@@ -539,7 +539,11 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
                     </div>
                     <div className="flex-1">
                       <p className={`text-[11px] font-bold ${isOwn ? 'text-white' : 'text-[var(--theme-text)]'}`}>
-                        Tic Tac Toe
+                        {msg.gameInvite?.gameType === 'connecthearts'
+                          ? 'Connect Hearts 💖'
+                          : msg.gameInvite?.gameType === 'dotsandboxes'
+                          ? 'Dots & Hearts 💕'
+                          : 'Tic Tac Toe 🎮'}
                       </p>
                       <p
                         className={`text-[9px] uppercase tracking-wider opacity-60 ${

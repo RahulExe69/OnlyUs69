@@ -60,8 +60,22 @@ export interface Message {
     mediaType?: 'image' | 'video' | 'audio';
   };
   gameInvite?: {
-    gameType: 'tictactoe';
+    gameType: 'tictactoe' | 'connecthearts' | 'dotsandboxes';
     sessionId: string;
     status: 'pending' | 'active' | 'finished';
   };
+}
+
+export interface InGameChatMessage {
+  id: string;
+  senderRole: UserRole;
+  senderName: string;
+  text: string;
+  timestamp: number;
+  isQuickReaction?: boolean;
+}
+
+export interface ActiveGameSession {
+  id: string;
+  type: 'tictactoe' | 'connecthearts' | 'dotsandboxes';
 }
