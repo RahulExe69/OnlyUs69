@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -62,7 +62,7 @@ import { FullImageViewer } from './components/FullImageViewer';
 import { ImageCropperModal } from './components/ImageCropperModal';
 import { NudgeOverlay } from './components/NudgeOverlay';
 import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './components/BottomSheet';
-import { ChatInputBar } from './components/ChatInputBar';
+import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
 import { MessageItem } from './components/MessageItem';
 const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
 import Cropper, { Area } from 'react-easy-crop';
@@ -1448,11 +1448,17 @@ export default function App() {
                   <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
                     {/* Back to Multi-Hub button */}
                     <button
-                      onClick={() => handleHubTabChange('dashboard')}
+                      onClick={() => {
+                        if (typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
+                          (document.activeElement as HTMLElement).blur();
+                        }
+                        handleHubTabChange('dashboard');
+                      }}
                       className="theme-accent-button p-2 -ml-1 mr-2 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
                       title="Back to OnlyUs Hub"
                     >
-                      <LayoutGrid className="w-4 h-4" />
+                      <ArrowLeft className="w-5 h-5 lg:hidden" />
+                      <LayoutGrid className="w-4 h-4 hidden lg:block" />
                     </button>
 
                     <div className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0" onClick={() => setShowPartnerInfo(true)}>
@@ -1984,7 +1990,9 @@ function ChatView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const chatInputRef = useRef<ChatInputBarHandle>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [triggerVoiceRecord, setTriggerVoiceRecord] = useState(false);
 
   // Mobile / Browser Hardware Back Button Overlay Closers inside ChatArea
   useOverlayBack(!!activeMediaViewer, () => {
@@ -2312,6 +2320,110 @@ function ChatView({
     }
   };
 
+  const handleSendVoiceNote = async (audioBlob: Blob, durationSeconds: number) => {
+    const tempId = `temp-audio-${Date.now()}`;
+    const mediaId = `media_${Date.now()}_audio`;
+    const activeReply = replyingTo ? {
+      id: replyingTo.id,
+      text: replyingTo.text,
+      sender_role: replyingTo.sender_role,
+      mediaType: replyingTo.media?.type
+    } : null;
+    onSetReplyingTo(null);
+
+    const localUrl = URL.createObjectURL(audioBlob);
+    const audioAttachment: MediaAttachment = {
+      id: mediaId,
+      type: 'audio',
+      url: localUrl,
+      fileName: `Voice Note (${Math.round(durationSeconds)}s)`,
+      duration: Math.round(durationSeconds),
+      fileSize: audioBlob.size,
+      mimeType: audioBlob.type || 'audio/webm',
+    };
+
+    saveLocalMedia(mediaId, audioBlob).catch(() => {});
+
+    const optimisticMessage: any = {
+      id: tempId,
+      sender_role: role,
+      text: '',
+      timestamp: Date.now(),
+      reactions: {},
+      deliveryStatus: 'sending',
+      media: audioAttachment,
+      replyTo: activeReply
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+    requestAnimationFrame(() => {
+      scrollToBottom(false);
+    });
+
+    (async () => {
+      try {
+        const base64DataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(audioBlob);
+        });
+
+        const storagePath = `${mediaId}.webm`;
+        let cloudUrl = '';
+        try {
+          const { error: uploadError } = await supabase.storage
+            .from('chat-media')
+            .upload(storagePath, audioBlob, { contentType: audioBlob.type || 'audio/webm', upsert: true });
+
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+            if (publicUrlData?.publicUrl) {
+              cloudUrl = publicUrlData.publicUrl;
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Supabase audio upload warning:', storageErr);
+        }
+
+        const finalUrl = (cloudUrl && cloudUrl.startsWith('http')) ? cloudUrl : base64DataUrl;
+        const finalAudioAttachment: MediaAttachment = {
+          ...audioAttachment,
+          url: finalUrl,
+        };
+
+        const { data: savedMessage, error } = await supabase.from('messages').insert([{
+          sender_role: role,
+          text: '',
+          created_at: new Date().toISOString(),
+          reactions: {},
+          reply_to: activeReply ? activeReply.id : null,
+          attachment_url: JSON.stringify(finalAudioAttachment)
+        }]).select().single();
+
+        if (error) throw error;
+
+        const hydratedMedia = hydrateMessageMedia(savedMessage);
+        setMessages(prev => {
+          const isAlreadyInList = prev.some(m => m.id === savedMessage.id);
+          if (isAlreadyInList) {
+            return prev.filter(m => m.id !== tempId);
+          }
+          return prev.map(message => message.id === tempId ? {
+            ...message,
+            ...savedMessage,
+            media: hydratedMedia || finalAudioAttachment,
+            timestamp: savedMessage.created_at || message.timestamp,
+            deliveryStatus: 'sent'
+          } : message);
+        });
+      } catch (err) {
+        console.error('Voice note send error:', err);
+        setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
+      }
+    })();
+  };
+
   const handleEditMessage = async (msgId: string, newText: string) => {
     try {
       await supabase.from('messages').update({
@@ -2423,6 +2535,19 @@ function ChatView({
           ref={scrollRef}
           id="message-container" 
           className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
+          onPointerDown={(e) => {
+            const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+            const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'INPUT');
+            if (isInputActive) {
+              const target = e.target as HTMLElement;
+              const isInteractive = target.closest('button, a, input, textarea, select, [role="button"], video, audio');
+              if (!isInteractive) {
+                // Prevent tapping empty chat space from closing the keyboard
+                e.preventDefault();
+                (activeEl as HTMLElement).focus({ preventScroll: true });
+              }
+            }
+          }}
         >
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
@@ -2463,6 +2588,7 @@ function ChatView({
                 onToggleSelect={onToggleSelect}
                 selectionActive={selectedMessages.length > 0}
                 onReply={onSetReplyingTo}
+                onFocusInput={() => chatInputRef.current?.focusInput()}
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={(url) => {
@@ -2540,6 +2666,8 @@ function ChatView({
       </AnimatePresence>
 
       <ChatInputBar 
+        ref={chatInputRef}
+        inputRef={messageInputRef}
         role={role}
         userProfile={userProfile}
         replyingTo={replyingTo}
@@ -2547,10 +2675,13 @@ function ChatView({
         onClearReply={() => onSetReplyingTo(null)}
         onClearEditing={() => onSetEditingMessage(null)}
         onSendMessage={handleSendMessage}
+        onSendVoiceNote={handleSendVoiceNote}
         onEditMessage={handleEditMessage}
         onOpenAttachmentMenu={() => onSetShowAttachmentMenu(true)}
         onOpenNudgeMenu={() => onSetShowNudgeMenu(true)}
         onBroadcastTyping={onBroadcastTyping}
+        externalTriggerVoiceRecord={triggerVoiceRecord}
+        onClearExternalVoiceRecordTrigger={() => setTriggerVoiceRecord(false)}
       />
 
       {/* Hidden file inputs for Camera and Gallery */}
@@ -2602,6 +2733,15 @@ function ChatView({
             onClick={() => {
               onSetShowAttachmentMenu(false);
               fileInputRef.current?.click();
+            }} 
+          />
+          <AttachmentOption 
+            icon={<Mic className="w-6 h-6" />} 
+            label="Voice Note" 
+            color="bg-[#8B5CF6]/20 text-[#8B5CF6]" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              setTriggerVoiceRecord(true);
             }} 
           />
           <AttachmentOption 

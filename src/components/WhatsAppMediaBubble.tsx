@@ -3,6 +3,7 @@ import { Play, Pause, Volume2, VolumeX, Download, Eye, Maximize2, AlertCircle, F
 import { MediaAttachment, UserRole } from '../types';
 import { getLocalMedia, saveLocalMedia, formatFileSize, downloadAndCacheRemoteMedia, requestPeerMediaRestore } from '../lib/mediaStore';
 import { supabase } from '../lib/supabase';
+import { VoiceNoteBubble } from './VoiceNoteBubble';
 
 interface WhatsAppMediaBubbleProps {
   media: MediaAttachment;
@@ -39,6 +40,22 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
   const isCollage = items.length > 1;
 
   if (deleted) return null;
+
+  if (media?.type === 'audio') {
+    return (
+      <VoiceNoteBubble
+        media={media}
+        isOwn={isOwn}
+        messageId={messageId}
+        senderRole={senderRole}
+        currentRole={currentRole}
+        deliveryStatus={deliveryStatus}
+        timestampOverlay={timestampOverlay}
+        selectionActive={selectionActive}
+        onToggleSelect={onToggleSelect}
+      />
+    );
+  }
 
   if (isCollage) {
     return (

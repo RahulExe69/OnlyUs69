@@ -24,7 +24,7 @@ export interface UserProfile {
 
 export interface MediaAttachment {
   id: string;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
   url: string; // Base64 data url or direct media URI stored on device
   thumbnail?: string; // blur placeholder
   thumbnailUrl?: string;
@@ -32,7 +32,7 @@ export interface MediaAttachment {
   fileSize?: number;
   mimeType?: string;
   caption?: string;
-  duration?: number; // duration in seconds for video
+  duration?: number; // duration in seconds for video or audio
   width?: number;
   height?: number;
   mediaList?: MediaAttachment[]; // Multiple items support
@@ -57,7 +57,7 @@ export interface Message {
     id: string;
     text: string;
     sender_role: UserRole;
-    mediaType?: 'image' | 'video';
+    mediaType?: 'image' | 'video' | 'audio';
   };
   gameInvite?: {
     gameType: 'tictactoe';

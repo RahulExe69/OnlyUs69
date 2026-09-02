@@ -26,6 +26,7 @@ interface MessageItemProps {
   isPartnerOnline: boolean;
   onJoinGame?: (game: { id: string; type: 'tictactoe' }) => void;
   onTriggerNudge?: (type: string) => void;
+  onFocusInput?: () => void;
 }
 
 export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
@@ -48,6 +49,7 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
   isPartnerOnline,
   onJoinGame,
   onTriggerNudge,
+  onFocusInput,
 }) {
   const isOwn = msg.sender_role === role;
   const itemRef = useRef<HTMLDivElement>(null);
@@ -280,7 +282,8 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
     (msg.media && (msg.media.url || (msg.media.mediaList && msg.media.mediaList.length > 0))) ||
       (msg.mediaList && msg.mediaList.length > 0)
   );
-  const isMediaOnly = hasMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
+  const isAudioMedia = Boolean(msg.media?.type === 'audio');
+  const isMediaOnly = hasMedia && !isAudioMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
   const isDeletedByMe = Boolean((msg.deletedBy && msg.deletedBy === role) || (!msg.deletedBy && msg.sender_role === role));
 
   return (
@@ -326,6 +329,14 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
           justifyContent: isOwn ? 'flex-end' : 'flex-start',
           touchAction: 'pan-y',
         }}
+        onPointerDown={(e) => {
+          const isInputActive =
+            typeof document !== 'undefined' &&
+            (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT');
+          if (isInputActive) {
+            e.preventDefault();
+          }
+        }}
         onDragStart={() => {
           setIsSwiping(true);
           if (longPressTimer.current) {
@@ -340,6 +351,7 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
           if (passedDistance || passedFlick) {
             onReply(msg);
             triggerHaptic(24, 120);
+            onFocusInput?.();
           }
         }}
         className="relative w-full flex items-end px-2 lg:px-4 select-none"

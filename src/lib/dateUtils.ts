@@ -65,11 +65,12 @@ export const hydrateMessageMedia = (raw: any): MediaAttachment | undefined => {
     }
   }
 
-  const isVideo = /^data:video\//.test(raw.attachment_url) || /\.(mp4|mov|webm)(?:\?|$)/i.test(raw.attachment_url);
+  const isAudio = /^data:audio\//.test(raw.attachment_url) || /\.(mp3|wav|ogg|m4a|aac|weba|webm)(?:\?|$)/i.test(raw.attachment_url);
+  const isVideo = !isAudio && (/^data:video\//.test(raw.attachment_url) || /\.(mp4|mov|webm)(?:\?|$)/i.test(raw.attachment_url));
   return {
     id: raw.id,
-    type: isVideo ? 'video' : 'image',
+    type: isAudio ? 'audio' : isVideo ? 'video' : 'image',
     url: raw.attachment_url,
-    fileName: isVideo ? 'Shared video' : 'Shared photo',
+    fileName: isAudio ? 'Voice Note' : isVideo ? 'Shared video' : 'Shared photo',
   };
 };
