@@ -419,7 +419,10 @@ const CollageMediaBubble: React.FC<{
   const displayItems = items.slice(0, 4);
   const remainingCount = totalCount - 4;
 
-  const handleMediaClick = (media: MediaAttachment, idx: number) => {
+  const handleMediaClick = (media: MediaAttachment, idx: number, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     if (selectionActive) {
       onToggleSelect?.();
       return;
@@ -428,7 +431,15 @@ const CollageMediaBubble: React.FC<{
   };
 
   return (
-    <div className="relative rounded-[16px] overflow-hidden select-none w-[260px] sm:w-[300px] bg-black/10 shadow-sm">
+    <div 
+      onClick={(e) => {
+        if (selectionActive) {
+          e.stopPropagation();
+          onToggleSelect?.();
+        }
+      }}
+      className="relative rounded-[16px] overflow-hidden select-none w-[260px] sm:w-[300px] bg-black/10 shadow-sm cursor-pointer"
+    >
       {/* 2 Photos Layout: 2 side-by-side columns */}
       {totalCount === 2 && (
         <div className="grid grid-cols-2 gap-[2px] w-full h-[190px] sm:h-[220px]">
@@ -436,7 +447,7 @@ const CollageMediaBubble: React.FC<{
             <CollageThumbnail
               key={item.id || idx}
               media={item}
-              onClick={() => handleMediaClick(item, idx)}
+              onClick={(e) => handleMediaClick(item, idx, e)}
             />
           ))}
         </div>
@@ -448,20 +459,20 @@ const CollageMediaBubble: React.FC<{
           <div className="w-1/2 h-full">
             <CollageThumbnail
               media={items[0]}
-              onClick={() => handleMediaClick(items[0], 0)}
+              onClick={(e) => handleMediaClick(items[0], 0, e)}
             />
           </div>
           <div className="w-1/2 h-full flex flex-col gap-[2px]">
             <div className="h-1/2 w-full">
               <CollageThumbnail
                 media={items[1]}
-                onClick={() => handleMediaClick(items[1], 1)}
+                onClick={(e) => handleMediaClick(items[1], 1, e)}
               />
             </div>
             <div className="h-1/2 w-full">
               <CollageThumbnail
                 media={items[2]}
-                onClick={() => handleMediaClick(items[2], 2)}
+                onClick={(e) => handleMediaClick(items[2], 2, e)}
               />
             </div>
           </div>
@@ -477,13 +488,13 @@ const CollageMediaBubble: React.FC<{
               <div key={item.id || idx} className="relative w-full h-full overflow-hidden">
                 <CollageThumbnail
                   media={item}
-                  onClick={() => handleMediaClick(item, idx)}
+                  onClick={(e) => handleMediaClick(item, idx, e)}
                 />
                 {isLast && remainingCount > 0 && (
                   <div 
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleMediaClick(item, idx);
+                      handleMediaClick(item, idx, e);
                     }}
                     className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center text-white cursor-pointer hover:bg-black/70 transition-all z-10"
                   >
@@ -523,7 +534,7 @@ const CollageMediaBubble: React.FC<{
 // Sub-thumbnail inside collage
 const CollageThumbnail: React.FC<{
   media: MediaAttachment;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
 }> = ({ media, onClick }) => {
   const [localUrl, setLocalUrl] = useState<string | null>(
     media.url && (media.url.startsWith('blob:') || media.url.startsWith('data:')) ? media.url : null

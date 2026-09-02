@@ -42,7 +42,7 @@ const socketService = {
   onMessageDeleted: () => {}
 };
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -1363,30 +1363,52 @@ export default function App() {
           );
         }
       } else {
-        // Delete for Me (Persist in Database)
-        const visibilityField = userProfile?.role === 'owner' ? 'hidden_for_owner' : 'hidden_for_partner';
+        // Delete for Me (If partner already deleted from their side, permanently delete from Database)
+        const currentRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+        const visibilityField = currentRole === 'owner' ? 'hidden_for_owner' : 'hidden_for_partner';
+        const partnerVisibilityField = currentRole === 'owner' ? 'hidden_for_partner' : 'hidden_for_owner';
         
+        const idsToDeleteCompletely: string[] = [];
+        const idsToHideOnly: string[] = [];
+
+        messagesToProcess.forEach(m => {
+          if (!m.id || m.id.startsWith('temp-')) return;
+          // If partner has already deleted/hidden it, both sides have now deleted it -> purge row from DB!
+          if (Boolean((m as any)[partnerVisibilityField])) {
+            idsToDeleteCompletely.push(m.id);
+          } else {
+            idsToHideOnly.push(m.id);
+          }
+        });
+
         // Optimistic UI update: hide locally immediately
         setMessages(prev => {
-          const updated = prev.map(m => 
-            messagesToProcess.some(sm => sm.id === m.id) 
-              ? { ...m, [visibilityField]: true } 
-              : m
-          );
+          const updated = prev
+            .filter(m => !idsToDeleteCompletely.includes(m.id))
+            .map(m => 
+              messagesToProcess.some(sm => sm.id === m.id) 
+                ? { ...m, [visibilityField]: true } 
+                : m
+            );
           cacheMessages(updated);
           return updated;
         });
 
-        const idsToUpdate = messagesToProcess
-          .map(m => m.id)
-          .filter(id => !id.startsWith('temp-'));
+        // 1. Permanently delete messages that both users deleted
+        if (idsToDeleteCompletely.length > 0) {
+          const chunkSize = 50;
+          for (let i = 0; i < idsToDeleteCompletely.length; i += chunkSize) {
+            const chunk = idsToDeleteCompletely.slice(i, i + chunkSize);
+            await supabase.from('messages').delete().in('id', chunk);
+          }
+        }
 
-        if (idsToUpdate.length > 0) {
-          // Batch in chunks of 50 in parallel for instant, bulletproof persistence
+        // 2. Hide messages where only current user deleted
+        if (idsToHideOnly.length > 0) {
           const chunkSize = 50;
           const chunks: string[][] = [];
-          for (let i = 0; i < idsToUpdate.length; i += chunkSize) {
-            chunks.push(idsToUpdate.slice(i, i + chunkSize));
+          for (let i = 0; i < idsToHideOnly.length; i += chunkSize) {
+            chunks.push(idsToHideOnly.slice(i, i + chunkSize));
           }
 
           await Promise.all(
@@ -1601,14 +1623,6 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div 
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[var(--theme-surface)] border border-[var(--theme-border)] mr-1 cursor-help shadow-xs" 
-                      title={`${isSocketConnected ? 'Connected' : 'Offline'} | ${socketOnlineUsers.length} in room | Partner: ${partnerProfile?.uid || 'Unknown'}`}
-                    >
-                      <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-                      {isSocketConnected ? <Wifi className="w-3 h-3 text-green-600" /> : <WifiOff className="w-3 h-3 text-[var(--theme-text)]/40" />}
-                    </div>
-
                     <div className="relative">
                       <button 
                         ref={menuBtnRef}
@@ -4438,6 +4452,81 @@ function ThemeCustomizePage({
 
 const ThemeCustomizeSheet = ThemeCustomizePage;
 
+const ProfileMediaThumbnail: React.FC<{
+  item: { url: string; id?: string; fileName?: string; type: string };
+  onClick: () => void;
+}> = ({ item, onClick }) => {
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(
+    item.url && (item.url.startsWith('blob:') || item.url.startsWith('data:') || item.url.startsWith('http')) ? item.url : null
+  );
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function resolve() {
+      if (item.url && (item.url.startsWith('blob:') || item.url.startsWith('data:') || item.url.startsWith('http'))) {
+        setResolvedUrl(item.url);
+        return;
+      }
+      if (item.id) {
+        const cached = await getLocalMedia(item.id);
+        if (isMounted && cached) {
+          setResolvedUrl(cached);
+          return;
+        }
+      }
+      if (item.url) {
+        setResolvedUrl(item.url);
+      }
+    }
+    resolve();
+    return () => { isMounted = false; };
+  }, [item.id, item.url]);
+
+  if (hasError) return null;
+
+  return (
+    <div 
+      onClick={() => {
+        if (resolvedUrl) onClick();
+      }}
+      className="aspect-square bg-neutral-100 overflow-hidden cursor-pointer hover:opacity-90 active:scale-95 transition-all relative flex items-center justify-center group"
+    >
+      {resolvedUrl ? (
+        item.type === 'video' ? (
+          <div className="w-full h-full relative bg-black flex items-center justify-center">
+            <video 
+              src={resolvedUrl} 
+              className="w-full h-full object-cover" 
+              muted 
+              playsInline 
+              preload="metadata"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+              <div className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center shadow">
+                <Play className="w-4 h-4 fill-white ml-0.5" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <img 
+            src={resolvedUrl} 
+            alt="" 
+            className="w-full h-full object-cover" 
+            referrerPolicy="no-referrer" 
+            loading="lazy"
+            onError={() => setHasError(true)}
+          />
+        )
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-300">
+          <ImageIcon className="w-6 h-6 opacity-40" />
+        </div>
+      )}
+    </div>
+  );
+};
+
 function PartnerInfoModal({ 
   partner, 
   myProfile, 
@@ -4608,28 +4697,85 @@ function PartnerInfoModal({
     }
   };
 
-  // Shared chat photos
+  // Shared chat photos & media (excluding deleted globally and deleted-for-me)
   const sharedPhotos = useMemo(() => {
-    const photos: string[] = [];
+    const photos: { url: string; id?: string; fileName?: string; type: string }[] = [];
+    const role = myProfile?.role;
+    
     messages.forEach((m: any) => {
+      // Exclude messages deleted globally or hidden for current user
+      if (m.deleted) return;
+      if (role === 'owner' && m.hidden_for_owner) return;
+      if (role === 'partner' && m.hidden_for_partner) return;
+      
       const media = m.media || hydrateMessageMedia(m);
       if (media?.mediaList && media.mediaList.length > 0) {
         media.mediaList.forEach((item: any) => {
-          if (item.type === 'image' && item.url) {
-            photos.push(item.url);
+          if (item.type === 'image') {
+            const u = item.url || item.thumbnailUrl;
+            if (u || item.id) {
+              photos.push({ url: u || '', id: item.id, fileName: item.fileName, type: 'image' });
+            }
           }
         });
-      } else if (media?.url && media.type === 'image') {
-        photos.push(media.url);
-      } else if (m.attachment_url && (typeof m.attachment_url === 'string') && (m.attachment_url.startsWith('data:image') || m.attachment_url.startsWith('http'))) {
-        photos.push(m.attachment_url);
-      }
-      if (m.image_url && typeof m.image_url === 'string') {
-        photos.push(m.image_url);
+      } else if (media?.type === 'image') {
+        const u = media.url || media.thumbnailUrl;
+        if (u || media.id) {
+          photos.push({ url: u || '', id: media.id, fileName: media.fileName, type: 'image' });
+        }
+      } else if (m.attachment_url && typeof m.attachment_url === 'string') {
+        if (m.attachment_url.startsWith('data:image') || m.attachment_url.startsWith('http') || m.attachment_url.startsWith('blob:')) {
+          photos.push({ url: m.attachment_url, id: m.id, type: 'image' });
+        }
       }
     });
     return photos;
-  }, [messages]);
+  }, [messages, myProfile?.role]);
+
+  // Shared chat videos / reels
+  const sharedVideos = useMemo(() => {
+    const videos: { url: string; id?: string; fileName?: string; type: string }[] = [];
+    const role = myProfile?.role;
+    
+    messages.forEach((m: any) => {
+      if (m.deleted) return;
+      if (role === 'owner' && m.hidden_for_owner) return;
+      if (role === 'partner' && m.hidden_for_partner) return;
+      
+      const media = m.media || hydrateMessageMedia(m);
+      if (media?.mediaList && media.mediaList.length > 0) {
+        media.mediaList.forEach((item: any) => {
+          if (item.type === 'video') {
+            videos.push({ url: item.url || '', id: item.id, fileName: item.fileName, type: 'video' });
+          }
+        });
+      } else if (media?.type === 'video') {
+        videos.push({ url: media.url || '', id: media.id, fileName: media.fileName, type: 'video' });
+      }
+    });
+    return videos;
+  }, [messages, myProfile?.role]);
+
+  // Shared chat links
+  const sharedLinks = useMemo(() => {
+    const links: { url: string; text: string; date: string }[] = [];
+    const role = myProfile?.role;
+    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+
+    messages.forEach((m: any) => {
+      if (m.deleted || !m.text) return;
+      if (role === 'owner' && m.hidden_for_owner) return;
+      if (role === 'partner' && m.hidden_for_partner) return;
+
+      const matches = m.text.match(urlRegex);
+      if (matches) {
+        matches.forEach((url: string) => {
+          links.push({ url, text: m.text, date: m.created_at });
+        });
+      }
+    });
+    return links;
+  }, [messages, myProfile?.role]);
 
   const partnerHandle = partner.username || (partner.email ? partner.email.split('@')[0] : (partner.role === 'owner' ? 'rahul' : 'nusrat'));
   const myHandle = myProfile?.username || (myProfile?.email ? myProfile.email.split('@')[0] : (myProfile?.role === 'owner' ? 'rahul' : 'nusrat'));
@@ -4783,19 +4929,12 @@ function PartnerInfoModal({
                 <div className="p-1">
                   {sharedPhotos.length > 0 ? (
                     <div className="grid grid-cols-3 gap-1">
-                      {sharedPhotos.map((imgUrl, idx) => (
-                        <div 
-                          key={idx}
-                          onClick={() => onViewImage(imgUrl)}
-                          className="aspect-square bg-neutral-100 overflow-hidden cursor-pointer hover:opacity-90 active:scale-98 transition-all"
-                        >
-                          <img 
-                            src={imgUrl} 
-                            alt={`Media ${idx}`} 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer" 
-                          />
-                        </div>
+                      {sharedPhotos.map((photoItem, idx) => (
+                        <ProfileMediaThumbnail 
+                          key={photoItem.id || idx}
+                          item={photoItem}
+                          onClick={() => onViewImage(photoItem.url)}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -4811,22 +4950,64 @@ function PartnerInfoModal({
               )}
 
               {activeMediaTab === 'reels' && (
-                <div className="py-16 text-center text-neutral-400">
-                  <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                    <Film className="w-5 h-5 stroke-[1.5]" />
-                  </div>
-                  <p className="text-[14px] font-semibold text-neutral-700">No clips or voice notes</p>
-                  <p className="text-[12px] text-neutral-400 mt-1">Audio memories and clips will show here.</p>
+                <div className="p-1">
+                  {sharedVideos.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-1">
+                      {sharedVideos.map((videoItem, idx) => (
+                        <ProfileMediaThumbnail 
+                          key={videoItem.id || idx}
+                          item={videoItem}
+                          onClick={() => onViewImage(videoItem.url)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-16 text-center text-neutral-400">
+                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                        <Film className="w-5 h-5 stroke-[1.5]" />
+                      </div>
+                      <p className="text-[14px] font-semibold text-neutral-700">No videos shared yet</p>
+                      <p className="text-[12px] text-neutral-400 mt-1">Videos you share in this chat will appear here.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
               {activeMediaTab === 'links' && (
-                <div className="py-16 text-center text-neutral-400">
-                  <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                    <Link2 className="w-5 h-5 stroke-[1.5]" />
-                  </div>
-                  <p className="text-[14px] font-semibold text-neutral-700">No links shared</p>
-                  <p className="text-[12px] text-neutral-400 mt-1">Shared web links in your chat will appear here.</p>
+                <div className="p-3">
+                  {sharedLinks.length > 0 ? (
+                    <div className="space-y-2">
+                      {sharedLinks.map((linkItem, idx) => (
+                        <a 
+                          key={idx}
+                          href={linkItem.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200/60 transition-colors text-left group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0">
+                            <Link2 className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold text-blue-600 truncate group-hover:underline">
+                              {linkItem.url}
+                            </p>
+                            <p className="text-[11px] text-neutral-500 truncate mt-0.5">
+                              {linkItem.text}
+                            </p>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-16 text-center text-neutral-400">
+                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
+                        <Link2 className="w-5 h-5 stroke-[1.5]" />
+                      </div>
+                      <p className="text-[14px] font-semibold text-neutral-700">No links shared</p>
+                      <p className="text-[12px] text-neutral-400 mt-1">Shared web links in your chat will appear here.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
