@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
 // Firestore mocks for migration
@@ -65,9 +65,9 @@ import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './compon
 import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
 import { MessageItem } from './components/MessageItem';
 import { PlayTogetherHub } from './components/PlayTogetherHub';
-const TicTacToe = lazy(() => import('./components/TicTacToeModal'));
-const ConnectHearts = lazy(() => import('./components/ConnectHeartsModal'));
-const DotsAndBoxes = lazy(() => import('./components/DotsAndBoxesModal'));
+import TicTacToe from './components/TicTacToeModal';
+import ConnectHearts from './components/ConnectHeartsModal';
+import DotsAndBoxes from './components/DotsAndBoxesModal';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -507,6 +507,32 @@ export default function App() {
       console.error("Error sending game invite:", err);
     }
   };
+
+  const sendMainChatMessageFromGame = async (text: string) => {
+    if (!userProfile) return;
+    try {
+      await supabase.from('messages').insert([{
+        sender_role: userProfile.role,
+        text: text,
+        created_at: new Date().toISOString(),
+        reactions: {},
+        reply_to: null,
+        attachment_url: null,
+      }]);
+    } catch (err) {
+      console.error("Error sending message from game:", err);
+    }
+  };
+
+  const latestPartnerMessage = useMemo(() => {
+    if (!userProfile) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender_role !== userProfile.role) {
+        return messages[i];
+      }
+    }
+    return null;
+  }, [messages, userProfile?.role]);
 
   // Lifecycle 1: Auth State Monitor (Supports Google OAuth for Rahul & 6-Digit Passcode Session for Nusrat)
   useEffect(() => {
@@ -1401,8 +1427,9 @@ export default function App() {
         />
       ) : (
         <main className="flex-1 flex flex-col bg-[var(--theme-bg)] overflow-hidden z-30 transition-colors duration-300 w-full relative">
-          <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
-            <AnimatePresence mode="wait">
+          {!activeGame && (
+            <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
+              <AnimatePresence mode="wait">
               {selectedMessages.length > 0 ? (
                 <motion.header 
                   key="selection-header"
@@ -1556,8 +1583,9 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+        )}
 
-          <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative">
             <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
             <div className="relative z-10 h-full flex flex-col">
               <ChatView 
@@ -1690,6 +1718,60 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Play Together Hub (Lounge) */}
+      <PlayTogetherHub 
+        isOpen={showGamesMenu} 
+        onClose={() => setShowGamesMenu(false)}
+        onLaunchGame={(type) => sendGameInvite(type)}
+        role={userProfile?.role || 'partner'}
+        userProfile={userProfile}
+        partnerProfile={partnerProfile}
+        isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+      />
+
+      {/* Game Arenas (Full Screen, No Chat Header) */}
+      {activeGame && activeGame.type === 'tictactoe' && (
+        <TicTacToe 
+          sessionId={activeGame.id} 
+          role={userProfile?.role || 'partner'} 
+          userProfile={userProfile}
+          partnerProfile={partnerProfile}
+          latestPartnerMessage={latestPartnerMessage}
+          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+          onClose={() => setActiveGame(null)} 
+          onSendNudge={sendNudge}
+          onSendMainChatMessage={sendMainChatMessageFromGame}
+        />
+      )}
+
+      {activeGame && activeGame.type === 'connecthearts' && (
+        <ConnectHearts 
+          sessionId={activeGame.id} 
+          role={userProfile?.role || 'partner'} 
+          userProfile={userProfile}
+          partnerProfile={partnerProfile}
+          latestPartnerMessage={latestPartnerMessage}
+          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+          onClose={() => setActiveGame(null)} 
+          onSendNudge={sendNudge}
+          onSendMainChatMessage={sendMainChatMessageFromGame}
+        />
+      )}
+
+      {activeGame && activeGame.type === 'dotsandboxes' && (
+        <DotsAndBoxes 
+          sessionId={activeGame.id} 
+          role={userProfile?.role || 'partner'} 
+          userProfile={userProfile}
+          partnerProfile={partnerProfile}
+          latestPartnerMessage={latestPartnerMessage}
+          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+          onClose={() => setActiveGame(null)} 
+          onSendNudge={sendNudge}
+          onSendMainChatMessage={sendMainChatMessageFromGame}
+        />
+      )}
     </div>
   );
 }
@@ -2831,76 +2913,6 @@ function ChatView({
           ))}
         </div>
       </BottomSheet>
-
-      <PlayTogetherHub 
-        isOpen={showGamesMenu} 
-        onClose={() => onSetShowGamesMenu(false)}
-        onLaunchGame={(type) => sendGameInvite(type)}
-        role={role}
-        userProfile={userProfile}
-        partnerProfile={partnerProfile}
-        isPartnerOnline={isPartnerOnline}
-      />
-
-      {activeGame && activeGame.type === 'tictactoe' && (
-        <Suspense fallback={
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
-            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
-          </div>
-        }>
-          <TicTacToe 
-            sessionId={activeGame.id} 
-            role={role} 
-            userProfile={userProfile}
-            partnerProfile={partnerProfile}
-            latestPartnerMessage={latestPartnerMessage}
-            isPartnerOnline={isPartnerOnline}
-            onClose={() => onSetActiveGame(null)} 
-            onSendNudge={onSendNudge}
-            onSendMainChatMessage={(text) => handleSendMessage(text)}
-          />
-        </Suspense>
-      )}
-
-      {activeGame && activeGame.type === 'connecthearts' && (
-        <Suspense fallback={
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
-            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
-          </div>
-        }>
-          <ConnectHearts 
-            sessionId={activeGame.id} 
-            role={role} 
-            userProfile={userProfile}
-            partnerProfile={partnerProfile}
-            latestPartnerMessage={latestPartnerMessage}
-            isPartnerOnline={isPartnerOnline}
-            onClose={() => onSetActiveGame(null)} 
-            onSendNudge={onSendNudge}
-            onSendMainChatMessage={(text) => handleSendMessage(text)}
-          />
-        </Suspense>
-      )}
-
-      {activeGame && activeGame.type === 'dotsandboxes' && (
-        <Suspense fallback={
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-[var(--theme-bg)]/80 backdrop-blur-md">
-            <div className="w-8 h-8 border-3 border-[var(--theme-accent)]/20 border-t-[var(--theme-accent)] rounded-full animate-spin" />
-          </div>
-        }>
-          <DotsAndBoxes 
-            sessionId={activeGame.id} 
-            role={role} 
-            userProfile={userProfile}
-            partnerProfile={partnerProfile}
-            latestPartnerMessage={latestPartnerMessage}
-            isPartnerOnline={isPartnerOnline}
-            onClose={() => onSetActiveGame(null)} 
-            onSendNudge={onSendNudge}
-            onSendMainChatMessage={(text) => handleSendMessage(text)}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

@@ -49,7 +49,7 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 15 }}
         transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-[160] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col overflow-y-auto custom-scrollbar select-none"
+        className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col overflow-y-auto custom-scrollbar select-none"
       >
         {/* Floating Back Button - No Top Bar */}
         <button

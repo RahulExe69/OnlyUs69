@@ -364,7 +364,7 @@ export default function TicTacToe({
   const isMyTurn = turn === role && !winner;
 
   return (
-    <div className="fixed inset-0 z-[160] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none transition-colors duration-300">
+    <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none transition-colors duration-300">
       {/* 1. Floating Main Chat Speech Bubble (if partner messages in regular chat) */}
       <PartnerMainChatBubble
         latestPartnerMessage={latestPartnerMessage}
