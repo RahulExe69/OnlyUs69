@@ -7,6 +7,5 @@
 
 [[redirects]]
   from = "/*"
-  to = "https://onlyus69.vercel.app/:splat"
-  status = 301
-  force = true
+  to = "/index.html"
+  status = 200
