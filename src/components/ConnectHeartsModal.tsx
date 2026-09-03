@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Layers,
   ArrowLeft,
   RotateCcw,
   Bell,
   Sparkles,
   Trophy,
-  Heart,
   Clock,
   ChevronDown,
+  Minus,
+  LogOut,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { UserRole, UserProfile, Message, InGameChatMessage } from '../types';
@@ -24,6 +24,8 @@ export interface ConnectHeartsProps {
   latestPartnerMessage?: Message | null;
   isPartnerOnline?: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
+  onLeave?: () => void;
   onSendNudge?: (type: string) => void;
   onSendMainChatMessage?: (text: string) => Promise<void> | void;
 }
@@ -46,6 +48,8 @@ export default function ConnectHearts({
   latestPartnerMessage = null,
   isPartnerOnline = false,
   onClose,
+  onMinimize,
+  onLeave,
   onSendNudge,
   onSendMainChatMessage,
 }: ConnectHeartsProps) {
@@ -58,8 +62,29 @@ export default function ConnectHearts({
   const [nudgeSent, setNudgeSent] = useState(false);
   const [inGameMessages, setInGameMessages] = useState<InGameChatMessage[]>([]);
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
+  const [lastDropped, setLastDropped] = useState<{ r: number; c: number } | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const channelRef = useRef<any>(null);
+  const currentGameStateRef = useRef({
+    board,
+    turn,
+    winner,
+    scores,
+    winningCells,
+  });
+
+  // Keep stateRef up to date to eliminate stale closures when partners re-join
+  useEffect(() => {
+    currentGameStateRef.current = {
+      board,
+      turn,
+      winner,
+      scores,
+      winningCells,
+    };
+  }, [board, turn, winner, scores, winningCells]);
+
   const myName =
     userProfile?.display_name || (role === 'owner' ? 'Rahul' : 'Nusrat');
   const partnerName =
@@ -183,6 +208,10 @@ export default function ConnectHearts({
           .single();
 
         if (data && isSubscribed) {
+          if (data.status === 'closed') {
+            onClose();
+            return;
+          }
           if (data.board && Array.isArray(data.board)) {
             setBoard(data.board);
             const evalResult = evaluateWinner(data.board);
@@ -235,10 +264,11 @@ export default function ConnectHearts({
         updatePresence();
         const hasPartner = newPresences.some((p: any) => p.role !== role);
         if (hasPartner) {
+          // Send active state through ref to prevent wiping game on rejoin!
           channel.send({
             type: 'broadcast',
             event: 'game_sync',
-            payload: { board, turn, winner, scores, winningCells },
+            payload: currentGameStateRef.current,
           });
         }
       })
@@ -253,7 +283,8 @@ export default function ConnectHearts({
       })
       .on('broadcast', { event: 'game_move' }, ({ payload }) => {
         if (!isSubscribed || !payload) return;
-        const { newBoard, nextTurn, winnerResult, cells, updatedScores } = payload;
+        const { newBoard, nextTurn, winnerResult, cells, updatedScores, lastDropped: ld } = payload;
+        if (ld) setLastDropped(ld);
         setBoard(newBoard);
         setTurn(nextTurn);
         setWinner(winnerResult);
@@ -271,7 +302,12 @@ export default function ConnectHearts({
         setBoard(createEmptyBoard());
         setWinner(null);
         setWinningCells(null);
+        setLastDropped(null);
         if (payload?.turn) setTurn(payload.turn);
+      })
+      .on('broadcast', { event: 'game_closed' }, () => {
+        if (!isSubscribed) return;
+        onClose();
       })
       .on('broadcast', { event: 'game_chat' }, ({ payload }) => {
         if (!isSubscribed || !payload) return;
@@ -321,9 +357,12 @@ export default function ConnectHearts({
     // Haptic feedback
     if (typeof window !== 'undefined' && window.navigator?.vibrate) {
       try {
-        window.navigator.vibrate(30);
+        window.navigator.vibrate(28);
       } catch (_) {}
     }
+
+    // Set last dropped for smooth animated ball drop
+    setLastDropped({ r: targetRow, c: col });
 
     const newBoard = board.map((row) => [...row]);
     newBoard[targetRow][col] = role;
@@ -333,6 +372,7 @@ export default function ConnectHearts({
     const newCells = evalResult?.cells || null;
     const nextTurn = newWinner ? turn : role === 'owner' ? 'partner' : 'owner';
 
+    // Update Scores
     let updatedScores = { ...scores };
     if (newWinner === 'owner') {
       updatedScores.owner += 1;
@@ -358,6 +398,7 @@ export default function ConnectHearts({
         winnerResult: newWinner,
         cells: newCells,
         updatedScores,
+        lastDropped: { r: targetRow, c: col },
       },
     });
 
@@ -383,6 +424,7 @@ export default function ConnectHearts({
     setBoard(cleanBoard);
     setWinner(null);
     setWinningCells(null);
+    setLastDropped(null);
     setTurn(nextTurn);
 
     channelRef.current?.send({
@@ -424,73 +466,154 @@ export default function ConnectHearts({
   };
 
   const handleNudgePartner = () => {
+    if (nudgeSent) return;
     setNudgeSent(true);
-    setTimeout(() => setNudgeSent(false), 3000);
-
-    onSendNudge?.('sparkle');
 
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_nudge',
-      payload: { from: myName },
+      payload: { from: role },
     });
 
-    if (onSendMainChatMessage) {
-      onSendMainChatMessage(
-        `💖 ${myName} wants to play Connect Hearts with you! Tap to drop hearts together 💕`
-      );
+    onSendNudge?.('game_invite');
+    setTimeout(() => setNudgeSent(false), 8000);
+  };
+
+  // Leave Game Handler
+  const handleLeaveGame = async () => {
+    try {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_closed',
+        payload: { leftBy: role },
+      });
+      await supabase.from('games').update({ status: 'closed' }).eq('id', sessionId);
+      await supabase
+        .from('messages')
+        .update({
+          gameInvite: {
+            sessionId: sessionId,
+            gameType: 'connecthearts',
+            status: 'closed',
+          },
+        })
+        .filter('gameInvite->>sessionId', 'eq', sessionId);
+    } catch (err) {
+      console.warn('Leave game cleanup note:', err);
     }
+    if (onLeave) onLeave();
+    else onClose();
   };
 
   const isMyTurn = turn === role && !winner;
 
   return (
-    <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none transition-colors duration-300">
-      {/* 1. Floating Main Chat Speech Bubble */}
+    <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none">
+      {/* Floating Main Chat Bubble from Partner */}
       <PartnerMainChatBubble
         latestPartnerMessage={latestPartnerMessage}
         partnerProfile={partnerProfile}
         role={role}
-        onSendMainChatMessage={async (text) => {
-          if (onSendMainChatMessage) await onSendMainChatMessage(text);
-        }}
+        onSendMainChatMessage={onSendMainChatMessage || (() => {})}
       />
 
-      {/* Floating Back Button - No Top Bar */}
-      <button
-        onClick={onClose}
-        className="fixed top-4 left-4 z-40 p-2.5 rounded-full bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center justify-center cursor-pointer"
-        title="Back to Chat"
-      >
-        <ArrowLeft className="w-5 h-5" />
-      </button>
+      {/* Top Floating Control Bar: Back/Minimize on left, Leave & Nudge on right */}
+      <div className="fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
+        {/* Left: Minimize / Back */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          <button
+            onClick={() => (onMinimize ? onMinimize() : onClose())}
+            className="p-2 rounded-full bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center justify-center cursor-pointer"
+            title="Minimize Game (Back to chat)"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => (onMinimize ? onMinimize() : onClose())}
+            className="px-2.5 py-1.5 rounded-full bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+            title="Minimize Game"
+          >
+            <Minus className="w-3.5 h-3.5" />
+            <span>Minimize</span>
+          </button>
+        </div>
 
-      {/* Floating Nudge Button (if partner not yet in game) */}
-      {!partnerInGame && (
-        <button
-          onClick={handleNudgePartner}
-          className={`fixed top-4 right-4 z-40 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer backdrop-blur-md ${
-            nudgeSent
-              ? 'bg-emerald-500 text-white'
-              : 'bg-pink-500 text-white hover:opacity-90 animate-pulse'
-          }`}
-          title={`Nudge ${partnerName} to join`}
-        >
-          <Bell className="w-3.5 h-3.5" />
-          <span className="text-[11px]">{nudgeSent ? 'Nudged! 💖' : `Nudge ${partnerName}`}</span>
-        </button>
-      )}
+        {/* Right: Leave Game & Nudge */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {!partnerInGame && (
+            <button
+              onClick={handleNudgePartner}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all shadow-md active:scale-95 cursor-pointer backdrop-blur-md ${
+                nudgeSent
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-pink-500 text-white hover:opacity-90 animate-pulse'
+              }`}
+              title={`Nudge ${partnerName} to join`}
+            >
+              <Bell className="w-3 h-3" />
+              <span>{nudgeSent ? 'Nudged!' : 'Nudge'}</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowLeaveConfirm(true)}
+            className="px-2.5 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 transition-all shadow-md active:scale-95 flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+            title="Leave Game (End match)"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Leave</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Leave Confirmation Dialog */}
+      <AnimatePresence>
+        {showLeaveConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-xs bg-[var(--theme-surface)] rounded-3xl p-5 border border-[var(--theme-border)] shadow-2xl text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-rose-500/15 text-rose-500 flex items-center justify-center mx-auto mb-3">
+                <LogOut className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-[var(--theme-text)] mb-1">
+                Leave Game?
+              </h3>
+              <p className="text-xs text-[var(--theme-text)]/70 mb-4 leading-relaxed">
+                Leaving ends the match and terminates the active session for both players.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="flex-1 py-2 rounded-xl border border-[var(--theme-border)] text-xs font-bold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] active:scale-95 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLeaveGame}
+                  className="flex-1 py-2 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 active:scale-95 transition-all shadow-md shadow-rose-500/25"
+                >
+                  Leave
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Center Content (Scoreboard & Interactive Connect Hearts Board) */}
-      <div className="flex-1 flex flex-col items-center justify-center px-3 pt-14 pb-2 max-w-lg mx-auto w-full overflow-y-auto">
-        {/* Versus Scoreboard */}
-        <div className="w-full grid grid-cols-3 items-center gap-2 mb-3 bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-3xl p-2.5 shadow-sm">
-          {/* Player 1 (Rahul / Owner - Blue 💙) */}
+      <div className="flex-1 flex flex-col items-center justify-center px-3 pt-12 pb-4 max-w-lg mx-auto w-full overflow-y-auto">
+        {/* Sleek Compact Player Status Bar (Rahul vs Nusrat) */}
+        <div className="w-full max-w-[340px] mb-2 px-3 py-1.5 rounded-2xl bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
+          {/* Left: Rahul (Owner - Sky Blue) */}
           <div
-            className={`flex flex-col items-center p-2 rounded-2xl transition-all ${
+            className={`flex items-center gap-2 py-0.5 px-2 rounded-xl transition-all ${
               turn === 'owner' && !winner
-                ? 'bg-sky-500/15 ring-2 ring-sky-400 shadow-md'
-                : 'opacity-80'
+                ? 'bg-sky-500/15 ring-1 ring-sky-400 font-bold'
+                : 'opacity-75'
             }`}
           >
             <div className="relative">
@@ -499,10 +622,10 @@ export default function ConnectHearts({
                   <img
                     src={myPhoto}
                     alt="You"
-                    className="w-9 h-9 rounded-full object-cover border-2 border-sky-400"
+                    className="w-7 h-7 rounded-full object-cover border border-sky-400"
                   />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-xs">
+                  <div className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
                     R
                   </div>
                 )
@@ -510,54 +633,65 @@ export default function ConnectHearts({
                 <img
                   src={partnerPhoto}
                   alt="Rahul"
-                  className="w-9 h-9 rounded-full object-cover border-2 border-sky-400"
+                  className="w-7 h-7 rounded-full object-cover border border-sky-400"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-xs">
+                <div className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
                   R
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-sky-500 text-white flex items-center justify-center text-[9px] font-black shadow-sm">
+              <span className="absolute -bottom-0.5 -right-0.5 text-[8px] leading-none">
                 💙
               </span>
             </div>
-            <span className="text-[11px] font-bold mt-1 text-[var(--theme-text)]">
-              {role === 'owner' ? 'You' : 'Rahul'}
-            </span>
-            <span className="text-base font-black text-sky-500 leading-none">
-              {scores.owner}
-            </span>
-          </div>
-
-          {/* Versus Center Info */}
-          <div className="flex flex-col items-center justify-center">
-            <span className="text-[10px] font-black uppercase tracking-widest text-[var(--theme-text)]/40">
-              Connect Hearts
-            </span>
-            <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-[var(--theme-text)]/60">
-              <Trophy className="w-3 h-3 text-amber-400" />
-              <span>Draws: {scores.draws}</span>
+            <div className="flex flex-col">
+              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                {role === 'owner' ? 'You' : 'Rahul'}
+              </span>
+              <span className="text-xs font-black text-sky-500 leading-tight">
+                {scores.owner}
+              </span>
             </div>
           </div>
 
-          {/* Player 2 (Nusrat / Partner - Pink 💖) */}
+          {/* Center: Title / Round / Draws Badge */}
+          <div className="flex flex-col items-center justify-center px-1">
+            <span className="text-[9px] font-black uppercase tracking-widest text-[var(--theme-text)]/40">
+              VS
+            </span>
+            {scores.draws > 0 && (
+              <span className="text-[9px] font-bold text-[var(--theme-text)]/50">
+                Draws: {scores.draws}
+              </span>
+            )}
+          </div>
+
+          {/* Right: Nusrat (Partner - Pink) */}
           <div
-            className={`flex flex-col items-center p-2 rounded-2xl transition-all ${
+            className={`flex items-center gap-2 py-0.5 px-2 rounded-xl transition-all ${
               turn === 'partner' && !winner
-                ? 'bg-pink-500/15 ring-2 ring-pink-400 shadow-md'
-                : 'opacity-80'
+                ? 'bg-pink-500/15 ring-1 ring-pink-400 font-bold'
+                : 'opacity-75'
             }`}
           >
+            <div className="flex flex-col items-end">
+              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                {role === 'partner' ? 'You' : 'Nusrat'}
+              </span>
+              <span className="text-xs font-black text-pink-500 leading-tight">
+                {scores.partner}
+              </span>
+            </div>
             <div className="relative">
               {role === 'partner' ? (
                 myPhoto ? (
                   <img
                     src={myPhoto}
                     alt="You"
-                    className="w-9 h-9 rounded-full object-cover border-2 border-pink-400"
+                    className="w-7 h-7 rounded-full object-cover border border-pink-400"
                   />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-xs">
+                  <div className="w-7 h-7 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-[10px]">
                     N
                   </div>
                 )
@@ -565,28 +699,22 @@ export default function ConnectHearts({
                 <img
                   src={partnerPhoto}
                   alt="Nusrat"
-                  className="w-9 h-9 rounded-full object-cover border-2 border-pink-400"
+                  className="w-7 h-7 rounded-full object-cover border border-pink-400"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-xs">
+                <div className="w-7 h-7 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-[10px]">
                   N
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-pink-500 text-white flex items-center justify-center text-[9px] font-black shadow-sm">
+              <span className="absolute -bottom-0.5 -right-0.5 text-[8px] leading-none">
                 💖
               </span>
             </div>
-            <span className="text-[11px] font-bold mt-1 text-[var(--theme-text)]">
-              {role === 'partner' ? 'You' : 'Nusrat'}
-            </span>
-            <span className="text-base font-black text-pink-500 leading-none">
-              {scores.partner}
-            </span>
           </div>
         </div>
 
         {/* Turn / Winner Status Pill */}
-        <div className="mb-3 text-center">
+        <div className="mb-2 text-center">
           {winner ? (
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
@@ -604,7 +732,7 @@ export default function ConnectHearts({
             </motion.div>
           ) : (
             <div
-              className={`px-3.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all ${
                 isMyTurn
                   ? 'bg-[var(--theme-accent)] text-white shadow-md shadow-[var(--theme-accent)]/20 animate-pulse'
                   : 'bg-[var(--theme-surface)] text-[var(--theme-text)]/70 border border-[var(--theme-border)]'
@@ -628,11 +756,11 @@ export default function ConnectHearts({
             return (
               <div
                 key={c}
-                className="h-5 flex items-center justify-center transition-all"
+                className="h-4 flex items-center justify-center transition-all"
               >
                 {isHovered && (
                   <motion.div
-                    initial={{ y: -4, opacity: 0 }}
+                    initial={{ y: -3, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     className="text-[var(--theme-accent)]"
                   >
@@ -666,6 +794,7 @@ export default function ConnectHearts({
                     const isWinning = winningCells?.some(
                       ([wr, wc]) => wr === r && wc === c
                     );
+                    const isJustDropped = lastDropped?.r === r && lastDropped?.c === c;
 
                     return (
                       <div
@@ -673,28 +802,49 @@ export default function ConnectHearts({
                         className="aspect-square w-full rounded-full bg-[var(--theme-bg)] border border-[var(--theme-border)]/70 flex items-center justify-center relative overflow-hidden shadow-inner"
                       >
                         {cell && (
-                          <motion.div
-                            initial={{ y: -120 - r * 15, opacity: 0.3 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{
-                              type: 'spring',
-                              damping: 14,
-                              stiffness: 280,
-                            }}
-                            className={`w-full h-full rounded-full flex items-center justify-center transition-all ${
-                              isWinning
-                                ? 'ring-4 ring-amber-400 shadow-lg scale-95 animate-pulse'
-                                : ''
-                            } ${
-                              cell === 'owner'
-                                ? 'bg-gradient-to-tr from-sky-500 to-blue-600 text-white shadow-md'
-                                : 'bg-gradient-to-tr from-pink-500 to-rose-400 text-white shadow-md'
-                            }`}
-                          >
-                            <span className="text-xs sm:text-sm drop-shadow-sm select-none">
-                              {cell === 'owner' ? '💙' : '💖'}
-                            </span>
-                          </motion.div>
+                          isJustDropped ? (
+                            /* Lag-free animated ball drop with authentic gravity physics */
+                            <motion.div
+                              initial={{ y: -(r + 1) * 52 - 60, opacity: 0.8 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              transition={{
+                                type: 'spring',
+                                damping: 15,
+                                stiffness: 300,
+                                mass: 0.85,
+                              }}
+                              className={`w-full h-full rounded-full flex items-center justify-center transition-all ${
+                                isWinning
+                                  ? 'ring-4 ring-amber-400 shadow-lg scale-95 animate-pulse'
+                                  : ''
+                              } ${
+                                cell === 'owner'
+                                  ? 'bg-gradient-to-tr from-sky-500 to-blue-600 text-white shadow-md'
+                                  : 'bg-gradient-to-tr from-pink-500 to-rose-400 text-white shadow-md'
+                              }`}
+                            >
+                              <span className="text-xs sm:text-sm drop-shadow-sm select-none">
+                                {cell === 'owner' ? '💙' : '💖'}
+                              </span>
+                            </motion.div>
+                          ) : (
+                            /* Settled discs stay stationary with 0 lag */
+                            <div
+                              className={`w-full h-full rounded-full flex items-center justify-center transition-all ${
+                                isWinning
+                                  ? 'ring-4 ring-amber-400 shadow-lg scale-95 animate-pulse'
+                                  : ''
+                              } ${
+                                cell === 'owner'
+                                  ? 'bg-gradient-to-tr from-sky-500 to-blue-600 text-white shadow-md'
+                                  : 'bg-gradient-to-tr from-pink-500 to-rose-400 text-white shadow-md'
+                              }`}
+                            >
+                              <span className="text-xs sm:text-sm drop-shadow-sm select-none">
+                                {cell === 'owner' ? '💙' : '💖'}
+                              </span>
+                            </div>
+                          )
                         )}
                       </div>
                     );
@@ -710,11 +860,11 @@ export default function ConnectHearts({
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 w-full max-w-[340px]"
+            className="mt-3 w-full max-w-[340px]"
           >
             <button
               onClick={handleReset}
-              className="w-full py-3 bg-[var(--theme-accent)] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-[var(--theme-accent)]/30 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 bg-[var(--theme-accent)] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-[var(--theme-accent)]/30 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Play Again (Rematch)</span>
@@ -723,16 +873,14 @@ export default function ConnectHearts({
         )}
       </div>
 
-      {/* Bottom Temporary Game Chat & Quick Banter Strip */}
-      <div className="w-full shrink-0 border-t border-[var(--theme-border)]/50 bg-[var(--theme-surface)]/60 backdrop-blur-md pt-2 pb-3 px-2">
-        <InGameChatDrawer
-          messages={inGameMessages}
-          onSendMessage={handleSendInGameMessage}
-          role={role}
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-        />
-      </div>
+      {/* Floating Quick Banter & Chat Icon */}
+      <InGameChatDrawer
+        messages={inGameMessages}
+        onSendMessage={handleSendInGameMessage}
+        role={role}
+        userProfile={userProfile}
+        partnerProfile={partnerProfile}
+      />
     </div>
   );
 }

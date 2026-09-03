@@ -130,6 +130,84 @@ export default function App() {
   const [showGamesMenu, setShowGamesMenu] = useState(false);
   const [showNudgeMenu, setShowNudgeMenu] = useState(false);
   const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null>(null);
+  const [isGameMinimized, setIsGameMinimized] = useState(false);
+  const [minimizedCountdown, setMinimizedCountdown] = useState(60);
+  const minimizedTimerRef = useRef<any>(null);
+
+  const handleMinimizeGame = useCallback(() => {
+    if (!activeGame) return;
+    setIsGameMinimized(true);
+    setMinimizedCountdown(60);
+
+    if (minimizedTimerRef.current) {
+      clearInterval(minimizedTimerRef.current);
+    }
+
+    minimizedTimerRef.current = setInterval(() => {
+      setMinimizedCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(minimizedTimerRef.current);
+          minimizedTimerRef.current = null;
+          // 1 minute expired -> Terminate session in DB & unmount
+          if (activeGame?.id) {
+            supabase.from('games').update({ status: 'closed' }).eq('id', activeGame.id).then();
+            supabase.from('messages').update({
+              gameInvite: {
+                sessionId: activeGame.id,
+                gameType: activeGame.type,
+                status: 'closed',
+              },
+            }).filter('gameInvite->>sessionId', 'eq', activeGame.id).then();
+          }
+          setActiveGame(null);
+          setIsGameMinimized(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [activeGame]);
+
+  const handleResumeGame = useCallback(() => {
+    if (minimizedTimerRef.current) {
+      clearInterval(minimizedTimerRef.current);
+      minimizedTimerRef.current = null;
+    }
+    setIsGameMinimized(false);
+  }, []);
+
+  const handleTerminateGame = useCallback(async () => {
+    if (minimizedTimerRef.current) {
+      clearInterval(minimizedTimerRef.current);
+      minimizedTimerRef.current = null;
+    }
+    if (activeGame?.id) {
+      try {
+        await supabase.from('games').update({ status: 'closed' }).eq('id', activeGame.id);
+        await supabase.from('messages').update({
+          gameInvite: {
+            sessionId: activeGame.id,
+            gameType: activeGame.type,
+            status: 'closed',
+          },
+        }).filter('gameInvite->>sessionId', 'eq', activeGame.id);
+      } catch (err) {
+        console.warn('Terminate game note:', err);
+      }
+    }
+    setActiveGame(null);
+    setIsGameMinimized(false);
+  }, [activeGame]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (minimizedTimerRef.current) {
+        clearInterval(minimizedTimerRef.current);
+      }
+    };
+  }, []);
+
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
   const [socketOnlineRoles, setSocketOnlineRoles] = useState<string[]>([]);
@@ -161,7 +239,8 @@ export default function App() {
   useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
   useOverlayBack(showClearChatConfirm, () => setShowClearChatConfirm(false), 'clear-chat-confirm');
   useOverlayBack(showDeleteChoices, () => setShowDeleteChoices(false), 'delete-choices');
-  useOverlayBack(!!activeGame, () => setActiveGame(null), 'active-game');
+  // If active game is open and not minimized, back button minimizes it!
+  useOverlayBack(!!activeGame && !isGameMinimized, () => handleMinimizeGame(), 'active-game');
   useOverlayBack(!!activeNudge, () => setActiveNudge(null), 'active-nudge');
   useOverlayBack(showAttachmentMenu, () => setShowAttachmentMenu(false), 'attachment-menu');
   useOverlayBack(showGamesMenu, () => setShowGamesMenu(false), 'games-menu');
@@ -1604,13 +1683,20 @@ export default function App() {
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={(url) => setShowFullImage(url)}
-                isOverlayOpen={showProfileModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || !!activeGame}
+                isOverlayOpen={showProfileModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
                 showAttachmentMenu={showAttachmentMenu}
                 onSetShowAttachmentMenu={setShowAttachmentMenu}
                 showGamesMenu={showGamesMenu}
                 onSetShowGamesMenu={setShowGamesMenu}
                 activeGame={activeGame}
-                onSetActiveGame={setActiveGame}
+                onSetActiveGame={(game) => {
+                  if (minimizedTimerRef.current) {
+                    clearInterval(minimizedTimerRef.current);
+                    minimizedTimerRef.current = null;
+                  }
+                  setIsGameMinimized(false);
+                  setActiveGame(game);
+                }}
                 onSendGameInvite={sendGameInvite}
                 socketTypingUsers={socketTypingUsers}
                 isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
@@ -1723,54 +1809,101 @@ export default function App() {
       <PlayTogetherHub 
         isOpen={showGamesMenu} 
         onClose={() => setShowGamesMenu(false)}
-        onLaunchGame={(type) => sendGameInvite(type)}
+        onLaunchGame={(type) => {
+          if (minimizedTimerRef.current) {
+            clearInterval(minimizedTimerRef.current);
+            minimizedTimerRef.current = null;
+          }
+          setIsGameMinimized(false);
+          sendGameInvite(type);
+        }}
         role={userProfile?.role || 'partner'}
         userProfile={userProfile}
         partnerProfile={partnerProfile}
         isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
       />
 
+      {/* Minimized Game Floating Banner */}
+      <AnimatePresence>
+        {activeGame && isGameMinimized && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[150] flex items-center gap-2.5 px-4 py-2 rounded-full bg-[var(--theme-surface)]/95 backdrop-blur-md border border-[var(--theme-accent)] shadow-2xl text-xs font-bold text-[var(--theme-text)] pointer-events-auto"
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="cursor-pointer select-none" onClick={handleResumeGame}>
+              🎮 {activeGame.type === 'connecthearts' ? 'Connect Hearts' : activeGame.type === 'dotsandboxes' ? 'Dots & Hearts' : 'Tic Tac Toe'} ({minimizedCountdown}s)
+            </span>
+            <button
+              onClick={handleResumeGame}
+              className="px-2.5 py-1 rounded-full bg-[var(--theme-accent)] text-white text-[10px] uppercase tracking-wider font-extrabold cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-sm"
+            >
+              Resume
+            </button>
+            <button
+              onClick={handleTerminateGame}
+              className="p-1 rounded-full text-rose-500 hover:bg-rose-500/15 cursor-pointer transition-colors"
+              title="Leave and end game"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Game Arenas (Full Screen, No Chat Header) */}
-      {activeGame && activeGame.type === 'tictactoe' && (
-        <TicTacToe 
-          sessionId={activeGame.id} 
-          role={userProfile?.role || 'partner'} 
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          latestPartnerMessage={latestPartnerMessage}
-          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-          onClose={() => setActiveGame(null)} 
-          onSendNudge={sendNudge}
-          onSendMainChatMessage={sendMainChatMessageFromGame}
-        />
-      )}
+      {activeGame && (
+        <div className={isGameMinimized ? 'hidden' : 'contents'}>
+          {activeGame.type === 'tictactoe' && (
+            <TicTacToe 
+              sessionId={activeGame.id} 
+              role={userProfile?.role || 'partner'} 
+              userProfile={userProfile}
+              partnerProfile={partnerProfile}
+              latestPartnerMessage={latestPartnerMessage}
+              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+              onClose={handleMinimizeGame}
+              onMinimize={handleMinimizeGame}
+              onLeave={handleTerminateGame}
+              onSendNudge={sendNudge}
+              onSendMainChatMessage={sendMainChatMessageFromGame}
+            />
+          )}
 
-      {activeGame && activeGame.type === 'connecthearts' && (
-        <ConnectHearts 
-          sessionId={activeGame.id} 
-          role={userProfile?.role || 'partner'} 
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          latestPartnerMessage={latestPartnerMessage}
-          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-          onClose={() => setActiveGame(null)} 
-          onSendNudge={sendNudge}
-          onSendMainChatMessage={sendMainChatMessageFromGame}
-        />
-      )}
+          {activeGame.type === 'connecthearts' && (
+            <ConnectHearts 
+              sessionId={activeGame.id} 
+              role={userProfile?.role || 'partner'} 
+              userProfile={userProfile}
+              partnerProfile={partnerProfile}
+              latestPartnerMessage={latestPartnerMessage}
+              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+              onClose={handleMinimizeGame}
+              onMinimize={handleMinimizeGame}
+              onLeave={handleTerminateGame}
+              onSendNudge={sendNudge}
+              onSendMainChatMessage={sendMainChatMessageFromGame}
+            />
+          )}
 
-      {activeGame && activeGame.type === 'dotsandboxes' && (
-        <DotsAndBoxes 
-          sessionId={activeGame.id} 
-          role={userProfile?.role || 'partner'} 
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          latestPartnerMessage={latestPartnerMessage}
-          isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-          onClose={() => setActiveGame(null)} 
-          onSendNudge={sendNudge}
-          onSendMainChatMessage={sendMainChatMessageFromGame}
-        />
+          {activeGame.type === 'dotsandboxes' && (
+            <DotsAndBoxes 
+              sessionId={activeGame.id} 
+              role={userProfile?.role || 'partner'} 
+              userProfile={userProfile}
+              partnerProfile={partnerProfile}
+              latestPartnerMessage={latestPartnerMessage}
+              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+              onClose={handleMinimizeGame}
+              onMinimize={handleMinimizeGame}
+              onLeave={handleTerminateGame}
+              onSendNudge={sendNudge}
+              onSendMainChatMessage={sendMainChatMessageFromGame}
+            />
+          )}
+        </div>
       )}
     </div>
   );

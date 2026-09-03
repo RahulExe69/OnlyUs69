@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, X, Send, Mic, Image as ImageIcon } from 'lucide-react';
+import { X, Send, Mic, Image as ImageIcon } from 'lucide-react';
 import { Message, UserProfile, UserRole } from '../types';
 
 interface PartnerMainChatBubbleProps {
@@ -20,26 +20,40 @@ export const PartnerMainChatBubble: React.FC<PartnerMainChatBubbleProps> = ({
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  // Track mount time so historical messages prior to joining do NOT trigger the bubble
+  const joinTimestampRef = useRef<number>(Date.now());
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
-  // When a new partner message arrives, display it
+  // Only display messages that arrive AFTER joining the game
   useEffect(() => {
     if (!latestPartnerMessage) return;
-    
-    // Only show if it was sent by partner and is recent (within last 30s)
+
+    // Check sender is partner
     const isFromPartner = latestPartnerMessage.sender_role !== role;
     if (!isFromPartner) return;
 
+    // Verify message was created after joining
+    const msgTime = new Date(
+      latestPartnerMessage.created_at || latestPartnerMessage.timestamp || Date.now()
+    ).getTime();
+
+    // Ignore if sent before joining or already shown
+    if (msgTime < joinTimestampRef.current || seenMessageIdsRef.current.has(latestPartnerMessage.id)) {
+      return;
+    }
+
+    seenMessageIdsRef.current.add(latestPartnerMessage.id);
     setVisibleMessage(latestPartnerMessage);
     setShowReplyInput(false);
 
-    // Auto-hide after 8 seconds if user doesn't interact
+    // Auto-hide after 5 seconds to keep the game screen clean
     const timer = setTimeout(() => {
       setVisibleMessage((current) => (current?.id === latestPartnerMessage.id ? null : current));
       setShowReplyInput(false);
-    }, 8000);
+    }, 5000);
 
     return () => clearTimeout(timer);
-  }, [latestPartnerMessage?.id, role]);
+  }, [latestPartnerMessage, role]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,109 +76,99 @@ export const PartnerMainChatBubble: React.FC<PartnerMainChatBubbleProps> = ({
   const partnerPhoto = partnerProfile?.photo_url;
 
   return (
-    <div className="absolute top-16 left-0 right-0 z-30 pointer-events-none flex justify-center px-4">
+    <div className="fixed top-3 left-0 right-0 z-50 pointer-events-none flex justify-center px-4">
       <AnimatePresence>
         {visibleMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            initial={{ opacity: 0, y: -16, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -15, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="pointer-events-auto w-full max-w-sm bg-[var(--theme-surface)]/95 backdrop-blur-xl border border-[var(--theme-accent)]/30 rounded-3xl p-3.5 shadow-[0_16px_36px_-10px_rgba(0,0,0,0.3)] shadow-[var(--theme-accent)]/15 text-[var(--theme-text)]"
+            exit={{ opacity: 0, y: -12, scale: 0.9 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 380 }}
+            className="pointer-events-auto max-w-[260px] bg-[var(--theme-surface)]/95 backdrop-blur-md border border-[var(--theme-accent)]/40 rounded-full px-2.5 py-1.5 shadow-lg shadow-[var(--theme-accent)]/15 text-[var(--theme-text)] flex flex-col items-center"
           >
-            {/* Header: Partner badge + Dismiss */}
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-2">
-                <div className="relative">
+            {!showReplyInput ? (
+              <div 
+                onClick={() => setShowReplyInput(true)}
+                className="w-full flex items-center gap-2 cursor-pointer select-none"
+                title="Tap to reply"
+              >
+                {/* Avatar with thought bubble */}
+                <div className="relative shrink-0">
                   {partnerPhoto ? (
                     <img
                       src={partnerPhoto}
                       alt={partnerName}
-                      className="w-7 h-7 rounded-full object-cover border border-[var(--theme-accent)]/40"
+                      className="w-6 h-6 rounded-full object-cover border border-[var(--theme-accent)]/50"
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center font-bold text-xs">
+                    <div className="w-6 h-6 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center font-bold text-[10px]">
                       {partnerName.charAt(0)}
                     </div>
                   )}
-                  <span className="absolute -bottom-0.5 -right-0.5 text-[10px]">
+                  <span className="absolute -bottom-1 -right-1 text-[9px] leading-none select-none">
                     💭
                   </span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-black tracking-tight text-[var(--theme-text)]">
-                      {partnerName}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] rounded-full font-bold">
-                      Main Chat
-                    </span>
-                  </div>
+
+                {/* Compact Text Preview */}
+                <div className="flex-1 min-w-0 pr-1">
+                  <p className="text-[11px] font-semibold text-[var(--theme-text)] truncate leading-tight">
+                    {visibleMessage.media?.type === 'audio' ? (
+                      <span className="flex items-center gap-1 text-[var(--theme-accent)]">
+                        <Mic className="w-3 h-3" /> Voice
+                      </span>
+                    ) : visibleMessage.media?.type === 'image' ? (
+                      <span className="flex items-center gap-1 text-[var(--theme-accent)]">
+                        <ImageIcon className="w-3 h-3" /> Photo
+                      </span>
+                    ) : (
+                      visibleMessage.text || '...'
+                    )}
+                  </p>
                 </div>
-              </div>
 
-              <button
-                onClick={() => {
-                  setVisibleMessage(null);
-                  setShowReplyInput(false);
-                }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[var(--theme-text)]/40 hover:text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 transition-colors"
-                title="Dismiss"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Message Content Preview */}
-            <div className="pl-9 pr-1">
-              <p className="text-xs font-medium text-[var(--theme-text)] leading-relaxed break-words line-clamp-2">
-                {visibleMessage.media?.type === 'audio' ? (
-                  <span className="flex items-center gap-1.5 text-[var(--theme-accent)] font-semibold">
-                    <Mic className="w-3.5 h-3.5" /> Voice Note (
-                    {visibleMessage.media.duration || 0}s)
-                  </span>
-                ) : visibleMessage.media?.type === 'image' ? (
-                  <span className="flex items-center gap-1.5 text-[var(--theme-accent)] font-semibold">
-                    <ImageIcon className="w-3.5 h-3.5" /> Sent a Photo
-                  </span>
-                ) : (
-                  visibleMessage.text || '...'
-                )}
-              </p>
-
-              {/* Reply trigger button */}
-              {!showReplyInput ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    onClick={() => setShowReplyInput(true)}
-                    className="text-[11px] font-bold text-[var(--theme-accent)] hover:underline flex items-center gap-1 active:scale-95 transition-transform"
-                  >
-                    <MessageSquare className="w-3 h-3" /> Quick Reply
-                  </button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={handleSendReply}
-                  className="mt-2.5 flex items-center gap-2"
+                {/* Dismiss Button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVisibleMessage(null);
+                    setShowReplyInput(false);
+                  }}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[var(--theme-text)]/40 hover:text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/15 transition-colors shrink-0"
+                  title="Dismiss"
                 >
-                  <input
-                    type="text"
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder={`Reply to ${partnerName}...`}
-                    autoFocus
-                    className="flex-1 bg-[var(--theme-input-bg)] text-xs text-[var(--theme-text)] rounded-xl px-3 py-1.5 border border-[var(--theme-border)] focus:outline-none focus:border-[var(--theme-accent)]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!replyText.trim() || isSending}
-                    className="p-1.5 bg-[var(--theme-accent)] text-white rounded-xl active:scale-95 disabled:opacity-50 transition-all"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-              )}
-            </div>
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSendReply}
+                className="w-full flex items-center gap-1.5 pl-1"
+              >
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder={`Reply...`}
+                  autoFocus
+                  className="flex-1 min-w-0 bg-transparent text-[11px] text-[var(--theme-text)] focus:outline-none placeholder:text-[var(--theme-text)]/40"
+                />
+                <button
+                  type="submit"
+                  disabled={!replyText.trim() || isSending}
+                  className="p-1 bg-[var(--theme-accent)] text-white rounded-full active:scale-95 disabled:opacity-40 transition-all shrink-0"
+                >
+                  <Send className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReplyInput(false)}
+                  className="p-1 text-[var(--theme-text)]/50 hover:text-[var(--theme-text)] shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </form>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

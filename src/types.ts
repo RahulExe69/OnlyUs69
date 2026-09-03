@@ -59,10 +59,11 @@ export interface Message {
     sender_role: UserRole;
     mediaType?: 'image' | 'video' | 'audio';
   };
+  created_at?: string;
   gameInvite?: {
     gameType: 'tictactoe' | 'connecthearts' | 'dotsandboxes';
     sessionId: string;
-    status: 'pending' | 'active' | 'finished';
+    status: 'pending' | 'active' | 'finished' | 'closed';
   };
 }
 

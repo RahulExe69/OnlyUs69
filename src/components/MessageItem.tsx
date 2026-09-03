@@ -555,14 +555,27 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
                     </div>
                   </div>
                   <button
-                    onClick={() => onJoinGame?.({ id: msg.gameInvite!.sessionId, type: msg.gameInvite!.gameType })}
-                    className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-95 shadow-sm cursor-pointer ${
-                      isOwn
-                        ? 'bg-white text-[var(--theme-accent)] hover:bg-white/90 shadow-white/20'
-                        : 'bg-[var(--theme-accent)] text-white hover:opacity-90 shadow-[var(--theme-accent)]/20'
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectionActive || isSelected) {
+                        onToggleSelect(msg);
+                        return;
+                      }
+                      if (msg.gameInvite?.status === 'closed') {
+                        return;
+                      }
+                      onJoinGame?.({ id: msg.gameInvite!.sessionId, type: msg.gameInvite!.gameType });
+                    }}
+                    disabled={msg.gameInvite?.status === 'closed'}
+                    className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-95 shadow-sm ${
+                      msg.gameInvite?.status === 'closed'
+                        ? 'bg-black/10 text-[var(--theme-text)]/40 cursor-not-allowed opacity-60'
+                        : isOwn
+                        ? 'bg-white text-[var(--theme-accent)] hover:bg-white/90 shadow-white/20 cursor-pointer'
+                        : 'bg-[var(--theme-accent)] text-white hover:opacity-90 shadow-[var(--theme-accent)]/20 cursor-pointer'
                     }`}
                   >
-                    Join Game
+                    {msg.gameInvite?.status === 'closed' ? 'Game Ended' : 'Play Now'}
                   </button>
                 </div>
               )}

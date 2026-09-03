@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Gamepad2,
   ArrowLeft,
   RotateCcw,
   Bell,
   Sparkles,
   Trophy,
-  Heart,
-  X as XIcon,
-  Circle,
   Clock,
-  UserCheck,
+  Minus,
+  LogOut,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { UserRole, UserProfile, Message, InGameChatMessage } from '../types';
@@ -26,6 +23,8 @@ export interface TicTacToeProps {
   latestPartnerMessage?: Message | null;
   isPartnerOnline?: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
+  onLeave?: () => void;
   onSendNudge?: (type: string) => void;
   onSendMainChatMessage?: (text: string) => Promise<void> | void;
 }
@@ -49,6 +48,8 @@ export default function TicTacToe({
   latestPartnerMessage = null,
   isPartnerOnline = false,
   onClose,
+  onMinimize,
+  onLeave,
   onSendNudge,
   onSendMainChatMessage,
 }: TicTacToeProps) {
@@ -60,8 +61,28 @@ export default function TicTacToe({
   const [partnerInGame, setPartnerInGame] = useState(false);
   const [nudgeSent, setNudgeSent] = useState(false);
   const [inGameMessages, setInGameMessages] = useState<InGameChatMessage[]>([]);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const channelRef = useRef<any>(null);
+  const currentGameStateRef = useRef({
+    board,
+    turn,
+    winner,
+    scores,
+    winningLine,
+  });
+
+  // Keep stateRef fresh to eliminate stale closures when partners re-join
+  useEffect(() => {
+    currentGameStateRef.current = {
+      board,
+      turn,
+      winner,
+      scores,
+      winningLine,
+    };
+  }, [board, turn, winner, scores, winningLine]);
+
   const myName =
     userProfile?.display_name || (role === 'owner' ? 'Rahul' : 'Nusrat');
   const partnerName =
@@ -86,11 +107,10 @@ export default function TicTacToe({
     return null;
   };
 
-  // Setup Realtime Channel (Presence + Broadcast + DB fallback)
+  // Setup Realtime Channel
   useEffect(() => {
     let isSubscribed = true;
 
-    // 1. Initial State Fetch from DB
     const fetchGameFromDB = async () => {
       try {
         const { data } = await supabase
@@ -100,16 +120,19 @@ export default function TicTacToe({
           .single();
 
         if (data && isSubscribed) {
-          if (data.board) setBoard(data.board);
-          if (data.turn) setTurn(data.turn);
-          if (data.winner) setWinner(data.winner);
-          if (data.scores) setScores(data.scores);
-          if (data.board) {
+          if (data.status === 'closed') {
+            onClose();
+            return;
+          }
+          if (data.board && Array.isArray(data.board)) {
+            setBoard(data.board);
             const evalResult = evaluateWinner(data.board);
             if (evalResult?.line) setWinningLine(evalResult.line);
           }
+          if (data.turn) setTurn(data.turn);
+          if (data.winner) setWinner(data.winner);
+          if (data.scores) setScores(data.scores);
         } else if (!data && isSubscribed) {
-          // Initialize game record
           const initialData = {
             id: sessionId,
             board: Array(9).fill(null),
@@ -122,13 +145,12 @@ export default function TicTacToe({
           supabase.from('games').insert([initialData]).then(() => {}, () => {});
         }
       } catch (err) {
-        console.warn('Game DB fetch notice:', err);
+        console.warn('TicTacToe fetch note:', err);
       }
     };
 
     fetchGameFromDB();
 
-    // 2. Realtime Channel with Presence & Broadcast
     const channelName = `game_arena:${sessionId}`;
     const channel = supabase.channel(channelName, {
       config: {
@@ -138,7 +160,6 @@ export default function TicTacToe({
     });
     channelRef.current = channel;
 
-    // Presence handlers
     const updatePresence = () => {
       if (!isSubscribed) return;
       const state = channel.presenceState();
@@ -153,13 +174,13 @@ export default function TicTacToe({
       .on('presence', { event: 'sync' }, updatePresence)
       .on('presence', { event: 'join' }, ({ newPresences }) => {
         updatePresence();
-        // If partner just joined, send them current state so they sync immediately
         const hasPartner = newPresences.some((p: any) => p.role !== role);
         if (hasPartner) {
+          // Send active state from ref to avoid resetting game on re-join
           channel.send({
             type: 'broadcast',
             event: 'game_sync',
-            payload: { board, turn, winner, scores, winningLine },
+            payload: currentGameStateRef.current,
           });
         }
       })
@@ -181,10 +202,9 @@ export default function TicTacToe({
         setWinningLine(line);
         if (updatedScores) setScores(updatedScores);
 
-        // Haptic feedback on partner move
         if (typeof window !== 'undefined' && window.navigator?.vibrate) {
           try {
-            window.navigator.vibrate(winnerResult ? [100, 50, 200] : 40);
+            window.navigator.vibrate(winnerResult ? [100, 50, 200] : 30);
           } catch (_) {}
         }
       })
@@ -194,6 +214,10 @@ export default function TicTacToe({
         setWinner(null);
         setWinningLine(null);
         if (payload?.turn) setTurn(payload.turn);
+      })
+      .on('broadcast', { event: 'game_closed' }, () => {
+        if (!isSubscribed) return;
+        onClose();
       })
       .on('broadcast', { event: 'game_chat' }, ({ payload }) => {
         if (!isSubscribed || !payload) return;
@@ -223,27 +247,25 @@ export default function TicTacToe({
     };
   }, [sessionId, role, userProfile?.uid]);
 
-  // Handle Player Move
-  const handleMove = async (index: number) => {
+  // Handle Square Tap
+  const handleSquareClick = async (index: number) => {
     if (board[index] || winner || turn !== role) return;
 
-    // Haptic
     if (typeof window !== 'undefined' && window.navigator?.vibrate) {
       try {
         window.navigator.vibrate(25);
       } catch (_) {}
     }
 
-    const mySymbol = role === 'owner' ? 'X' : 'O';
+    const symbol = role === 'owner' ? 'X' : 'O';
     const newBoard = [...board];
-    newBoard[index] = mySymbol;
+    newBoard[index] = symbol;
 
     const evalResult = evaluateWinner(newBoard);
     const newWinner = evalResult?.winner || null;
-    const newLine = evalResult?.line || null;
+    const newWinningLine = evalResult?.line || null;
     const nextTurn = newWinner ? turn : role === 'owner' ? 'partner' : 'owner';
 
-    // Update Scores
     let updatedScores = { ...scores };
     if (newWinner === 'owner') {
       updatedScores.owner += 1;
@@ -256,10 +278,9 @@ export default function TicTacToe({
     setBoard(newBoard);
     setTurn(nextTurn);
     setWinner(newWinner);
-    setWinningLine(newLine);
+    setWinningLine(newWinningLine);
     if (newWinner) setScores(updatedScores);
 
-    // 1. Broadcast immediately to partner (0ms latency)
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_move',
@@ -267,32 +288,30 @@ export default function TicTacToe({
         newBoard,
         nextTurn,
         winnerResult: newWinner,
-        line: newLine,
+        line: newWinningLine,
         updatedScores,
       },
     });
 
-    // 2. Persist to Supabase in background
     try {
-      await supabase
-        .from('games')
-        .upsert({
-          id: sessionId,
-          board: newBoard,
-          turn: nextTurn,
-          winner: newWinner,
-          status: newWinner ? 'finished' : 'playing',
-          scores: updatedScores,
-        });
+      await supabase.from('games').upsert({
+        id: sessionId,
+        board: newBoard,
+        turn: nextTurn,
+        winner: newWinner,
+        status: newWinner ? 'finished' : 'playing',
+        scores: updatedScores,
+      });
     } catch (err) {
-      console.warn('Game save warning:', err);
+      console.warn('TicTacToe save warning:', err);
     }
   };
 
   // Reset Game for Rematch
   const handleReset = async () => {
     const nextTurn = role === 'owner' ? 'partner' : 'owner';
-    setBoard(Array(9).fill(null));
+    const cleanBoard = Array(9).fill(null);
+    setBoard(cleanBoard);
     setWinner(null);
     setWinningLine(null);
     setTurn(nextTurn);
@@ -304,21 +323,18 @@ export default function TicTacToe({
     });
 
     try {
-      await supabase
-        .from('games')
-        .upsert({
-          id: sessionId,
-          board: Array(9).fill(null),
-          turn: nextTurn,
-          winner: null,
-          status: 'playing',
-        });
+      await supabase.from('games').upsert({
+        id: sessionId,
+        board: cleanBoard,
+        turn: nextTurn,
+        winner: null,
+        status: 'playing',
+      });
     } catch (err) {
-      console.warn('Game reset save warning:', err);
+      console.warn('TicTacToe reset warning:', err);
     }
   };
 
-  // Send In-Game Temporary Chat or Banter
   const handleSendInGameMessage = (text: string, isQuickReaction = false) => {
     const newMsg: InGameChatMessage = {
       id: `game-msg-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -338,78 +354,155 @@ export default function TicTacToe({
     });
   };
 
-  // Nudge Partner to Join Game
   const handleNudgePartner = () => {
+    if (nudgeSent) return;
     setNudgeSent(true);
-    setTimeout(() => setNudgeSent(false), 3000);
 
-    // Call high-level nudge if provided
-    onSendNudge?.('sparkle');
-
-    // Broadcast in game channel
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_nudge',
-      payload: { from: myName },
+      payload: { from: role },
     });
 
-    // Also send an invitation nudge to the regular chat so partner sees it
-    if (onSendMainChatMessage) {
-      onSendMainChatMessage(
-        `🎮 ${myName} is waiting for you in Tic Tac Toe! Tap to play together 💕`
-      );
+    onSendNudge?.('game_invite');
+    setTimeout(() => setNudgeSent(false), 8000);
+  };
+
+  // Leave Game Handler
+  const handleLeaveGame = async () => {
+    try {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_closed',
+        payload: { leftBy: role },
+      });
+      await supabase.from('games').update({ status: 'closed' }).eq('id', sessionId);
+      await supabase
+        .from('messages')
+        .update({
+          gameInvite: {
+            sessionId: sessionId,
+            gameType: 'tictactoe',
+            status: 'closed',
+          },
+        })
+        .filter('gameInvite->>sessionId', 'eq', sessionId);
+    } catch (err) {
+      console.warn('Leave game cleanup note:', err);
     }
+    if (onLeave) onLeave();
+    else onClose();
   };
 
   const isMyTurn = turn === role && !winner;
 
   return (
-    <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none transition-colors duration-300">
-      {/* 1. Floating Main Chat Speech Bubble (if partner messages in regular chat) */}
+    <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none">
+      {/* Floating Main Chat Bubble from Partner */}
       <PartnerMainChatBubble
         latestPartnerMessage={latestPartnerMessage}
         partnerProfile={partnerProfile}
         role={role}
-        onSendMainChatMessage={async (text) => {
-          if (onSendMainChatMessage) await onSendMainChatMessage(text);
-        }}
+        onSendMainChatMessage={onSendMainChatMessage || (() => {})}
       />
 
-      {/* Floating Back Button - No Top Bar */}
-      <button
-        onClick={onClose}
-        className="fixed top-4 left-4 z-40 p-2.5 rounded-full bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center justify-center cursor-pointer"
-        title="Back to Chat"
-      >
-        <ArrowLeft className="w-5 h-5" />
-      </button>
+      {/* Top Floating Control Bar: Back/Minimize on left, Leave & Nudge on right */}
+      <div className="fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
+        {/* Left: Minimize / Back */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          <button
+            onClick={() => (onMinimize ? onMinimize() : onClose())}
+            className="p-2 rounded-full bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center justify-center cursor-pointer"
+            title="Minimize Game (Back to chat)"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => (onMinimize ? onMinimize() : onClose())}
+            className="px-2.5 py-1.5 rounded-full bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+            title="Minimize Game"
+          >
+            <Minus className="w-3.5 h-3.5" />
+            <span>Minimize</span>
+          </button>
+        </div>
 
-      {/* Floating Nudge Button (if partner not yet in game) */}
-      {!partnerInGame && (
-        <button
-          onClick={handleNudgePartner}
-          className={`fixed top-4 right-4 z-40 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer backdrop-blur-md ${
-            nudgeSent
-              ? 'bg-emerald-500 text-white'
-              : 'bg-pink-500 text-white hover:opacity-90 animate-pulse'
-          }`}
-          title={`Nudge ${partnerName} to join`}
-        >
-          <Bell className="w-3.5 h-3.5" />
-          <span className="text-[11px]">{nudgeSent ? 'Nudged! 💖' : `Nudge ${partnerName}`}</span>
-        </button>
-      )}
+        {/* Right: Leave Game & Nudge */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {!partnerInGame && (
+            <button
+              onClick={handleNudgePartner}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold transition-all shadow-md active:scale-95 cursor-pointer backdrop-blur-md ${
+                nudgeSent
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-pink-500 text-white hover:opacity-90 animate-pulse'
+              }`}
+              title={`Nudge ${partnerName} to join`}
+            >
+              <Bell className="w-3 h-3" />
+              <span>{nudgeSent ? 'Nudged!' : 'Nudge'}</span>
+            </button>
+          )}
 
-      {/* Center Content (Scoreboard & Interactive Game Canvas) */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 pt-14 pb-2 max-w-lg mx-auto w-full overflow-y-auto">
-        {/* Player Versus Scoreboard */}
-        <div className="w-full grid grid-cols-3 items-center gap-2 mb-4 bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-3xl p-3 shadow-sm">
-          {/* Player 1 (Rahul / Owner - Blue 💙) */}
+          <button
+            onClick={() => setShowLeaveConfirm(true)}
+            className="px-2.5 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 transition-all shadow-md active:scale-95 flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+            title="Leave Game (End match)"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Leave</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Leave Confirmation Dialog */}
+      <AnimatePresence>
+        {showLeaveConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-xs bg-[var(--theme-surface)] rounded-3xl p-5 border border-[var(--theme-border)] shadow-2xl text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-rose-500/15 text-rose-500 flex items-center justify-center mx-auto mb-3">
+                <LogOut className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-[var(--theme-text)] mb-1">
+                Leave Game?
+              </h3>
+              <p className="text-xs text-[var(--theme-text)]/70 mb-4 leading-relaxed">
+                Leaving ends the match and terminates the active session for both players.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="flex-1 py-2 rounded-xl border border-[var(--theme-border)] text-xs font-bold text-[var(--theme-text)] hover:bg-[var(--theme-surface)] active:scale-95 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLeaveGame}
+                  className="flex-1 py-2 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 active:scale-95 transition-all shadow-md shadow-rose-500/25"
+                >
+                  Leave
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Center Content (Scoreboard & Interactive Canvas) */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 pt-12 pb-4 max-w-lg mx-auto w-full overflow-y-auto">
+        {/* Sleek Compact Player Status Bar (Rahul vs Nusrat) */}
+        <div className="w-full max-w-[320px] mb-2 px-3 py-1.5 rounded-2xl bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
+          {/* Left: Rahul (Owner - Sky Blue X) */}
           <div
-            className={`flex flex-col items-center p-2 rounded-2xl transition-all ${
+            className={`flex items-center gap-2 py-0.5 px-2 rounded-xl transition-all ${
               turn === 'owner' && !winner
-                ? 'bg-sky-500/15 ring-2 ring-sky-400 shadow-md'
-                : 'opacity-80'
+                ? 'bg-sky-500/15 ring-1 ring-sky-400 font-bold'
+                : 'opacity-75'
             }`}
           >
             <div className="relative">
@@ -418,10 +511,10 @@ export default function TicTacToe({
                   <img
                     src={myPhoto}
                     alt="You"
-                    className="w-10 h-10 rounded-full object-cover border-2 border-sky-400"
+                    className="w-7 h-7 rounded-full object-cover border border-sky-400"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-sm">
+                  <div className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
                     R
                   </div>
                 )
@@ -429,54 +522,65 @@ export default function TicTacToe({
                 <img
                   src={partnerPhoto}
                   alt="Rahul"
-                  className="w-10 h-10 rounded-full object-cover border-2 border-sky-400"
+                  className="w-7 h-7 rounded-full object-cover border border-sky-400"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-sm">
+                <div className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
                   R
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-sky-500 text-white flex items-center justify-center text-[10px] font-black shadow-sm">
+              <span className="absolute -bottom-0.5 -right-0.5 text-[8px] leading-none font-black text-sky-500 bg-white rounded-full px-0.5">
                 X
               </span>
             </div>
-            <span className="text-xs font-bold mt-1 text-[var(--theme-text)]">
-              {role === 'owner' ? 'You' : 'Rahul'}
-            </span>
-            <span className="text-lg font-black text-sky-500 leading-none">
-              {scores.owner}
-            </span>
-          </div>
-
-          {/* Versus Center Info */}
-          <div className="flex flex-col items-center justify-center">
-            <span className="text-xs font-black uppercase tracking-widest text-[var(--theme-text)]/40">
-              VS
-            </span>
-            <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-[var(--theme-text)]/60">
-              <Trophy className="w-3 h-3 text-amber-400" />
-              <span>Draws: {scores.draws}</span>
+            <div className="flex flex-col">
+              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                {role === 'owner' ? 'You' : 'Rahul'}
+              </span>
+              <span className="text-xs font-black text-sky-500 leading-tight">
+                {scores.owner}
+              </span>
             </div>
           </div>
 
-          {/* Player 2 (Nusrat / Partner - Pink 💖) */}
+          {/* Center: VS & Draws */}
+          <div className="flex flex-col items-center justify-center px-1">
+            <span className="text-[9px] font-black uppercase tracking-widest text-[var(--theme-text)]/40">
+              VS
+            </span>
+            {scores.draws > 0 && (
+              <span className="text-[9px] font-bold text-[var(--theme-text)]/50">
+                Draws: {scores.draws}
+              </span>
+            )}
+          </div>
+
+          {/* Right: Nusrat (Partner - Pink O) */}
           <div
-            className={`flex flex-col items-center p-2 rounded-2xl transition-all ${
+            className={`flex items-center gap-2 py-0.5 px-2 rounded-xl transition-all ${
               turn === 'partner' && !winner
-                ? 'bg-pink-500/15 ring-2 ring-pink-400 shadow-md'
-                : 'opacity-80'
+                ? 'bg-pink-500/15 ring-1 ring-pink-400 font-bold'
+                : 'opacity-75'
             }`}
           >
+            <div className="flex flex-col items-end">
+              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                {role === 'partner' ? 'You' : 'Nusrat'}
+              </span>
+              <span className="text-xs font-black text-pink-500 leading-tight">
+                {scores.partner}
+              </span>
+            </div>
             <div className="relative">
               {role === 'partner' ? (
                 myPhoto ? (
                   <img
                     src={myPhoto}
                     alt="You"
-                    className="w-10 h-10 rounded-full object-cover border-2 border-pink-400"
+                    className="w-7 h-7 rounded-full object-cover border border-pink-400"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-sm">
+                  <div className="w-7 h-7 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-[10px]">
                     N
                   </div>
                 )
@@ -484,33 +588,27 @@ export default function TicTacToe({
                 <img
                   src={partnerPhoto}
                   alt="Nusrat"
-                  className="w-10 h-10 rounded-full object-cover border-2 border-pink-400"
+                  className="w-7 h-7 rounded-full object-cover border border-pink-400"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-sm">
+                <div className="w-7 h-7 rounded-full bg-pink-500 text-white flex items-center justify-center font-bold text-[10px]">
                   N
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center text-[10px] font-black shadow-sm">
+              <span className="absolute -bottom-0.5 -right-0.5 text-[8px] leading-none font-black text-pink-500 bg-white rounded-full px-0.5">
                 O
               </span>
             </div>
-            <span className="text-xs font-bold mt-1 text-[var(--theme-text)]">
-              {role === 'partner' ? 'You' : 'Nusrat'}
-            </span>
-            <span className="text-lg font-black text-pink-500 leading-none">
-              {scores.partner}
-            </span>
           </div>
         </div>
 
         {/* Turn / Winner Status Pill */}
-        <div className="mb-4 text-center">
+        <div className="mb-2 text-center">
           {winner ? (
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="px-5 py-2 rounded-full bg-gradient-to-r from-sky-500 to-pink-500 text-white font-black text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 inline-flex"
+              className="px-4 py-1.5 rounded-full bg-gradient-to-r from-sky-500 to-pink-500 text-white font-black text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 inline-flex"
             >
               <Sparkles className="w-4 h-4" />
               <span>
@@ -523,60 +621,72 @@ export default function TicTacToe({
             </motion.div>
           ) : (
             <div
-              className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest inline-flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all ${
                 isMyTurn
-                  ? role === 'owner'
-                    ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 animate-pulse'
-                    : 'bg-pink-500 text-white shadow-md shadow-pink-500/25 animate-pulse'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-md shadow-[var(--theme-accent)]/20 animate-pulse'
                   : 'bg-[var(--theme-surface)] text-[var(--theme-text)]/70 border border-[var(--theme-border)]'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>
-                {isMyTurn ? 'Your Turn ✨ Tap a tile' : `${partnerName}'s Turn ⏳`}
+                {isMyTurn
+                  ? 'Your Turn ✨ Tap a square'
+                  : `${partnerName}'s Turn ⏳`}
               </span>
             </div>
           )}
         </div>
 
         {/* 3x3 Grid Board */}
-        <div className="w-full max-w-[320px] aspect-square grid grid-cols-3 gap-2.5 p-3 bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[2.5rem] shadow-xl">
-          {board.map((cell, idx) => {
-            const isWinningTile = winningLine?.includes(idx);
+        <div className="w-full max-w-[320px] aspect-square bg-[var(--theme-surface)] border-2 border-[var(--theme-border)] rounded-[2.5rem] p-3 shadow-xl grid grid-cols-3 gap-2.5 relative overflow-hidden">
+          {board.map((cell, index) => {
+            const isWinningCell = winningLine?.includes(index);
             return (
               <button
-                key={idx}
-                onClick={() => handleMove(idx)}
-                disabled={!!cell || !!winner || !isMyTurn}
-                className={`relative aspect-square rounded-2xl text-4xl font-black flex items-center justify-center transition-all ${
-                  isWinningTile
-                    ? 'bg-amber-400 text-white shadow-lg shadow-amber-400/40 scale-105 z-10 animate-pulse'
-                    : cell
-                    ? 'bg-[var(--theme-input-bg)] border border-[var(--theme-border)] cursor-default'
+                key={index}
+                onClick={() => handleSquareClick(index)}
+                disabled={cell !== null || winner !== null || !isMyTurn}
+                className={`rounded-2xl flex items-center justify-center font-black transition-all cursor-pointer select-none relative ${
+                  isWinningCell
+                    ? 'bg-gradient-to-tr from-amber-400 to-amber-500 text-white shadow-lg scale-95 ring-2 ring-amber-300 animate-pulse'
+                    : cell === 'X'
+                    ? 'bg-sky-500/15 border border-sky-400/40 text-sky-500 shadow-sm'
+                    : cell === 'O'
+                    ? 'bg-pink-500/15 border border-pink-400/40 text-pink-500 shadow-sm'
                     : isMyTurn
-                    ? 'bg-[var(--theme-bg)] border-2 border-dashed border-[var(--theme-border)] hover:border-[var(--theme-accent)] active:scale-95 cursor-pointer'
-                    : 'bg-[var(--theme-bg)]/50 border border-[var(--theme-border)]/40 cursor-not-allowed'
+                    ? 'bg-[var(--theme-bg)] hover:bg-[var(--theme-accent)]/10 hover:border-[var(--theme-accent)]/40 border border-[var(--theme-border)] active:scale-95'
+                    : 'bg-[var(--theme-bg)] border border-[var(--theme-border)]/50 opacity-60 cursor-not-allowed'
                 }`}
               >
-                {cell && (
-                  <motion.span
-                    initial={{ scale: 0, rotate: -25 }}
+                {cell === 'X' && (
+                  <motion.div
+                    initial={{ scale: 0, rotate: -45 }}
                     animate={{ scale: 1, rotate: 0 }}
-                    transition={{ type: 'spring', damping: 15, stiffness: 300 }}
-                    className={
-                      isWinningTile
-                        ? 'text-white drop-shadow-md'
-                        : cell === 'X'
-                        ? 'text-sky-500'
-                        : 'text-pink-500'
-                    }
+                    transition={{ type: 'spring', damping: 12 }}
+                    className="flex flex-col items-center"
                   >
-                    {cell === 'X' ? (
-                      <XIcon className="w-9 h-9 stroke-[3]" />
-                    ) : (
-                      <Circle className="w-8 h-8 stroke-[3]" />
-                    )}
-                  </motion.span>
+                    <span className="text-3xl sm:text-4xl leading-none font-black">
+                      ✕
+                    </span>
+                    <span className="text-[9px] uppercase tracking-wider font-bold opacity-80 mt-0.5">
+                      Rahul
+                    </span>
+                  </motion.div>
+                )}
+                {cell === 'O' && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', damping: 12 }}
+                    className="flex flex-col items-center"
+                  >
+                    <span className="text-3xl sm:text-4xl leading-none font-black">
+                      ◯
+                    </span>
+                    <span className="text-[9px] uppercase tracking-wider font-bold opacity-80 mt-0.5">
+                      Nusrat
+                    </span>
+                  </motion.div>
                 )}
               </button>
             );
@@ -588,11 +698,11 @@ export default function TicTacToe({
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-5 w-full max-w-[320px]"
+            className="mt-3 w-full max-w-[320px]"
           >
             <button
               onClick={handleReset}
-              className="w-full py-3.5 bg-[var(--theme-accent)] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-[var(--theme-accent)]/30 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-[var(--theme-accent)] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-[var(--theme-accent)]/30 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Play Again (Rematch)</span>
@@ -601,16 +711,14 @@ export default function TicTacToe({
         )}
       </div>
 
-      {/* 5. Bottom Temporary Game Chat & Quick Banter Strip */}
-      <div className="w-full shrink-0 border-t border-[var(--theme-border)]/50 bg-[var(--theme-surface)]/60 backdrop-blur-md pt-2 pb-3 px-2">
-        <InGameChatDrawer
-          messages={inGameMessages}
-          onSendMessage={handleSendInGameMessage}
-          role={role}
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-        />
-      </div>
+      {/* Floating Quick Banter & Chat Icon */}
+      <InGameChatDrawer
+        messages={inGameMessages}
+        onSendMessage={handleSendInGameMessage}
+        role={role}
+        userProfile={userProfile}
+        partnerProfile={partnerProfile}
+      />
     </div>
   );
 }
