@@ -330,11 +330,19 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
           touchAction: 'pan-y',
         }}
         onPointerDown={(e) => {
-          const isInputActive =
-            typeof document !== 'undefined' &&
-            (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT');
+          const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+          const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
           if (isInputActive) {
             e.preventDefault();
+          }
+        }}
+        onPointerUp={() => {
+          if (swipeX.get() > 32) {
+            onReply(msg);
+            triggerHaptic(24, 120);
+            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+            inputEl?.focus({ preventScroll: true });
+            onFocusInput?.();
           }
         }}
         onDragStart={() => {
@@ -346,11 +354,13 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
         }}
         onDragEnd={(_e, info) => {
           setTimeout(() => setIsSwiping(false), 50);
-          const passedDistance = info.offset.x > 44;
+          const passedDistance = info.offset.x > 44 || swipeX.get() > 32;
           const passedFlick = info.offset.x > 28 && info.velocity.x > 620;
           if (passedDistance || passedFlick) {
             onReply(msg);
             triggerHaptic(24, 120);
+            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+            inputEl?.focus({ preventScroll: true });
             onFocusInput?.();
           }
         }}
@@ -430,6 +440,25 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
                       </motion.button>
                     );
                   })}
+                  <div className="w-[1px] h-6 bg-[var(--theme-border)] self-center mx-0.5" />
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onPointerDown={(eDown) => eDown.preventDefault()}
+                    onClick={(eClick) => {
+                      eClick.stopPropagation();
+                      setShowPicker(false);
+                      onReply(msg);
+                      triggerHaptic(24, 120);
+                      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+                      inputEl?.focus({ preventScroll: true });
+                      onFocusInput?.();
+                    }}
+                    className="h-10 px-2.5 flex items-center gap-1.5 rounded-full text-xs font-semibold text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:bg-[var(--theme-accent)]/20 transition-all cursor-pointer"
+                    title="Reply to message"
+                  >
+                    <CornerUpLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Reply</span>
+                  </motion.button>
                 </motion.div>
               )}
             </AnimatePresence>

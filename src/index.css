@@ -77,6 +77,11 @@ body {
     @apply flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/50 backdrop-blur-sm border border-black/5 text-[10px] font-bold shadow-sm hover:bg-white transition-all cursor-pointer;
   }
 
+  #message-container {
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Custom Scrollbar for a cleaner look */
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;

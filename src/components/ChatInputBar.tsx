@@ -104,10 +104,8 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
   useEffect(() => {
     if (replyingTo) {
-      const el = inputRef?.current || localInputRef.current;
-      requestAnimationFrame(() => {
-        el?.focus({ preventScroll: true });
-      });
+      const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
+      el?.focus({ preventScroll: true });
     }
   }, [replyingTo, inputRef]);
 
@@ -381,20 +379,14 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       await onEditMessage(editingMessage.id, textToSend);
       setInputText('');
       onClearEditing();
-      requestAnimationFrame(() => {
-        adjustTextareaHeight();
-        // Keep keyboard open seamlessly without flickering
-        activeTextarea?.focus({ preventScroll: true });
-      });
+      activeTextarea?.focus({ preventScroll: true });
+      adjustTextareaHeight();
       return;
     }
 
     setInputText('');
-    requestAnimationFrame(() => {
-      adjustTextareaHeight();
-      // Keep keyboard open seamlessly without blurring or flickering
-      activeTextarea?.focus({ preventScroll: true });
-    });
+    activeTextarea?.focus({ preventScroll: true });
+    adjustTextareaHeight();
 
     await onSendMessage(textToSend);
   };
@@ -608,6 +600,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
             {/* Auto-expanding textarea */}
             <textarea
+              id="chat-message-input"
               ref={(node) => {
                 localInputRef.current = node;
                 if (inputRef && 'current' in inputRef) {

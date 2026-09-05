@@ -1292,6 +1292,8 @@ export default function App() {
       setReplyingTo(selectedMessages[0]);
       setEditingMessage(null);
       clearSelection();
+      const el = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      el?.focus({ preventScroll: true });
     }
   };
 
@@ -1300,6 +1302,8 @@ export default function App() {
       setEditingMessage(selectedMessages[0]);
       setReplyingTo(null);
       clearSelection();
+      const el = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      el?.focus({ preventScroll: true });
     }
   };
 
@@ -2796,23 +2800,56 @@ function ChatView({
     updateReadStatus();
   }, [messages.length, userProfile?.uid, role, isTabActive, isOverlayOpen]);
 
+  // Native capture listeners: keep native mobile keyboard open when tapping, swiping, or selecting messages
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const handlePointerDownCapture = (e: PointerEvent | MouseEvent) => {
+      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+      if (!isInputActive) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Allow clicking inside inputs, textareas, or full-screen image viewer
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      if (target.closest('[data-media-clickable="true"]')) return;
+
+      // Prevent the browser default action of blurring the active input on touch/mousedown
+      e.preventDefault();
+
+      // Ensure focus stays securely on the input without scrolling
+      inputEl?.focus({ preventScroll: true });
+    };
+
+    container.addEventListener('pointerdown', handlePointerDownCapture, { capture: true, passive: false });
+    container.addEventListener('mousedown', handlePointerDownCapture, { capture: true });
+
+    return () => {
+      container.removeEventListener('pointerdown', handlePointerDownCapture, { capture: true });
+      container.removeEventListener('mousedown', handlePointerDownCapture, { capture: true });
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-full relative">
       <div className="relative flex-1 overflow-hidden flex flex-col min-h-0">
         <div 
           ref={scrollRef}
           id="message-container" 
+          style={{ touchAction: 'pan-y' }}
           className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
           onPointerDown={(e) => {
-            const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-            const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'INPUT');
+            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+            const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
             if (isInputActive) {
               const target = e.target as HTMLElement;
-              const isInteractive = target.closest('button, a, input, textarea, select, [role="button"], video, audio');
-              if (!isInteractive) {
-                // Prevent tapping empty chat space from closing the keyboard
+              const isMedia = target.closest('[data-media-clickable="true"]');
+              if (!isMedia) {
                 e.preventDefault();
-                (activeEl as HTMLElement).focus({ preventScroll: true });
+                inputEl?.focus({ preventScroll: true });
               }
             }
           }}
