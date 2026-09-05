@@ -106,16 +106,24 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     if (replyingTo) {
       const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
       el?.focus({ preventScroll: true });
+      try {
+        (window as any).AndroidBridge?.openKeyboard?.();
+        (window as any).Android?.openKeyboard?.();
+      } catch (e) {}
     }
   }, [replyingTo, inputRef]);
 
   useEffect(() => {
-    const el = inputRef?.current || localInputRef.current;
+    const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
     if (editingMessage) {
       setInputText(editingMessage.text);
       requestAnimationFrame(() => {
         adjustTextareaHeight();
         el?.focus({ preventScroll: true });
+        try {
+          (window as any).AndroidBridge?.openKeyboard?.();
+          (window as any).Android?.openKeyboard?.();
+        } catch (e) {}
       });
     } else {
       setInputText('');

@@ -91,7 +91,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       <div className="theme-hub-glow absolute -bottom-32 left-1/4 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Bar */}
-      <header className="relative z-10 px-5 pt-6 pb-4 flex items-center justify-between max-w-xl mx-auto w-full">
+      <header className="relative z-10 px-5 pt-[max(1.5rem,calc(1rem+env(safe-area-inset-top,0px)))] pb-4 flex items-center justify-between max-w-xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FF8FA3] to-[#FF4D6D] flex items-center justify-center text-white shadow-md shadow-[#FF8FA3]/30">
             <Heart className="w-5 h-5 fill-current" />

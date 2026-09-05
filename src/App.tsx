@@ -1547,7 +1547,7 @@ export default function App() {
       ) : (
         <main className="flex-1 flex flex-col bg-[var(--theme-bg)] overflow-hidden z-30 transition-colors duration-300 w-full relative">
           {!activeGame && (
-            <div className="h-20 lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
+            <div className="h-[calc(4.75rem+env(safe-area-inset-top,0px))] lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
               <AnimatePresence mode="wait">
               {selectedMessages.length > 0 ? (
                 <motion.header 
@@ -1555,7 +1555,7 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300"
+                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300"
                 >
                   <div className="flex items-center gap-6 lg:gap-8">
                     <button onPointerDown={(e) => e.preventDefault()} onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
@@ -1597,7 +1597,7 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
+                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
                 >
                   <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
                     {/* Back to Multi-Hub button */}
@@ -2824,12 +2824,32 @@ function ChatView({
       inputEl?.focus({ preventScroll: true });
     };
 
+    const handleTouchStartCapture = (e: TouchEvent) => {
+      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+      if (!isInputActive) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      if (target.closest('[data-media-clickable="true"]')) return;
+
+      requestAnimationFrame(() => {
+        if (document.activeElement !== inputEl) {
+          inputEl?.focus({ preventScroll: true });
+        }
+      });
+    };
+
     container.addEventListener('pointerdown', handlePointerDownCapture, { capture: true, passive: false });
     container.addEventListener('mousedown', handlePointerDownCapture, { capture: true });
+    container.addEventListener('touchstart', handleTouchStartCapture, { capture: true, passive: true });
 
     return () => {
       container.removeEventListener('pointerdown', handlePointerDownCapture, { capture: true });
       container.removeEventListener('mousedown', handlePointerDownCapture, { capture: true });
+      container.removeEventListener('touchstart', handleTouchStartCapture, { capture: true });
     };
   }, []);
 

@@ -52,11 +52,23 @@
           root.style.setProperty('--theme-font', t.font);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', t.accent);
+
+          // Dynamic visualViewport tracker for mobile keyboards
+          function updateViewportHeight() {
+            var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            root.style.setProperty('--app-height', vh + 'px');
+          }
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateViewportHeight);
+            window.visualViewport.addEventListener('scroll', updateViewportHeight);
+          }
+          window.addEventListener('resize', updateViewportHeight);
+          updateViewportHeight();
         } catch(e) {}
       })();
     </script>
   </head>
-  <body style="background-color: var(--theme-bg, #FFF8F6); color: var(--theme-text, #1a1a1a); font-family: var(--theme-font, system-ui, sans-serif);">
+  <body style="background-color: var(--theme-bg, #FFF7F8); color: var(--theme-text, #1a1a1a); font-family: var(--theme-font, system-ui, sans-serif);">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
