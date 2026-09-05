@@ -473,7 +473,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         )}
       </AnimatePresence>
 
-      <div className="relative flex items-end px-3 lg:px-4 gap-2 pb-3.5 pt-1.5">
+      <div className="relative flex items-end px-3 lg:px-4 gap-2 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] pt-1.5">
         {/* Attachment menu button (hidden while actively recording) */}
         {!isRecording && !isPreviewing && (
           <button
@@ -619,20 +619,19 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
               onChange={(e) => setInputText(e.target.value)}
               onFocus={() => setShowEmojiPicker(false)}
               inputMode="text"
+              enterKeyHint="send"
               autoCapitalize="sentences"
               autoComplete="on"
               autoCorrect="on"
               spellCheck={true}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
-                  if (typeof window !== 'undefined' && window.innerWidth >= 768) {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
+                  e.preventDefault();
+                  handleSubmit();
                 }
               }}
               placeholder={editingMessage ? 'Edit message...' : `Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full py-2.5 px-1 bg-transparent text-[var(--theme-text)] text-sm focus:outline-none placeholder-[var(--theme-text)]/40 resize-none custom-scrollbar leading-relaxed"
+              className="w-full py-2.5 px-1 bg-transparent text-[var(--theme-text)] text-[16px] md:text-sm focus:outline-none placeholder-[var(--theme-text)]/40 resize-none custom-scrollbar leading-relaxed"
               style={{ minHeight: '44px', maxHeight: '144px', boxSizing: 'border-box' }}
             />
 

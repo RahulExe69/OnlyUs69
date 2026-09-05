@@ -2,12 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>OnlyUs</title>
     <link rel="icon" type="image/webp" href="/favicon.webp" />
     <link rel="apple-touch-icon" href="/favicon.webp" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#FF8FA3" />
+    <script>
+      (function() {
+        try {
+          if (window.location.hostname.indexOf('netlify.app') !== -1) {
+            window.location.replace('https://onlyus69.vercel.app' + window.location.pathname + window.location.search + window.location.hash);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script>
       (function() {
         try {

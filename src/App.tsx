@@ -208,6 +208,39 @@ export default function App() {
     };
   }, []);
 
+  // Native Mobile Keyboard Viewport Sync (Hardware-smooth keyboard resize without lag/jitter)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let rafId: number;
+    const updateViewportHeight = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--app-height', `${height}px`);
+      });
+    };
+
+    updateViewportHeight();
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateViewportHeight);
+      window.visualViewport.addEventListener('scroll', updateViewportHeight);
+    } else {
+      window.addEventListener('resize', updateViewportHeight);
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateViewportHeight);
+        window.visualViewport.removeEventListener('scroll', updateViewportHeight);
+      } else {
+        window.removeEventListener('resize', updateViewportHeight);
+      }
+    };
+  }, []);
+
   const [socketTypingUsers, setSocketTypingUsers] = useState<string[]>([]);
   const [socketOnlineUsers, setSocketOnlineUsers] = useState<string[]>([]);
   const [socketOnlineRoles, setSocketOnlineRoles] = useState<string[]>([]);
@@ -1483,7 +1516,10 @@ export default function App() {
   }
 
   return (
-    <div className="chat-theme flex h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300">
+    <div 
+      className="chat-theme flex h-[100dvh] max-h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300"
+      style={{ height: 'var(--app-height, 100dvh)' }}
+    >
       {activeHubTab === 'dashboard' ? (
         <MultiHubDashboard
           userProfile={userProfile}
