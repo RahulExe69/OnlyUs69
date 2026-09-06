@@ -20,7 +20,7 @@ interface WhatsAppMediaBubbleProps {
   onToggleSelect?: () => void;
 }
 
-export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
+export const WhatsAppMediaBubble = React.memo<WhatsAppMediaBubbleProps>(function WhatsAppMediaBubble({
   media,
   mediaList,
   isOwn,
@@ -33,7 +33,7 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
   timestampOverlay,
   selectionActive = false,
   onToggleSelect
-}) => {
+}) {
   const items = (mediaList && mediaList.length > 0) 
     ? mediaList 
     : ((media?.mediaList && media.mediaList.length > 0) ? media.mediaList : [media]);
@@ -86,7 +86,7 @@ export const WhatsAppMediaBubble: React.FC<WhatsAppMediaBubbleProps> = ({
       onToggleSelect={onToggleSelect}
     />
   );
-};
+});
 
 // -------------------------------------------------------------
 // Single Media Item (WhatsApp Uniform Aspect Ratio & Layout)

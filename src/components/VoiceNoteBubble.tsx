@@ -22,7 +22,7 @@ const WAVEFORM_HEIGHTS = [
   0.8, 0.7, 0.45, 0.85, 0.6, 0.95, 0.75, 0.5, 0.7, 0.4
 ];
 
-export const VoiceNoteBubble: React.FC<VoiceNoteBubbleProps> = ({
+export const VoiceNoteBubble = React.memo<VoiceNoteBubbleProps>(function VoiceNoteBubble({
   media,
   isOwn,
   messageId,
@@ -31,7 +31,7 @@ export const VoiceNoteBubble: React.FC<VoiceNoteBubbleProps> = ({
   timestampOverlay,
   selectionActive = false,
   onToggleSelect,
-}) => {
+}) {
   const [audioUrl, setAudioUrl] = useState<string | null>(media.url || null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -286,4 +286,4 @@ export const VoiceNoteBubble: React.FC<VoiceNoteBubbleProps> = ({
       )}
     </div>
   );
-};
+});

@@ -10,6 +10,7 @@ interface MessageItemProps {
   msg: Message;
   role: UserRole;
   allMessages?: Message[];
+  replyToMessage?: Message;
   onReact: (id: string, emoji: string) => Promise<void>;
   isSelected: boolean;
   selectionCount: number;
@@ -29,10 +30,11 @@ interface MessageItemProps {
   onFocusInput?: () => void;
 }
 
-export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
+function MessageItemComponent({
   msg,
   role,
   allMessages,
+  replyToMessage,
   onReact,
   isSelected,
   selectionCount,
@@ -62,6 +64,7 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<'top' | 'bottom'>('top');
   const [isSwiping, setIsSwiping] = useState(false);
+  const hasTriggeredReplyThreshold = useRef(false);
 
   // Close reaction picker on back button
   useOverlayBack(showPicker, () => setShowPicker(false), `message-reaction-picker-${msg.id}`);
@@ -81,20 +84,18 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
     const replyId = msg.replyTo?.id || (msg as any).reply_to;
     if (!replyId && !msg.replyTo) return null;
 
-    if (replyId && allMessages) {
-      const original = allMessages.find((m) => m.id === replyId);
-      if (original) {
-        const isOrigDeletedByMe = original.deletedBy ? original.deletedBy === role : original.sender_role === role;
-        return {
-          id: original.id,
-          text: original.deleted
-            ? isOrigDeletedByMe
-              ? 'You deleted this message'
-              : 'This message was deleted'
-            : original.text || (original.media ? '📷 Photo' : 'Original message'),
-          sender_role: original.sender_role,
-        };
-      }
+    const original = replyToMessage || (replyId && allMessages ? allMessages.find((m) => m.id === replyId) : undefined);
+    if (original) {
+      const isOrigDeletedByMe = original.deletedBy ? original.deletedBy === role : original.sender_role === role;
+      return {
+        id: original.id,
+        text: original.deleted
+          ? isOrigDeletedByMe
+            ? 'You deleted this message'
+            : 'This message was deleted'
+          : original.text || (original.media ? '📷 Photo' : 'Original message'),
+        sender_role: original.sender_role,
+      };
     }
 
     if (msg.replyTo && msg.replyTo.text && msg.replyTo.text !== 'Replied Message') {
@@ -102,7 +103,7 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
     }
 
     return msg.replyTo || null;
-  }, [msg.replyTo, (msg as any).reply_to, allMessages, role]);
+  }, [msg.replyTo, (msg as any).reply_to, replyToMessage, allMessages, role]);
 
   useEffect(() => {
     if (!showPicker) return;
@@ -160,11 +161,14 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSwiping) return;
 
+    const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
     const isInputActive =
-      typeof document !== 'undefined' &&
-      (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT');
+      (window as any).__isChatInputFocused ||
+      (typeof document !== 'undefined' &&
+        (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
     if (isInputActive) {
       e.preventDefault();
+      inputEl?.focus({ preventScroll: true });
     }
 
     if (e.pointerType === 'touch') {
@@ -219,10 +223,27 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
     if (selectionActive || isSelected) {
       onToggleSelect(msg);
     }
+
+    if ((window as any).__isChatInputFocused) {
+      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      inputEl?.focus({ preventScroll: true });
+      try {
+        (window as any).AndroidBridge?.openKeyboard?.();
+        (window as any).Android?.openKeyboard?.();
+      } catch (_) {}
+    }
   };
 
   const swipeX = useMotionValue(0);
-  const swipeOpacity = useTransform(swipeX, [8, 48], [0, 1]);
+  // Transforms for partner message (swiping to the right)
+  const swipeOpacity = useTransform(swipeX, [0, 8, 24], [0, 0.5, 1]);
+  const replyIconScale = useTransform(swipeX, [0, 8, 24, 44], [0.4, 0.75, 1, 1.15]);
+  const replyIconTranslateX = useTransform(swipeX, [0, 24], [-12, 0]);
+
+  // Transforms for own message (reversed swipe: swiping to the left)
+  const ownSwipeOpacity = useTransform(swipeX, [0, -8, -24], [0, 0.5, 1]);
+  const ownReplyIconScale = useTransform(swipeX, [0, -8, -24, -44], [0.4, 0.75, 1, 1.15]);
+  const ownReplyIconTranslateX = useTransform(swipeX, [0, -24], [12, 0]);
 
   const formatSeenTime = (timestamp: any) => {
     if (!timestamp) return 'Seen';
@@ -290,9 +311,9 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
     <div
       ref={itemRef}
       id={`msg-${msg.id}`}
-      className={`relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default rounded-2xl ${
-        isSelected ? 'bg-[var(--theme-accent)]/20 backdrop-blur-[1px]' : 'hover:bg-[var(--theme-accent)]/5'
-      } ${isOwn ? 'justify-end' : 'justify-start'} ${showPicker ? 'z-[60]' : 'z-auto'}`}
+      className={`chat-message-row relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default rounded-2xl ${
+        isSelected ? 'is-active-row bg-[var(--theme-accent)]/20 backdrop-blur-[1px]' : 'hover:bg-[var(--theme-accent)]/5'
+      } ${showPicker ? 'is-active-row z-[60]' : 'z-auto'} ${isOwn ? 'justify-end' : 'justify-start'}`}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -305,64 +326,115 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
         e.stopPropagation();
       }}
     >
-      {/* Absolute Reply Hint behind the message */}
-      <motion.div
-        style={{ opacity: swipeOpacity, x: useTransform(swipeX, [8, 48], [-12, 0]) }}
-        className="absolute left-6 top-1/2 -translate-y-1/2 z-0"
-      >
-        <div className="p-2 bg-[var(--theme-accent)]/15 rounded-full">
-          <CornerUpLeft className="w-5 h-5 text-[var(--theme-accent)]" />
-        </div>
-      </motion.div>
+      {/* Absolute Rubber-band Reply Hint behind incoming message (swiped right) */}
+      {!isOwn && (
+        <motion.div
+          style={{
+            opacity: swipeOpacity,
+            scale: replyIconScale,
+            x: replyIconTranslateX,
+          }}
+          className="absolute left-3 lg:left-5 top-1/2 -translate-y-1/2 z-0 pointer-events-none"
+        >
+          <div className="w-8 h-8 rounded-full bg-[var(--theme-accent)]/15 backdrop-blur-sm border border-[var(--theme-accent)]/25 flex items-center justify-center shadow-sm">
+            <CornerUpLeft className="w-4 h-4 text-[var(--theme-accent)]" />
+          </div>
+        </motion.div>
+      )}
+
+      {/* Absolute Rubber-band Reply Hint behind outgoing message (swiped left) */}
+      {isOwn && (
+        <motion.div
+          style={{
+            opacity: ownSwipeOpacity,
+            scale: ownReplyIconScale,
+            x: ownReplyIconTranslateX,
+          }}
+          className="absolute right-3 lg:right-5 top-1/2 -translate-y-1/2 z-0 pointer-events-none"
+        >
+          <div className="w-8 h-8 rounded-full bg-[var(--theme-accent)]/15 backdrop-blur-sm border border-[var(--theme-accent)]/25 flex items-center justify-center shadow-sm">
+            <CornerUpLeft className="w-4 h-4 text-[var(--theme-accent)]" />
+          </div>
+        </motion.div>
+      )}
 
       <motion.div
         drag="x"
-        dragConstraints={{ left: 0, right: 86 }}
+        dragConstraints={{ left: 0, right: 0 }}
         dragSnapToOrigin
-        dragElastic={0.2}
+        dragElastic={isOwn ? { left: 0.38, right: 0 } : { left: 0, right: 0.38 }}
         dragMomentum={false}
         dragDirectionLock
         dragListener={!showPicker && !selectionActive}
-        dragTransition={{ power: 0.25, timeConstant: 150, bounceStiffness: 540, bounceDamping: 34 }}
+        dragTransition={{
+          bounceStiffness: 640,
+          bounceDamping: 28,
+          power: 0.1,
+          timeConstant: 120,
+        }}
         style={{
           x: swipeX,
           justifyContent: isOwn ? 'flex-end' : 'flex-start',
           touchAction: 'pan-y',
+          willChange: isSwiping ? 'transform' : 'auto',
         }}
         onPointerDown={(e) => {
           const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-          const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+          const isInputActive =
+            (window as any).__isChatInputFocused ||
+            (typeof document !== 'undefined' &&
+              (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
           if (isInputActive) {
             e.preventDefault();
-          }
-        }}
-        onPointerUp={() => {
-          if (swipeX.get() > 32) {
-            onReply(msg);
-            triggerHaptic(24, 120);
-            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
             inputEl?.focus({ preventScroll: true });
-            onFocusInput?.();
           }
         }}
         onDragStart={() => {
           setIsSwiping(true);
+          hasTriggeredReplyThreshold.current = false;
           if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
           }
         }}
+        onDrag={(_e, info) => {
+          const currentX = swipeX.get();
+          const isPast = isOwn
+            ? (currentX <= -25 || info.offset.x <= -65)
+            : (currentX >= 25 || info.offset.x >= 65);
+
+          if (isPast && !hasTriggeredReplyThreshold.current) {
+            hasTriggeredReplyThreshold.current = true;
+            triggerHaptic(18, 80);
+          } else if (!isPast && hasTriggeredReplyThreshold.current && (isOwn ? currentX > -16 : currentX < 16)) {
+            hasTriggeredReplyThreshold.current = false;
+          }
+        }}
         onDragEnd={(_e, info) => {
-          setTimeout(() => setIsSwiping(false), 50);
-          const passedDistance = info.offset.x > 44 || swipeX.get() > 32;
-          const passedFlick = info.offset.x > 28 && info.velocity.x > 620;
-          if (passedDistance || passedFlick) {
+          setTimeout(() => setIsSwiping(false), 60);
+          const currentX = swipeX.get();
+          const passedThreshold = isOwn
+            ? (currentX <= -24 ||
+               info.offset.x <= -60 ||
+               (info.offset.x <= -24 && info.velocity.x < -380) ||
+               hasTriggeredReplyThreshold.current)
+            : (currentX >= 24 ||
+               info.offset.x >= 60 ||
+               (info.offset.x >= 24 && info.velocity.x > 380) ||
+               hasTriggeredReplyThreshold.current);
+
+          if (passedThreshold) {
             onReply(msg);
-            triggerHaptic(24, 120);
+            triggerHaptic(26, 120);
             const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
             inputEl?.focus({ preventScroll: true });
             onFocusInput?.();
+            try {
+              (window as any).AndroidBridge?.openKeyboard?.();
+              (window as any).Android?.openKeyboard?.();
+            } catch (_) {}
           }
+          hasTriggeredReplyThreshold.current = false;
         }}
         className="relative w-full flex items-end px-2 lg:px-4 select-none"
         onContextMenu={(e) => {
@@ -614,8 +686,9 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
             {msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0 && (
               <div className={`absolute -bottom-3 flex -space-x-1.5 ${isOwn ? 'right-2' : 'left-5'} z-20`}>
                 {Object.entries(
-                  Object.values(msg.reactions).reduce((acc: any, emoji) => {
-                    acc[emoji] = (acc[emoji] || 0) + 1;
+                  Object.values(msg.reactions).reduce((acc: Record<string, number>, emoji: any) => {
+                    const key = String(emoji);
+                    acc[key] = (acc[key] || 0) + 1;
                     return acc;
                   }, {})
                 ).map(([emoji, count]: [string, any]) => {
@@ -676,4 +749,71 @@ export const MessageItem = React.memo<MessageItemProps>(function MessageItem({
       </motion.div>
     </div>
   );
-});
+}
+
+function areMessagePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
+  // 1. Message identity and content checks
+  if (prev.msg !== next.msg) {
+    const p = prev.msg;
+    const n = next.msg;
+    if (
+      p.id !== n.id ||
+      p.text !== n.text ||
+      p.deleted !== n.deleted ||
+      p.deletedBy !== n.deletedBy ||
+      p.deliveryStatus !== n.deliveryStatus ||
+      p.isEdited !== n.isEdited ||
+      p.timestamp !== n.timestamp ||
+      p.media !== n.media ||
+      p.gameInvite !== n.gameInvite ||
+      JSON.stringify(p.reactions) !== JSON.stringify(n.reactions) ||
+      p.replyTo?.id !== n.replyTo?.id ||
+      p.replyTo?.text !== n.replyTo?.text
+    ) {
+      return false;
+    }
+  }
+
+  // 2. Selection states
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.selectionActive !== next.selectionActive) return false;
+  if (prev.selectionActive && prev.selectionCount !== next.selectionCount) return false;
+
+  // 3. Interaction frontier & read status
+  if (prev.isInteractionPoint !== next.isInteractionPoint) return false;
+  if (prev.showSeenText !== next.showSeenText) return false;
+
+  // Read receipts: if partnerLastReadAt crossed this message's timestamp
+  if (prev.partnerLastReadAt !== next.partnerLastReadAt && prev.msg.sender_role === prev.role) {
+    const msgTs = getMillis(prev.msg.timestamp);
+    const prevSeen = msgTs > 0 && msgTs <= prev.partnerLastReadAt;
+    const nextSeen = msgTs > 0 && msgTs <= next.partnerLastReadAt;
+    if (prevSeen !== nextSeen) return false;
+  }
+
+  // Partner online state affects delivery double ticks
+  if (prev.isPartnerOnline !== next.isPartnerOnline && prev.msg.sender_role === prev.role) {
+    return false;
+  }
+
+  // 4. Role & profile display changes
+  if (prev.role !== next.role) return false;
+  if (prev.partnerProfile?.photo_url !== next.partnerProfile?.photo_url) return false;
+  if (prev.partnerProfile?.display_name !== next.partnerProfile?.display_name) return false;
+  if (prev.partnerProfile?.last_read_at !== next.partnerProfile?.last_read_at && prev.isInteractionPoint) return false;
+  if (prev.userProfile?.partnerNicknames !== next.userProfile?.partnerNicknames) return false;
+
+  // 5. Replied message updates
+  if (prev.replyToMessage !== next.replyToMessage) {
+    if (
+      prev.replyToMessage?.deleted !== next.replyToMessage?.deleted ||
+      prev.replyToMessage?.text !== next.replyToMessage?.text
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export const MessageItem = React.memo<MessageItemProps>(MessageItemComponent, areMessagePropsEqual);

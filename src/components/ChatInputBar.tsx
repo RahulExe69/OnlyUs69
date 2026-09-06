@@ -618,7 +618,24 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
               rows={1}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => setShowEmojiPicker(false)}
+              onFocus={() => {
+                if (typeof window !== 'undefined') {
+                  (window as any).__isChatInputFocused = true;
+                }
+                setShowEmojiPicker(false);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  if (typeof document !== 'undefined') {
+                    const activeEl = document.activeElement;
+                    if (activeEl?.id !== 'chat-message-input') {
+                      if (typeof window !== 'undefined' && !(window as any).__keepChatInputActive) {
+                        (window as any).__isChatInputFocused = false;
+                      }
+                    }
+                  }
+                }, 250);
+              }}
               inputMode="text"
               enterKeyHint="send"
               autoCapitalize="sentences"

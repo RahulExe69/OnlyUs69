@@ -73,6 +73,27 @@ import imageCompression from 'browser-image-compression';
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
+export const closeMobileKeyboard = () => {
+  if (typeof window !== 'undefined') {
+    (window as any).__isChatInputFocused = false;
+    (window as any).__keepChatInputActive = false;
+  }
+  if (typeof document !== 'undefined') {
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as any).isContentEditable)) {
+      activeEl.blur();
+    }
+    const chatInput = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+    chatInput?.blur();
+  }
+  try {
+    (window as any).AndroidBridge?.closeKeyboard?.();
+    (window as any).Android?.closeKeyboard?.();
+    (window as any).AndroidBridge?.hideKeyboard?.();
+    (window as any).Android?.hideKeyboard?.();
+  } catch (_) {}
+};
+
 export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -289,7 +310,37 @@ export default function App() {
     return () => clearInterval(tickInterval);
   }, []);
 
+  // Automatically close keyboard when navigating away from chat screen or opening full-page modals
+  useEffect(() => {
+    if (
+      activeHubTab !== 'chat' ||
+      showProfileModal ||
+      showCustomizeModal ||
+      showGamesMenu ||
+      showPartnerInfo ||
+      showClearChatConfirm ||
+      showDeleteChoices ||
+      activeGame ||
+      showFullImage
+    ) {
+      closeMobileKeyboard();
+    }
+  }, [
+    activeHubTab,
+    showProfileModal,
+    showCustomizeModal,
+    showGamesMenu,
+    showPartnerInfo,
+    showClearChatConfirm,
+    showDeleteChoices,
+    activeGame,
+    showFullImage,
+  ]);
+
   const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+    if (tab !== 'chat') {
+      closeMobileKeyboard();
+    }
     if (tab === 'dashboard' && typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
       (document.activeElement as HTMLElement).blur();
     }
@@ -326,6 +377,9 @@ export default function App() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.setHubTab = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+        if (tab !== 'chat') {
+          closeMobileKeyboard();
+        }
         setActiveHubTab(tab);
       };
       window.getCurrentHubTab = () => {
@@ -790,8 +844,8 @@ export default function App() {
         }
       }).subscribe();
 
-    // Fast periodic check (every 5 seconds) to ensure instant logout if config changes
-    const pollInterval = setInterval(fetchConfig, 5000);
+    // Background fallback check (every 60 seconds) to ensure logout if config changes
+    const pollInterval = setInterval(fetchConfig, 60000);
 
     return () => { 
       supabase.removeChannel(configSub); 
@@ -2170,7 +2224,7 @@ function QuotaBanner() {
   );
 }
 
-function ChatView({ 
+const ChatView = React.memo(function ChatView({ 
   role, 
   messages,
   setMessages,
@@ -2722,14 +2776,89 @@ function ChatView({
     });
   }, [messages, role]);
 
-  const displayedMessages = visibleMessages.slice(-messageLimit);
+  const displayedMessages = useMemo(() => {
+    return visibleMessages.slice(-messageLimit);
+  }, [visibleMessages, messageLimit]);
+
   const hasMoreMessages = visibleMessages.length > messageLimit;
+
+  // Memoized lookup map for instant O(1) reply message resolution
+  const messagesMap = useMemo(() => {
+    const map = new Map<string, Message>();
+    for (let i = 0; i < visibleMessages.length; i++) {
+      const m = visibleMessages[i];
+      map.set(m.id, m);
+    }
+    return map;
+  }, [visibleMessages]);
+
+  // Memoized Set of selected message IDs for instant O(1) lookup
+  const selectedMessageIds = useMemo(() => {
+    const set = new Set<string>();
+    for (let i = 0; i < selectedMessages.length; i++) {
+      set.add(selectedMessages[i].id);
+    }
+    return set;
+  }, [selectedMessages]);
+
+  const partnerLastReadMillis = useMemo(() => {
+    return partnerProfile?.last_read_at ? getMillis(partnerProfile.last_read_at) : partnerLastReadAt;
+  }, [partnerProfile?.last_read_at, partnerLastReadAt]);
+
+  // Single-pass reverse computation for interaction points and seen indicator
+  const { interactionId, showIndicatorSeenText } = useMemo(() => {
+    let lastSentByMe: Message | null = null;
+    let lastMsgByPartner: Message | null = null;
+    let seenFrontierId: string | undefined = undefined;
+
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m.sender_role === role) {
+        if (!lastSentByMe) {
+          lastSentByMe = m;
+        }
+        if (!seenFrontierId) {
+          const msgTs = getMillis(m.timestamp);
+          if (msgTs > 0 && msgTs <= partnerLastReadMillis) {
+            seenFrontierId = m.id;
+          }
+        }
+      } else {
+        if (!lastMsgByPartner) {
+          lastMsgByPartner = m;
+        }
+      }
+      if (lastSentByMe && lastMsgByPartner && seenFrontierId) break;
+    }
+
+    const meLastMillis = lastSentByMe ? getMillis(lastSentByMe.timestamp) : 0;
+    const partnerLastMillis = lastMsgByPartner ? getMillis(lastMsgByPartner.timestamp) : 0;
+
+    let targetId: string | null | undefined = null;
+    let showSeen = false;
+
+    if (partnerLastMillis >= partnerLastReadMillis && partnerLastMillis > 0) {
+      targetId = lastMsgByPartner?.id;
+      showSeen = false;
+    } else if (meLastMillis > 0 && partnerLastReadMillis >= meLastMillis) {
+      targetId = lastSentByMe?.id;
+      showSeen = true;
+    } else if (partnerLastReadMillis > 0) {
+      targetId = seenFrontierId;
+      showSeen = false;
+    }
+
+    return {
+      interactionId: targetId || null,
+      showIndicatorSeenText: showSeen
+    };
+  }, [visibleMessages, role, partnerLastReadMillis]);
 
   useEffect(() => {
     setTimeout(scrollToBottom, 50);
   }, [displayedMessages.length]);
 
-  const toggleReaction = async (msgId: string, emoji: string) => {
+  const toggleReaction = useCallback(async (msgId: string, emoji: string) => {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
 
@@ -2747,42 +2876,30 @@ function ChatView({
     } catch (err) {
       console.error("Reaction error:", err);
     }
-  };
-  
-  // Find the ID of the exact message the partner has last read (frontier)
-  const lastSentByMe = [...visibleMessages].reverse().filter(m => m.sender_role === role);
-  
-  const partnerLastReadMillis = partnerProfile?.last_read_at ? getMillis(partnerProfile.last_read_at) : partnerLastReadAt;
-  
-  const seenFrontierId = lastSentByMe.find(m => {
-    const msgTs = getMillis(m.timestamp);
-    return msgTs > 0 && msgTs <= partnerLastReadMillis;
-  })?.id;
+  }, [messages, role, onClearSelection]);
 
-  const lastSentMsgId = lastSentByMe[0]?.id;
+  const selectedMessagesCountRef = useRef(selectedMessages.length);
+  selectedMessagesCountRef.current = selectedMessages.length;
 
-  // Refined Interaction Logic: One indicator at a time
-  const lastMsgByPartner = [...visibleMessages].reverse().find(m => m.sender_role !== role);
-  const meLastMillis = lastSentByMe[0] ? getMillis(lastSentByMe[0].timestamp) : 0;
-  const partnerLastMillis = lastMsgByPartner ? getMillis(lastMsgByPartner.timestamp) : 0;
-  const partnerReadMillis = partnerLastReadMillis;
+  const handleFocusInput = useCallback(() => {
+    chatInputRef.current?.focusInput();
+  }, []);
 
-  let interactionId = null;
-  let showIndicatorSeenText = false;
+  const handleViewImage = useCallback((url: string) => {
+    if (selectedMessagesCountRef.current > 0) return;
+    onViewImage(url);
+  }, [onViewImage]);
 
-  if (partnerLastMillis >= partnerReadMillis && partnerLastMillis > 0) {
-    // Partner just sent a message
-    interactionId = lastMsgByPartner?.id;
-    showIndicatorSeenText = false;
-  } else if (meLastMillis > 0 && partnerReadMillis >= meLastMillis) {
-    // Partner just read my latest message
-    interactionId = lastSentByMe[0]?.id;
-    showIndicatorSeenText = true;
-  } else if (partnerReadMillis > 0) {
-    // Partner is somewhere in the past reading my messages
-    interactionId = seenFrontierId;
-    showIndicatorSeenText = false;
-  }
+  const handleViewMedia = useCallback((media: MediaAttachment, fullList?: MediaAttachment[], initialIndex?: number) => {
+    if (selectedMessagesCountRef.current > 0) return;
+    setActiveMediaViewer(media);
+    setActiveMediaList(fullList || (media.mediaList) || [media]);
+    setActiveMediaIndex(initialIndex || 0);
+  }, []);
+
+  const handleJoinGame = useCallback((game: any) => {
+    onSetActiveGame(game);
+  }, [onSetActiveGame]);
 
   // Update last_read_at when new messages from partner arrive OR when user returns to tab
   useEffect(() => {
@@ -2800,14 +2917,17 @@ function ChatView({
     updateReadStatus();
   }, [messages.length, userProfile?.uid, role, isTabActive, isOverlayOpen]);
 
-  // Native capture listeners: keep native mobile keyboard open when tapping, swiping, or selecting messages
+  // Native capture listeners: keep native mobile keyboard open when tapping, swiping, or clicking on the chat screen
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
     const handlePointerDownCapture = (e: PointerEvent | MouseEvent) => {
       const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+      const isInputActive =
+        (window as any).__isChatInputFocused ||
+        (typeof document !== 'undefined' &&
+          (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
       if (!isInputActive) return;
 
       const target = e.target as HTMLElement | null;
@@ -2822,11 +2942,18 @@ function ChatView({
 
       // Ensure focus stays securely on the input without scrolling
       inputEl?.focus({ preventScroll: true });
+      try {
+        (window as any).AndroidBridge?.openKeyboard?.();
+        (window as any).Android?.openKeyboard?.();
+      } catch (_) {}
     };
 
     const handleTouchStartCapture = (e: TouchEvent) => {
       const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+      const isInputActive =
+        (window as any).__isChatInputFocused ||
+        (typeof document !== 'undefined' &&
+          (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
       if (!isInputActive) return;
 
       const target = e.target as HTMLElement | null;
@@ -2835,21 +2962,37 @@ function ChatView({
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       if (target.closest('[data-media-clickable="true"]')) return;
 
-      requestAnimationFrame(() => {
-        if (document.activeElement !== inputEl) {
-          inputEl?.focus({ preventScroll: true });
+      (window as any).__keepChatInputActive = true;
+    };
+
+    const handleTouchEndCapture = (e: TouchEvent) => {
+      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      if ((window as any).__isChatInputFocused && inputEl) {
+        const target = e.target as HTMLElement | null;
+        if (target && !target.closest('[data-media-clickable="true"]') && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          inputEl.focus({ preventScroll: true });
+          try {
+            (window as any).AndroidBridge?.openKeyboard?.();
+            (window as any).Android?.openKeyboard?.();
+          } catch (_) {}
         }
-      });
+      }
+      setTimeout(() => {
+        (window as any).__keepChatInputActive = false;
+      }, 120);
     };
 
     container.addEventListener('pointerdown', handlePointerDownCapture, { capture: true, passive: false });
     container.addEventListener('mousedown', handlePointerDownCapture, { capture: true });
     container.addEventListener('touchstart', handleTouchStartCapture, { capture: true, passive: true });
+    container.addEventListener('touchend', handleTouchEndCapture, { capture: true, passive: true });
 
     return () => {
       container.removeEventListener('pointerdown', handlePointerDownCapture, { capture: true });
       container.removeEventListener('mousedown', handlePointerDownCapture, { capture: true });
       container.removeEventListener('touchstart', handleTouchStartCapture, { capture: true });
+      container.removeEventListener('touchend', handleTouchEndCapture, { capture: true });
+      closeMobileKeyboard();
     };
   }, []);
 
@@ -2863,13 +3006,34 @@ function ChatView({
           className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
           onPointerDown={(e) => {
             const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-            const isInputActive = typeof document !== 'undefined' && document.activeElement === inputEl;
+            const isInputActive =
+              (window as any).__isChatInputFocused ||
+              (typeof document !== 'undefined' &&
+                (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
             if (isInputActive) {
               const target = e.target as HTMLElement;
               const isMedia = target.closest('[data-media-clickable="true"]');
               if (!isMedia) {
                 e.preventDefault();
                 inputEl?.focus({ preventScroll: true });
+                try {
+                  (window as any).AndroidBridge?.openKeyboard?.();
+                  (window as any).Android?.openKeyboard?.();
+                } catch (_) {}
+              }
+            }
+          }}
+          onClick={(e) => {
+            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+            if ((window as any).__isChatInputFocused && inputEl) {
+              const target = e.target as HTMLElement;
+              const isMedia = target.closest('[data-media-clickable="true"]');
+              if (!isMedia) {
+                inputEl.focus({ preventScroll: true });
+                try {
+                  (window as any).AndroidBridge?.openKeyboard?.();
+                  (window as any).Android?.openKeyboard?.();
+                } catch (_) {}
               }
             }
           }}
@@ -2906,31 +3070,23 @@ function ChatView({
                 key={msg.id} 
                 msg={msg} 
                 role={role} 
-                allMessages={visibleMessages}
+                replyToMessage={msg.replyTo?.id ? messagesMap.get(msg.replyTo.id) : undefined}
                 onReact={toggleReaction} 
-                isSelected={!!selectedMessages.find(m => m.id === msg.id)}
+                isSelected={selectedMessageIds.has(msg.id)}
                 selectionCount={selectedMessages.length}
                 onToggleSelect={onToggleSelect}
                 selectionActive={selectedMessages.length > 0}
                 onReply={onSetReplyingTo}
-                onFocusInput={() => chatInputRef.current?.focusInput()}
+                onFocusInput={handleFocusInput}
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
-                onViewImage={(url) => {
-                  if (selectedMessages.length > 0) return;
-                  onViewImage(url);
-                }}
-                onViewMedia={(media, fullList, initialIndex) => {
-                  if (selectedMessages.length > 0) return;
-                  setActiveMediaViewer(media);
-                  setActiveMediaList(fullList || (media.mediaList) || [media]);
-                  setActiveMediaIndex(initialIndex || 0);
-                }}
+                onViewImage={handleViewImage}
+                onViewMedia={handleViewMedia}
                 isInteractionPoint={msg.id === interactionId}
                 showSeenText={msg.id === interactionId && showIndicatorSeenText}
                 partnerLastReadAt={partnerLastReadMillis}
                 isPartnerOnline={isPartnerOnline}
-                onJoinGame={(game) => onSetActiveGame(game)}
+                onJoinGame={handleJoinGame}
                 onTriggerNudge={onSendNudge}
               />
             ))
@@ -3141,4 +3297,4 @@ function ChatView({
       </BottomSheet>
     </div>
   );
-}
+});

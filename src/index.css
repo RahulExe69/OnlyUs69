@@ -80,6 +80,17 @@ body {
   #message-container {
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
+    will-change: scroll-position;
+  }
+
+  .chat-message-row {
+    content-visibility: auto;
+    contain-intrinsic-size: 72px;
+  }
+
+  .chat-message-row.is-active-row {
+    content-visibility: visible;
   }
 
   /* Custom Scrollbar for a cleaner look */
