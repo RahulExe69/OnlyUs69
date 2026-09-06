@@ -1,0 +1,397 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { Message, UserProfile, UserRole } from '../types';
+import { hydrateMessageMedia } from '../lib/dateUtils';
+import { cacheMessages, loadCachedMessages } from '../lib/safeStorage';
+import { initMediaSyncListener, flushPendingMediaRestores } from '../lib/mediaStore';
+
+export interface UseMessageSyncOptions {
+  user: any;
+  userProfile: UserProfile | null;
+  isOwner: boolean;
+  onScrollToBottom?: (smooth?: boolean) => void;
+}
+
+export function useMessageSync({
+  user,
+  userProfile,
+  isOwner,
+  onScrollToBottom,
+}: UseMessageSyncOptions) {
+  const currentRole: UserRole = isOwner ? 'owner' : 'partner';
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const cached = loadCachedMessages();
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
+
+  const channelRef = useRef<any>(null);
+  const isFetchingRef = useRef(false);
+
+  // Sync cache whenever messages state changes
+  useEffect(() => {
+    if (messages.length > 0) {
+      cacheMessages(messages);
+    }
+  }, [messages]);
+
+  // Helper to process raw database messages into UI Message objects
+  const processRawMessages = useCallback((rawData: any[], existingList: Message[]): Message[] => {
+    const chronologicalData = [...rawData].reverse();
+
+    const msgMap = new Map<string, any>();
+    // Pre-populate with existing messages
+    existingList.forEach((m) => {
+      if (m && m.id) msgMap.set(m.id, m);
+    });
+    // Overlay newly fetched messages
+    chronologicalData.forEach((m: any) => {
+      if (m && m.id) msgMap.set(m.id, m);
+    });
+
+    const mappedData = chronologicalData.map((m: any) => {
+      let replyToObj = null;
+      if (m.reply_to) {
+        const orig = msgMap.get(m.reply_to);
+        if (orig) {
+          const isOrigDeletedByMe = orig.deletedBy
+            ? orig.deletedBy === userProfile?.role
+            : orig.sender_role === userProfile?.role;
+          replyToObj = {
+            id: orig.id,
+            text: orig.deleted
+              ? isOrigDeletedByMe
+                ? 'You deleted this message'
+                : 'This message was deleted'
+              : orig.text,
+            sender_role: orig.sender_role,
+          };
+        } else {
+          replyToObj = {
+            id: m.reply_to,
+            text: m.reply_text || 'Original message',
+            sender_role:
+              m.reply_sender_role ||
+              (m.sender_role === 'owner' ? 'partner' : 'owner'),
+          };
+        }
+      }
+      const hydrated = m.deleted ? undefined : hydrateMessageMedia(m);
+      return {
+        ...m,
+        media: hydrated,
+        mediaList: hydrated?.mediaList,
+        timestamp: m.created_at || m.timestamp || new Date().toISOString(),
+        replyTo: replyToObj,
+      };
+    });
+
+    return mappedData;
+  }, [userProfile?.role]);
+
+  // Catch-up synchronization (e.g. after phone wakes from sleep or network reconnects)
+  const refetchCatchUp = useCallback(async () => {
+    if (!user || isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      // Find timestamp of the newest non-temp message
+      const currentList = messagesRef.current;
+      const nonTemp = currentList.filter(
+        (m) => !m.id.startsWith('temp_') && !m.id.startsWith('optimistic_')
+      );
+      const latestMsg = nonTemp[nonTemp.length - 1];
+      const latestCreatedAt = latestMsg?.created_at || latestMsg?.timestamp;
+
+      let query = supabase
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (latestCreatedAt) {
+        // Fetch any messages created at or after our latest known message (with small safety margin)
+        query = query.gte('created_at', latestCreatedAt).limit(100);
+      } else {
+        query = query.limit(50);
+      }
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        const processed = processRawMessages(data, currentList);
+        setMessages((prev) => {
+          const prevMap = new Map<string, Message>();
+          prev.forEach((m) => prevMap.set(m.id, m));
+
+          // Merge or update
+          processed.forEach((m) => {
+            prevMap.set(m.id, m as Message);
+          });
+
+          // Sort chronologically ascending
+          const merged = Array.from(prevMap.values()).sort((a, b) => {
+            const timeA = new Date(a.created_at || a.timestamp || 0).getTime();
+            const timeB = new Date(b.created_at || b.timestamp || 0).getTime();
+            return timeA - timeB;
+          });
+
+          return merged;
+        });
+      }
+
+      // Also flush any pending media restores when reconnecting
+      flushPendingMediaRestores(supabase, currentRole).catch(() => {});
+    } catch (err) {
+      console.warn('[useMessageSync] Catch-up sync warning:', err);
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [user, currentRole, processRawMessages]);
+
+  // Main lifecycle: fetch initial history and attach realtime listener
+  useEffect(() => {
+    if (!user) return;
+
+    initMediaSyncListener(supabase, currentRole);
+    setMessagesLoading(true);
+    let isCancelled = false;
+    let retryTimer: any = null;
+
+    const fetchInitialMessages = async (retryAttempt = 0) => {
+      try {
+        const { data, error: msgErr } = await supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+
+        if (isCancelled) return;
+
+        if (msgErr) {
+          console.warn(
+            '[useMessageSync] Message sync notice (retrying):',
+            msgErr.message || msgErr
+          );
+          if (retryAttempt < 8) {
+            const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
+            retryTimer = setTimeout(() => {
+              if (!isCancelled && user) fetchInitialMessages(retryAttempt + 1);
+            }, delay);
+          }
+        } else if (data) {
+          const processed = processRawMessages(data, []);
+
+          // Deduplicate by ID
+          const uniqueMapped: Message[] = [];
+          const seenIds = new Set<string>();
+          for (const item of processed) {
+            if (item && item.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              uniqueMapped.push(item as Message);
+            }
+          }
+
+          setMessages(uniqueMapped);
+          cacheMessages(uniqueMapped);
+        }
+      } catch (err: any) {
+        console.warn(
+          '[useMessageSync] Network fetch exception (retrying):',
+          err?.message || err
+        );
+        if (retryAttempt < 8) {
+          const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
+          retryTimer = setTimeout(() => {
+            if (!isCancelled && user) fetchInitialMessages(retryAttempt + 1);
+          }, delay);
+        }
+      } finally {
+        if (!isCancelled) {
+          setMessagesLoading(false);
+        }
+      }
+    };
+
+    fetchInitialMessages();
+
+    // Set up Realtime listener
+    const unsubMsg = supabase
+      .channel('public:messages')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages' },
+        (payload: any) => {
+          if (payload.eventType === 'INSERT') {
+            const raw = payload.new;
+            if (!raw || !raw.id) return;
+
+            setMessages((prev) => {
+              let replyToObj = null;
+              if (raw.reply_to) {
+                const orig = prev.find((m) => m.id === raw.reply_to);
+                if (orig) {
+                  const isOrigDeletedByMe = orig.deletedBy
+                    ? orig.deletedBy === userProfile?.role
+                    : orig.sender_role === userProfile?.role;
+                  replyToObj = {
+                    id: orig.id,
+                    text: orig.deleted
+                      ? isOrigDeletedByMe
+                        ? 'You deleted this message'
+                        : 'This message was deleted'
+                      : orig.text,
+                    sender_role: orig.sender_role,
+                  };
+                } else {
+                  replyToObj = {
+                    id: raw.reply_to,
+                    text: raw.reply_text || 'Original message',
+                    sender_role:
+                      raw.reply_sender_role ||
+                      (raw.sender_role === 'owner' ? 'partner' : 'owner'),
+                  };
+                }
+              }
+
+              const hydrated = raw.deleted
+                ? undefined
+                : hydrateMessageMedia(raw);
+              const msg: Message = {
+                ...raw,
+                media: hydrated,
+                mediaList: hydrated?.mediaList,
+                timestamp:
+                  raw.created_at || raw.timestamp || new Date().toISOString(),
+                replyTo: replyToObj,
+              };
+
+              // Remove any optimistic temp message that matches
+              const filtered = prev.filter(
+                (m) =>
+                  m.id !== msg.id &&
+                  !(
+                    m.id.startsWith('temp') &&
+                    (m.text === msg.text || (m.media && msg.media)) &&
+                    m.sender_role === msg.sender_role
+                  )
+              );
+
+              if (
+                typeof window !== 'undefined' &&
+                typeof (window as any).AndroidBridge?.onNewMessage ===
+                  'function'
+              ) {
+                try {
+                  (window as any).AndroidBridge.onNewMessage(
+                    JSON.stringify(msg)
+                  );
+                } catch (e) {
+                  console.warn('AndroidBridge.onNewMessage error:', e);
+                }
+              }
+
+              return [...filtered, msg];
+            });
+
+            if (onScrollToBottom) {
+              requestAnimationFrame(() => onScrollToBottom(false));
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const raw = payload.new;
+            setMessages((prev) => {
+              let replyToObj = null;
+              if (raw.reply_to) {
+                const orig = prev.find((m) => m.id === raw.reply_to);
+                if (orig) {
+                  const isOrigDeletedByMe = orig.deletedBy
+                    ? orig.deletedBy === userProfile?.role
+                    : orig.sender_role === userProfile?.role;
+                  replyToObj = {
+                    id: orig.id,
+                    text: orig.deleted
+                      ? isOrigDeletedByMe
+                        ? 'You deleted this message'
+                        : 'This message was deleted'
+                      : orig.text,
+                    sender_role: orig.sender_role,
+                  };
+                } else {
+                  replyToObj = {
+                    id: raw.reply_to,
+                    text: raw.reply_text || 'Original message',
+                    sender_role:
+                      raw.reply_sender_role ||
+                      (raw.sender_role === 'owner' ? 'partner' : 'owner'),
+                  };
+                }
+              }
+
+              const hydrated = raw.deleted
+                ? undefined
+                : hydrateMessageMedia(raw);
+              const msg: Message = {
+                ...raw,
+                media: hydrated,
+                mediaList: hydrated?.mediaList,
+                timestamp:
+                  raw.created_at || raw.timestamp || new Date().toISOString(),
+                replyTo: replyToObj,
+              };
+
+              return prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m));
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old?.id;
+            if (deletedId) {
+              setMessages((prev) => prev.filter((m) => m.id !== deletedId));
+            }
+          }
+        }
+      )
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          // Channel connected successfully, catch up on any missed messages
+          refetchCatchUp();
+        }
+      });
+
+    channelRef.current = unsubMsg;
+
+    // Visibility and Online reconnection listeners for Android WebView resilience
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        refetchCatchUp();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      refetchCatchUp();
+    };
+
+    const handleNetworkOnline = () => {
+      refetchCatchUp();
+    };
+
+    window.addEventListener('visibilitychange', handleWakeUp);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleNetworkOnline);
+
+    return () => {
+      isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+      window.removeEventListener('visibilitychange', handleWakeUp);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleNetworkOnline);
+    };
+  }, [user?.id, currentRole, processRawMessages, refetchCatchUp, userProfile?.role, onScrollToBottom]);
+
+  return {
+    messages,
+    setMessages,
+    messagesLoading,
+    refetchCatchUp,
+  };
+}

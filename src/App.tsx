@@ -64,10 +64,10 @@ import { NudgeOverlay } from './components/NudgeOverlay';
 import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './components/BottomSheet';
 import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
 import { MessageItem } from './components/MessageItem';
-import { PlayTogetherHub } from './components/PlayTogetherHub';
-import TicTacToe from './components/TicTacToeModal';
-import ConnectHearts from './components/ConnectHeartsModal';
-import DotsAndBoxes from './components/DotsAndBoxesModal';
+import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModals';
+import { DeleteChoicesModal } from './components/DeleteChoicesModal';
+import { GameOverlayManager } from './components/GameOverlayManager';
+import { useMessageSync } from './hooks/useMessageSync';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -86,12 +86,6 @@ export const closeMobileKeyboard = () => {
     const chatInput = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
     chatInput?.blur();
   }
-  try {
-    (window as any).AndroidBridge?.closeKeyboard?.();
-    (window as any).Android?.closeKeyboard?.();
-    (window as any).AndroidBridge?.hideKeyboard?.();
-    (window as any).Android?.hideKeyboard?.();
-  } catch (_) {}
 };
 
 export default function App() {
@@ -104,10 +98,11 @@ export default function App() {
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(() => {
-    return loadCachedMessages();
+  const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
+    user,
+    userProfile,
+    isOwner,
   });
-  const [messagesLoading, setMessagesLoading] = useState(messages.length === 0);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
@@ -246,7 +241,6 @@ export default function App() {
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', updateViewportHeight);
-      window.visualViewport.addEventListener('scroll', updateViewportHeight);
     } else {
       window.addEventListener('resize', updateViewportHeight);
     }
@@ -255,7 +249,6 @@ export default function App() {
       cancelAnimationFrame(rafId);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', updateViewportHeight);
-        window.visualViewport.removeEventListener('scroll', updateViewportHeight);
       } else {
         window.removeEventListener('resize', updateViewportHeight);
       }
@@ -439,211 +432,6 @@ export default function App() {
       };
     }
   }, [activeHubTab, isOwner, isPartner, user]);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      cacheMessages(messages);
-    }
-  }, [messages]);
-
-  // Lifecycle 0: Real-time Messages Sync from Supabase (Immediate upon Auth)
-  useEffect(() => {
-    if (!user) return;
-    initMediaSyncListener(supabase, isOwner ? 'owner' : 'partner');
-    setMessagesLoading(true);
-    let isCancelled = false;
-    let retryTimer: any = null;
-
-    const fetchMessages = async (retryAttempt = 0) => {
-      try {
-        const { data, error: msgErr } = await supabase
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(1000);
-
-        if (isCancelled) return;
-
-        if (msgErr) {
-          console.warn("Message sync notice from Supabase (retrying):", msgErr.message || msgErr);
-          if (retryAttempt < 8) {
-            const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
-            retryTimer = setTimeout(() => {
-              if (!isCancelled && user) fetchMessages(retryAttempt + 1);
-            }, delay);
-          }
-        } else if (data) {
-          // Reverse so messages are in ascending chronological order [oldest ... newest]
-          const chronologicalData = [...data].reverse();
-
-          const msgMap = new Map<string, any>();
-          chronologicalData.forEach((m: any) => {
-            if (m && m.id) msgMap.set(m.id, m);
-          });
-
-          const mappedData = chronologicalData.map((m: any) => {
-            let replyToObj = null;
-            if (m.reply_to) {
-              const orig = msgMap.get(m.reply_to);
-              if (orig) {
-                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
-                replyToObj = {
-                  id: orig.id,
-                  text: orig.deleted 
-                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
-                    : orig.text,
-                  sender_role: orig.sender_role
-                };
-              } else {
-                replyToObj = {
-                  id: m.reply_to,
-                  text: m.reply_text || 'Original message',
-                  sender_role: m.reply_sender_role || (m.sender_role === 'owner' ? 'partner' : 'owner')
-                };
-              }
-            }
-            const hydrated = m.deleted ? undefined : hydrateMessageMedia(m);
-            return {
-              ...m,
-              media: hydrated,
-              mediaList: hydrated?.mediaList,
-              timestamp: m.created_at || m.timestamp || new Date().toISOString(),
-              replyTo: replyToObj
-            };
-          });
-
-          // Deduplicate by ID to guarantee unique keys
-          const uniqueMapped: Message[] = [];
-          const seenIds = new Set<string>();
-          for (const item of mappedData) {
-            if (item && item.id && !seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              uniqueMapped.push(item as Message);
-            }
-          }
-
-          setMessages(uniqueMapped);
-          cacheMessages(uniqueMapped);
-        }
-      } catch (err: any) {
-        console.warn("Network fetch exception when syncing messages (retrying):", err?.message || err);
-        if (retryAttempt < 8) {
-          const delay = Math.min(1500 * Math.pow(1.4, retryAttempt), 8000);
-          retryTimer = setTimeout(() => {
-            if (!isCancelled && user) fetchMessages(retryAttempt + 1);
-          }, delay);
-        }
-      } finally {
-        if (!isCancelled) {
-          setMessagesLoading(false);
-        }
-      }
-    };
-
-    fetchMessages();
-
-    const unsubMsg = supabase.channel('public:messages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
-        if (payload.eventType === 'INSERT') {
-          const raw = payload.new;
-          if (!raw || !raw.id) return;
-
-          setMessages(prev => {
-            let replyToObj = null;
-            if (raw.reply_to) {
-              const orig = prev.find(m => m.id === raw.reply_to);
-              if (orig) {
-                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
-                replyToObj = {
-                  id: orig.id,
-                  text: orig.deleted 
-                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
-                    : orig.text,
-                  sender_role: orig.sender_role
-                };
-              } else {
-                replyToObj = {
-                  id: raw.reply_to,
-                  text: raw.reply_text || 'Original message',
-                  sender_role: raw.reply_sender_role || (raw.sender_role === 'owner' ? 'partner' : 'owner')
-                };
-              }
-            }
-
-            const hydrated = raw.deleted ? undefined : hydrateMessageMedia(raw);
-            const msg = {
-              ...raw,
-              media: hydrated,
-              mediaList: hydrated?.mediaList,
-              timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
-              replyTo: replyToObj
-            } as Message;
-
-            // Remove any optimistic temp message that matches
-            const filtered = prev.filter(m => 
-              m.id !== msg.id && 
-              !(m.id.startsWith('temp') && (m.text === msg.text || (m.media && msg.media)) && m.sender_role === msg.sender_role)
-            );
-
-            if (typeof window !== 'undefined' && typeof window.AndroidBridge?.onNewMessage === 'function') {
-              try {
-                window.AndroidBridge.onNewMessage(JSON.stringify(msg));
-              } catch (e) {
-                console.warn('AndroidBridge.onNewMessage error:', e);
-              }
-            }
-
-            return [...filtered, msg];
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const raw = payload.new;
-          setMessages(prev => {
-            let replyToObj = null;
-            if (raw.reply_to) {
-              const orig = prev.find(m => m.id === raw.reply_to);
-              if (orig) {
-                const isOrigDeletedByMe = (orig.deletedBy ? orig.deletedBy === userProfile?.role : orig.sender_role === userProfile?.role);
-                replyToObj = {
-                  id: orig.id,
-                  text: orig.deleted 
-                    ? (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted') 
-                    : orig.text,
-                  sender_role: orig.sender_role
-                };
-              } else {
-                replyToObj = {
-                  id: raw.reply_to,
-                  text: raw.reply_text || 'Original message',
-                  sender_role: raw.reply_sender_role || (raw.sender_role === 'owner' ? 'partner' : 'owner')
-                };
-              }
-            }
-
-            const hydrated = raw.deleted ? undefined : hydrateMessageMedia(raw);
-            const msg = {
-              ...raw,
-              media: hydrated,
-              mediaList: hydrated?.mediaList,
-              timestamp: raw.created_at || raw.timestamp || new Date().toISOString(),
-              replyTo: replyToObj
-            } as Message;
-
-            return prev.map(m => m.id === msg.id ? { ...m, ...msg } : m);
-          });
-        } else if (payload.eventType === 'DELETE') {
-          const deletedId = payload.old?.id;
-          if (deletedId) {
-            setMessages(prev => prev.filter(m => m.id !== deletedId));
-          }
-        }
-      }).subscribe();
-      
-    return () => { 
-      isCancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      supabase.removeChannel(unsubMsg); 
-    };
-  }, [user?.id]);
 
   const sendGameInvite = async (type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' = 'tictactoe') => {
     if (!userProfile) return;
@@ -1854,55 +1642,20 @@ export default function App() {
         onThemeSelect={selectTheme}
         isThemeSaving={isThemeSaving}
       />
-      <AnimatePresence>
-        {showDeleteChoices && (
-          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowDeleteChoices(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-            />
-            <motion.div 
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              className="relative w-full max-w-sm bg-white rounded-[2rem] p-6 shadow-2xl space-y-3"
-            >
-              <h3 className="text-sm font-bold text-center text-[#FF8FA3] uppercase tracking-widest mb-4">Delete Message?</h3>
-              
-              <button 
-                onClick={() => deleteSelected(false)}
-                className="w-full py-4 text-sm font-bold text-red-400 hover:bg-red-50 rounded-2xl transition-colors"
-              >
-                Delete for me
-              </button>
-              
-              {selectedMessages.length > 0 && selectedMessages.every(m => m.sender_role === userProfile?.role && !m.deleted) && (
-                <button 
-                  onClick={() => deleteSelected(true)}
-                  className="w-full py-4 text-sm font-bold text-red-400 hover:bg-red-50 rounded-2xl transition-colors"
-                >
-                  Delete for everyone
-                </button>
-              )}
-              
-              <button 
-                onClick={() => setShowDeleteChoices(false)}
-                className="w-full py-4 text-sm font-bold text-[#6E6E6E] border border-[#FF8FA3]/10 rounded-2xl transition-colors active:bg-[#FFD6C9]/10"
-              >
-                Cancel
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <DeleteChoicesModal
+        isOpen={showDeleteChoices}
+        onClose={() => setShowDeleteChoices(false)}
+        selectedMessages={selectedMessages}
+        userProfile={userProfile}
+        onDeleteSelected={deleteSelected}
+      />
 
-      {/* Play Together Hub (Lounge) */}
-      <PlayTogetherHub 
-        isOpen={showGamesMenu} 
-        onClose={() => setShowGamesMenu(false)}
+      <GameOverlayManager
+        activeGame={activeGame}
+        isGameMinimized={isGameMinimized}
+        minimizedCountdown={minimizedCountdown}
+        showGamesMenu={showGamesMenu}
+        onCloseGamesMenu={() => setShowGamesMenu(false)}
         onLaunchGame={(type) => {
           if (minimizedTimerRef.current) {
             clearInterval(minimizedTimerRef.current);
@@ -1911,316 +1664,18 @@ export default function App() {
           setIsGameMinimized(false);
           sendGameInvite(type);
         }}
+        onResumeGame={handleResumeGame}
+        onMinimizeGame={handleMinimizeGame}
+        onTerminateGame={handleTerminateGame}
         role={userProfile?.role || 'partner'}
         userProfile={userProfile}
         partnerProfile={partnerProfile}
         isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+        latestPartnerMessage={latestPartnerMessage}
+        onSendNudge={sendNudge}
+        onSendMainChatMessage={sendMainChatMessageFromGame}
       />
-
-      {/* Minimized Game Floating Banner */}
-      <AnimatePresence>
-        {activeGame && isGameMinimized && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-[150] flex items-center gap-2.5 px-4 py-2 rounded-full bg-[var(--theme-surface)]/95 backdrop-blur-md border border-[var(--theme-accent)] shadow-2xl text-xs font-bold text-[var(--theme-text)] pointer-events-auto"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span className="cursor-pointer select-none" onClick={handleResumeGame}>
-              🎮 {activeGame.type === 'connecthearts' ? 'Connect Hearts' : activeGame.type === 'dotsandboxes' ? 'Dots & Hearts' : 'Tic Tac Toe'} ({minimizedCountdown}s)
-            </span>
-            <button
-              onClick={handleResumeGame}
-              className="px-2.5 py-1 rounded-full bg-[var(--theme-accent)] text-white text-[10px] uppercase tracking-wider font-extrabold cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-sm"
-            >
-              Resume
-            </button>
-            <button
-              onClick={handleTerminateGame}
-              className="p-1 rounded-full text-rose-500 hover:bg-rose-500/15 cursor-pointer transition-colors"
-              title="Leave and end game"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Game Arenas (Full Screen, No Chat Header) */}
-      {activeGame && (
-        <div className={isGameMinimized ? 'hidden' : 'contents'}>
-          {activeGame.type === 'tictactoe' && (
-            <TicTacToe 
-              sessionId={activeGame.id} 
-              role={userProfile?.role || 'partner'} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-              onClose={handleMinimizeGame}
-              onMinimize={handleMinimizeGame}
-              onLeave={handleTerminateGame}
-              onSendNudge={sendNudge}
-              onSendMainChatMessage={sendMainChatMessageFromGame}
-            />
-          )}
-
-          {activeGame.type === 'connecthearts' && (
-            <ConnectHearts 
-              sessionId={activeGame.id} 
-              role={userProfile?.role || 'partner'} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-              onClose={handleMinimizeGame}
-              onMinimize={handleMinimizeGame}
-              onLeave={handleTerminateGame}
-              onSendNudge={sendNudge}
-              onSendMainChatMessage={sendMainChatMessageFromGame}
-            />
-          )}
-
-          {activeGame.type === 'dotsandboxes' && (
-            <DotsAndBoxes 
-              sessionId={activeGame.id} 
-              role={userProfile?.role || 'partner'} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-              onClose={handleMinimizeGame}
-              onMinimize={handleMinimizeGame}
-              onLeave={handleTerminateGame}
-              onSendNudge={sendNudge}
-              onSendMainChatMessage={sendMainChatMessageFromGame}
-            />
-          )}
-        </div>
-      )}
     </div>
-  );
-}
-
-function LoginView({ 
-  error, 
-  onLogin, 
-  onPasscodeLogin 
-}: { 
-  error: string | null; 
-  onLogin: () => void; 
-  onPasscodeLogin: (code: string) => Promise<boolean>; 
-}) {
-  const [loginMode, setLoginMode] = useState<'passcode' | 'google'>('passcode');
-  const [passcode, setPasscode] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const handlePasscodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passcode.trim().length !== 6) {
-      setLocalError("Please enter a valid 6-digit code.");
-      return;
-    }
-    setLocalError(null);
-    setIsVerifying(true);
-    try {
-      const ok = await onPasscodeLogin(passcode.trim());
-      if (!ok) {
-        setLocalError("Invalid 6-digit passcode. Please enter the active PIN.");
-      }
-    } catch (err: any) {
-      setLocalError(err.message || "Failed to verify passcode.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleDigitChange = (val: string) => {
-    const cleaned = val.replace(/\D/g, '').slice(0, 6);
-    setPasscode(cleaned);
-    if (localError) setLocalError(null);
-  };
-
-  const displayError = localError || error;
-
-  return (
-    <div className="h-[100dvh] bg-[#FFF8F6] flex items-center justify-center p-4 overflow-hidden">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm bg-white/80 rounded-[2.5rem] p-8 sm:p-10 shadow-[0_32px_64px_-16px_rgba(255,143,163,0.18)] border border-[#FF8FA3]/15 backdrop-blur-xl"
-      >
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#FF8FA3] rounded-[1.8rem] mb-4 shadow-xl shadow-[#FF8FA3]/20">
-            <Heart className="w-8 h-8 text-white fill-white animate-pulse" />
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight mb-1 text-[#1a1a1a]">OnlyUs</h2>
-          <p className="text-[#6E6E6E] text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Handcrafted Romantic Space</p>
-        </div>
-
-        {/* Login Mode Selector */}
-        <div className="flex bg-[#FFF0F3] p-1 rounded-2xl mb-6 border border-[#FF8FA3]/10">
-          <button
-            type="button"
-            onClick={() => { setLoginMode('passcode'); setLocalError(null); }}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              loginMode === 'passcode'
-                ? 'bg-white text-[#FF8FA3] shadow-sm'
-                : 'text-[#6E6E6E]/60 hover:text-[#6E6E6E]'
-            }`}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Passcode (PIN)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setLoginMode('google'); setLocalError(null); }}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              loginMode === 'google'
-                ? 'bg-white text-[#FF8FA3] shadow-sm'
-                : 'text-[#6E6E6E]/60 hover:text-[#6E6E6E]'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Google Login</span>
-          </button>
-        </div>
-
-        {displayError && (
-          <motion.div 
-            initial={{ opacity: 0, y: -5 }} 
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-3.5 bg-red-50 text-red-500 text-[11px] font-medium leading-relaxed rounded-2xl flex items-start gap-2.5 border border-red-100/60"
-          >
-            <X className="w-4 h-4 mt-0.5 flex-shrink-0 cursor-pointer" onClick={() => setLocalError(null)} />
-            <span>{displayError}</span>
-          </motion.div>
-        )}
-
-        {loginMode === 'passcode' ? (
-          <form 
-            onSubmit={handlePasscodeSubmit} 
-            className="space-y-5"
-            autoComplete="off"
-            noValidate
-            data-lpignore="true"
-            data-1p-ignore="true"
-            data-form-type="other"
-          >
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block text-center opacity-70">
-                Enter 6-Digit Passcode
-              </label>
-              
-              {/* PIN input display boxes */}
-              <div className="relative">
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  name="onlyus_access_code"
-                  id="onlyus_access_code"
-                  autoComplete="one-time-code"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-bwignore="true"
-                  data-form-type="other"
-                  value={passcode}
-                  onChange={(e) => handleDigitChange(e.target.value)}
-                  placeholder="••••••"
-                  autoFocus
-                  style={{ WebkitTextSecurity: 'disc' } as any}
-                  className="w-full h-14 tracking-[0.6em] text-center font-mono text-2xl font-bold bg-[#FFF8F6] border border-[#FF8FA3]/20 rounded-2xl text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#FF8FA3]/30 focus:border-[#FF8FA3] transition-all placeholder:tracking-normal placeholder:font-sans placeholder:text-sm placeholder:opacity-30"
-                />
-              </div>
-              <p className="text-center text-[10px] text-[#6E6E6E] mt-2 opacity-50 font-medium">
-                Enter the active 6-digit access code
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isVerifying || passcode.length !== 6}
-              className="w-full h-14 flex items-center justify-center gap-3 bg-[#FF8FA3] hover:bg-[#FF8FA3]/90 text-white rounded-2xl transition-all font-bold text-xs uppercase tracking-widest shadow-lg shadow-[#FF8FA3]/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isVerifying ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Verifying Code...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>Enter OnlyUs</span>
-                </>
-              )}
-            </button>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <button 
-              type="button"
-              onClick={onLogin}
-              className="w-full h-14 flex items-center justify-center gap-3 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white rounded-2xl transition-all font-bold text-xs uppercase tracking-widest shadow-lg shadow-black/10 active:scale-[0.98]"
-            >
-              <img src="https://www.google.com/favicon.ico" className="w-4 h-4 invert brightness-0" alt="Google" />
-              <span>Connect via Google</span>
-            </button>
-            <p className="text-center text-[10px] text-[#6E6E6E] opacity-50 font-medium">
-              Secure authentication via Google account
-            </p>
-          </div>
-        )}
-
-        <div className="mt-8 flex flex-col items-center gap-3">
-          <div className="w-1 h-1 rounded-full bg-[#FF8FA3]/30"></div>
-          <p className="text-center text-[9px] font-bold text-[#6E6E6E] uppercase tracking-widest opacity-40">
-            Private 1-to-1 Handcrafted Space
-          </p>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function UnauthorizedView({ error, onLogout }: { error: string, onLogout: () => void }) {
-  return (
-    <div className="h-[100dvh] bg-[#FFF8F6] flex items-center justify-center p-4">
-      <div className="text-center max-w-xs">
-        <div className="w-16 h-16 bg-[#FFD6C9] text-[#FF8FA3] rounded-full flex items-center justify-center mx-auto mb-4">
-          <ShieldCheck className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-bold mb-2 text-[#1a1a1a]">Restricted Area</h2>
-        <p className="text-[#6E6E6E] text-sm mb-6">{error}</p>
-        <button 
-          onClick={onLogout}
-          className="text-[#FF8FA3] font-bold uppercase tracking-widest text-[10px] hover:underline"
-        >
-          Try another account
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QuotaBanner() {
-  return (
-    <motion.div 
-      initial={{ height: 0, opacity: 0 }}
-      animate={{ height: 'auto', opacity: 1 }}
-      className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center gap-2 overflow-hidden"
-    >
-      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">
-        Limit Reached: Operating in Real-time Mode Only (No history sync)
-      </span>
-    </motion.div>
   );
 }
 
@@ -2556,7 +2011,9 @@ const ChatView = React.memo(function ChatView({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const handleScroll = () => checkIfNearBottom();
+    const handleScroll = () => {
+      checkIfNearBottom();
+    };
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => el.removeEventListener('scroll', handleScroll);
   }, []);
@@ -2766,6 +2223,23 @@ const ChatView = React.memo(function ChatView({
 
   const [messageLimit, setMessageLimit] = useState(50);
 
+  const handleLoadEarlier = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setMessageLimit(prev => prev + 50);
+      return;
+    }
+    const prevScrollHeight = el.scrollHeight;
+    const prevScrollTop = el.scrollTop;
+    setMessageLimit(prev => prev + 50);
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const heightDiff = scrollRef.current.scrollHeight - prevScrollHeight;
+        scrollRef.current.scrollTop = prevScrollTop + heightDiff;
+      }
+    });
+  }, []);
+
   const visibleMessages = useMemo(() => {
     const seen = new Set<string>();
     return messages.filter(m => {
@@ -2917,85 +2391,6 @@ const ChatView = React.memo(function ChatView({
     updateReadStatus();
   }, [messages.length, userProfile?.uid, role, isTabActive, isOverlayOpen]);
 
-  // Native capture listeners: keep native mobile keyboard open when tapping, swiping, or clicking on the chat screen
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const handlePointerDownCapture = (e: PointerEvent | MouseEvent) => {
-      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      const isInputActive =
-        (window as any).__isChatInputFocused ||
-        (typeof document !== 'undefined' &&
-          (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
-      if (!isInputActive) return;
-
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-
-      // Allow clicking inside inputs, textareas, or full-screen image viewer
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      if (target.closest('[data-media-clickable="true"]')) return;
-
-      // Prevent the browser default action of blurring the active input on touch/mousedown
-      e.preventDefault();
-
-      // Ensure focus stays securely on the input without scrolling
-      inputEl?.focus({ preventScroll: true });
-      try {
-        (window as any).AndroidBridge?.openKeyboard?.();
-        (window as any).Android?.openKeyboard?.();
-      } catch (_) {}
-    };
-
-    const handleTouchStartCapture = (e: TouchEvent) => {
-      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      const isInputActive =
-        (window as any).__isChatInputFocused ||
-        (typeof document !== 'undefined' &&
-          (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
-      if (!isInputActive) return;
-
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      if (target.closest('[data-media-clickable="true"]')) return;
-
-      (window as any).__keepChatInputActive = true;
-    };
-
-    const handleTouchEndCapture = (e: TouchEvent) => {
-      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      if ((window as any).__isChatInputFocused && inputEl) {
-        const target = e.target as HTMLElement | null;
-        if (target && !target.closest('[data-media-clickable="true"]') && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-          inputEl.focus({ preventScroll: true });
-          try {
-            (window as any).AndroidBridge?.openKeyboard?.();
-            (window as any).Android?.openKeyboard?.();
-          } catch (_) {}
-        }
-      }
-      setTimeout(() => {
-        (window as any).__keepChatInputActive = false;
-      }, 120);
-    };
-
-    container.addEventListener('pointerdown', handlePointerDownCapture, { capture: true, passive: false });
-    container.addEventListener('mousedown', handlePointerDownCapture, { capture: true });
-    container.addEventListener('touchstart', handleTouchStartCapture, { capture: true, passive: true });
-    container.addEventListener('touchend', handleTouchEndCapture, { capture: true, passive: true });
-
-    return () => {
-      container.removeEventListener('pointerdown', handlePointerDownCapture, { capture: true });
-      container.removeEventListener('mousedown', handlePointerDownCapture, { capture: true });
-      container.removeEventListener('touchstart', handleTouchStartCapture, { capture: true });
-      container.removeEventListener('touchend', handleTouchEndCapture, { capture: true });
-      closeMobileKeyboard();
-    };
-  }, []);
-
   return (
     <div className="flex flex-col h-full relative">
       <div className="relative flex-1 overflow-hidden flex flex-col min-h-0">
@@ -3004,39 +2399,6 @@ const ChatView = React.memo(function ChatView({
           id="message-container" 
           style={{ touchAction: 'pan-y' }}
           className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
-          onPointerDown={(e) => {
-            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-            const isInputActive =
-              (window as any).__isChatInputFocused ||
-              (typeof document !== 'undefined' &&
-                (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
-            if (isInputActive) {
-              const target = e.target as HTMLElement;
-              const isMedia = target.closest('[data-media-clickable="true"]');
-              if (!isMedia) {
-                e.preventDefault();
-                inputEl?.focus({ preventScroll: true });
-                try {
-                  (window as any).AndroidBridge?.openKeyboard?.();
-                  (window as any).Android?.openKeyboard?.();
-                } catch (_) {}
-              }
-            }
-          }}
-          onClick={(e) => {
-            const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-            if ((window as any).__isChatInputFocused && inputEl) {
-              const target = e.target as HTMLElement;
-              const isMedia = target.closest('[data-media-clickable="true"]');
-              if (!isMedia) {
-                inputEl.focus({ preventScroll: true });
-                try {
-                  (window as any).AndroidBridge?.openKeyboard?.();
-                  (window as any).Android?.openKeyboard?.();
-                } catch (_) {}
-              }
-            }
-          }}
         >
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
@@ -3046,7 +2408,7 @@ const ChatView = React.memo(function ChatView({
           {hasMoreMessages && (
             <div className="flex justify-center mb-4">
               <button 
-                onClick={() => setMessageLimit(prev => prev + 50)}
+                onClick={handleLoadEarlier}
                 className="text-xs font-semibold px-4 py-2 bg-[var(--theme-surface)]/90 hover:bg-[var(--theme-surface)] text-[var(--theme-accent)] rounded-full shadow-sm border border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40 transition-all active:scale-95 flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -3073,7 +2435,6 @@ const ChatView = React.memo(function ChatView({
                 replyToMessage={msg.replyTo?.id ? messagesMap.get(msg.replyTo.id) : undefined}
                 onReact={toggleReaction} 
                 isSelected={selectedMessageIds.has(msg.id)}
-                selectionCount={selectedMessages.length}
                 onToggleSelect={onToggleSelect}
                 selectionActive={selectedMessages.length > 0}
                 onReply={onSetReplyingTo}

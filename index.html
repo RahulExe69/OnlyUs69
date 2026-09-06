@@ -54,15 +54,19 @@
           if (meta) meta.setAttribute('content', t.accent);
 
           // Dynamic visualViewport tracker for mobile keyboards
+          var vhRaf = 0;
           function updateViewportHeight() {
-            var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            root.style.setProperty('--app-height', vh + 'px');
+            if (vhRaf) cancelAnimationFrame(vhRaf);
+            vhRaf = requestAnimationFrame(function() {
+              var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+              root.style.setProperty('--app-height', vh + 'px');
+            });
           }
           if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', updateViewportHeight);
-            window.visualViewport.addEventListener('scroll', updateViewportHeight);
           }
           window.addEventListener('resize', updateViewportHeight);
+          window.addEventListener('orientationchange', updateViewportHeight);
           updateViewportHeight();
         } catch(e) {}
       })();

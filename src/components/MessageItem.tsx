@@ -13,7 +13,7 @@ interface MessageItemProps {
   replyToMessage?: Message;
   onReact: (id: string, emoji: string) => Promise<void>;
   isSelected: boolean;
-  selectionCount: number;
+  selectionCount?: number;
   onToggleSelect: (msg: Message) => void;
   selectionActive: boolean;
   onReply: (msg: Message) => void;
@@ -161,16 +161,6 @@ function MessageItemComponent({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSwiping) return;
 
-    const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-    const isInputActive =
-      (window as any).__isChatInputFocused ||
-      (typeof document !== 'undefined' &&
-        (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
-    if (isInputActive) {
-      e.preventDefault();
-      inputEl?.focus({ preventScroll: true });
-    }
-
     if (e.pointerType === 'touch') {
       if (typeof window !== 'undefined' && window.getSelection) {
         try {
@@ -222,15 +212,6 @@ function MessageItemComponent({
 
     if (selectionActive || isSelected) {
       onToggleSelect(msg);
-    }
-
-    if ((window as any).__isChatInputFocused) {
-      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-      inputEl?.focus({ preventScroll: true });
-      try {
-        (window as any).AndroidBridge?.openKeyboard?.();
-        (window as any).Android?.openKeyboard?.();
-      } catch (_) {}
     }
   };
 
@@ -378,17 +359,6 @@ function MessageItemComponent({
           touchAction: 'pan-y',
           willChange: isSwiping ? 'transform' : 'auto',
         }}
-        onPointerDown={(e) => {
-          const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-          const isInputActive =
-            (window as any).__isChatInputFocused ||
-            (typeof document !== 'undefined' &&
-              (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT'));
-          if (isInputActive) {
-            e.preventDefault();
-            inputEl?.focus({ preventScroll: true });
-          }
-        }}
         onDragStart={() => {
           setIsSwiping(true);
           hasTriggeredReplyThreshold.current = false;
@@ -429,10 +399,6 @@ function MessageItemComponent({
             const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
             inputEl?.focus({ preventScroll: true });
             onFocusInput?.();
-            try {
-              (window as any).AndroidBridge?.openKeyboard?.();
-              (window as any).Android?.openKeyboard?.();
-            } catch (_) {}
           }
           hasTriggeredReplyThreshold.current = false;
         }}
@@ -777,7 +743,6 @@ function areMessagePropsEqual(prev: MessageItemProps, next: MessageItemProps): b
   // 2. Selection states
   if (prev.isSelected !== next.isSelected) return false;
   if (prev.selectionActive !== next.selectionActive) return false;
-  if (prev.selectionActive && prev.selectionCount !== next.selectionCount) return false;
 
   // 3. Interaction frontier & read status
   if (prev.isInteractionPoint !== next.isInteractionPoint) return false;

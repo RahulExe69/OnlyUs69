@@ -33,6 +33,64 @@ function getDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+// -------------------------------------------------------------
+// Object URL Registry with LRU Eviction (prevents WebView memory leaks)
+// -------------------------------------------------------------
+const objectUrlRegistry = new Map<string, string>(); // mediaId -> objectUrl
+const objectUrlAccessOrder: string[] = [];
+const MAX_OBJECT_URLS = 120;
+
+export function getTrackedObjectURL(mediaId: string, blob: Blob): string {
+  if (objectUrlRegistry.has(mediaId)) {
+    const existingUrl = objectUrlRegistry.get(mediaId)!;
+    const idx = objectUrlAccessOrder.indexOf(mediaId);
+    if (idx !== -1) objectUrlAccessOrder.splice(idx, 1);
+    objectUrlAccessOrder.push(mediaId);
+    return existingUrl;
+  }
+
+  // Evict oldest if limit reached
+  if (objectUrlAccessOrder.length >= MAX_OBJECT_URLS) {
+    const oldestId = objectUrlAccessOrder.shift();
+    if (oldestId) {
+      const oldUrl = objectUrlRegistry.get(oldestId);
+      if (oldUrl) {
+        try {
+          URL.revokeObjectURL(oldUrl);
+        } catch (_) {}
+        objectUrlRegistry.delete(oldestId);
+      }
+    }
+  }
+
+  const newUrl = URL.createObjectURL(blob);
+  objectUrlRegistry.set(mediaId, newUrl);
+  objectUrlAccessOrder.push(mediaId);
+  return newUrl;
+}
+
+export function revokeTrackedObjectURL(mediaId: string): void {
+  const url = objectUrlRegistry.get(mediaId);
+  if (url) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (_) {}
+    objectUrlRegistry.delete(mediaId);
+    const idx = objectUrlAccessOrder.indexOf(mediaId);
+    if (idx !== -1) objectUrlAccessOrder.splice(idx, 1);
+  }
+}
+
+export function revokeAllTrackedObjectURLs(): void {
+  objectUrlRegistry.forEach((url) => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (_) {}
+  });
+  objectUrlRegistry.clear();
+  objectUrlAccessOrder.length = 0;
+}
+
 /**
  * Save raw Blob or data URL into local device IndexedDB
  */
@@ -76,7 +134,7 @@ export async function getLocalMedia(mediaId: string): Promise<string | null> {
         if (typeof res === 'string') {
           resolve(res);
         } else if (res instanceof Blob) {
-          const url = URL.createObjectURL(res);
+          const url = getTrackedObjectURL(mediaId, res);
           resolve(url);
         } else {
           resolve(null);
@@ -106,7 +164,6 @@ export async function getLocalMediaBlob(mediaId: string): Promise<Blob | null> {
       req.onsuccess = async () => {
         const res = req.result;
         if (!res) {
-          // Check localStorage dataUrl
           const fallback = localStorage.getItem(`media_${mediaId}`);
           if (fallback && fallback.startsWith('data:')) {
             try {
@@ -151,7 +208,7 @@ export async function downloadAndCacheRemoteMedia(mediaId: string, remoteUrl: st
     if (!response.ok) return null;
     const blob = await response.blob();
     await saveLocalMedia(mediaId, blob);
-    return URL.createObjectURL(blob);
+    return getTrackedObjectURL(mediaId, blob);
   } catch (err) {
     console.warn(`Could not cache remote media ${mediaId}:`, err);
     return null;
@@ -170,7 +227,104 @@ export function formatFileSize(bytes?: number): string {
 // Realtime Peer-to-Peer Media Sync & Re-download Relay
 // -------------------------------------------------------------
 
+export interface PendingMediaRestore {
+  mediaId: string;
+  messageId?: string;
+  requestedBy: 'owner' | 'partner';
+  requestedAt: number;
+  attempts: number;
+}
+
+const PENDING_RESTORES_KEY = 'onlyus_pending_media_restores';
+
+export function getPendingMediaRestores(): PendingMediaRestore[] {
+  try {
+    const raw = localStorage.getItem(PENDING_RESTORES_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePendingMediaRestores(list: PendingMediaRestore[]): void {
+  try {
+    localStorage.setItem(PENDING_RESTORES_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+
+export function addPendingMediaRestore(req: Omit<PendingMediaRestore, 'attempts'>): void {
+  const list = getPendingMediaRestores();
+  const existing = list.find((item) => item.mediaId === req.mediaId);
+  if (existing) {
+    existing.requestedAt = Date.now();
+  } else {
+    list.push({ ...req, attempts: 0 });
+  }
+  const pruned = list.slice(-50);
+  savePendingMediaRestores(pruned);
+}
+
+export function removePendingMediaRestore(mediaId: string): void {
+  const list = getPendingMediaRestores();
+  const filtered = list.filter((item) => item.mediaId !== mediaId);
+  savePendingMediaRestores(filtered);
+}
+
+export async function flushPendingMediaRestores(
+  supabase: SupabaseClient,
+  currentRole: 'owner' | 'partner'
+): Promise<void> {
+  const list = getPendingMediaRestores();
+  if (!list.length) return;
+
+  const now = Date.now();
+  const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const validRequests = list.filter(item => now - item.requestedAt < maxAge && item.attempts < 10);
+
+  if (validRequests.length !== list.length) {
+    savePendingMediaRestores(validRequests);
+  }
+
+  for (const item of validRequests) {
+    if (item.requestedBy === currentRole) {
+      item.attempts += 1;
+      await broadcastRestoreRequest(supabase, item.mediaId, item.messageId, currentRole);
+    }
+  }
+  savePendingMediaRestores(validRequests);
+}
+
 let syncChannel: any = null;
+
+async function broadcastRestoreRequest(
+  supabase: SupabaseClient,
+  mediaId: string,
+  messageId?: string,
+  requestedBy: 'owner' | 'partner' = 'owner'
+): Promise<void> {
+  if (!syncChannel) {
+    initMediaSyncListener(supabase, requestedBy);
+  }
+
+  try {
+    if (syncChannel) {
+      await syncChannel.send({
+        type: 'broadcast',
+        event: 'request_media_restore',
+        payload: {
+          mediaId,
+          messageId,
+          requestedBy,
+          requestedAt: Date.now()
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[MediaSync] Error broadcasting restore request:', err);
+  }
+}
 
 /**
  * Initialize peer media restoration listener
@@ -181,6 +335,12 @@ export function initMediaSyncListener(supabase: SupabaseClient, currentRole: 'ow
   syncChannel = supabase.channel('onlyus-media-peer-sync');
 
   syncChannel
+    .on('broadcast', { event: 'peer_device_online' }, async ({ payload }: any) => {
+      if (payload?.role && payload.role !== currentRole) {
+        console.log('[MediaSync] Partner device online detected, flushing pending media restores...');
+        flushPendingMediaRestores(supabase, currentRole);
+      }
+    })
     .on('broadcast', { event: 'request_media_restore' }, async ({ payload }: any) => {
       const { mediaId, requestedBy, messageId } = payload || {};
       if (!mediaId || requestedBy === currentRole) return;
@@ -240,6 +400,7 @@ export function initMediaSyncListener(supabase: SupabaseClient, currentRole: 'ow
       console.log(`[MediaSync] Received restored media from partner! Caching: ${mediaId}`);
       try {
         const localUrl = await downloadAndCacheRemoteMedia(mediaId, restoredUrl);
+        removePendingMediaRestore(mediaId);
         // Dispatch window event so any visible UI elements immediately re-render
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent(`onlyus_media_synced_${mediaId}`, {
@@ -250,7 +411,18 @@ export function initMediaSyncListener(supabase: SupabaseClient, currentRole: 'ow
         console.warn('[MediaSync] Failed to save restored media:', err);
       }
     })
-    .subscribe();
+    .subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        // Announce presence so partner can fulfill pending restore requests
+        syncChannel.send({
+          type: 'broadcast',
+          event: 'peer_device_online',
+          payload: { role: currentRole, at: Date.now() }
+        }).catch(() => {});
+        // Also flush any requests we have pending
+        flushPendingMediaRestores(supabase, currentRole);
+      }
+    });
 }
 
 /**
@@ -262,24 +434,36 @@ export async function requestPeerMediaRestore(
   messageId?: string,
   requestedBy: 'owner' | 'partner' = 'owner'
 ): Promise<void> {
-  if (!syncChannel) {
-    initMediaSyncListener(supabase, requestedBy);
+  // First check if cloud storage already has this attachment on the message
+  if (messageId) {
+    try {
+      const { data: msg } = await supabase
+        .from('messages')
+        .select('attachment_url')
+        .eq('id', messageId)
+        .single();
+      if (msg?.attachment_url && msg.attachment_url.startsWith('http')) {
+        const cachedUrl = await downloadAndCacheRemoteMedia(mediaId, msg.attachment_url);
+        if (cachedUrl) {
+          removePendingMediaRestore(mediaId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(`onlyus_media_synced_${mediaId}`, {
+              detail: { mediaId, localUrl: cachedUrl }
+            }));
+          }
+          return;
+        }
+      }
+    } catch (_) {}
   }
 
-  try {
-    if (syncChannel) {
-      await syncChannel.send({
-        type: 'broadcast',
-        event: 'request_media_restore',
-        payload: {
-          mediaId,
-          messageId,
-          requestedBy,
-          requestedAt: Date.now()
-        }
-      });
-    }
-  } catch (err) {
-    console.warn('[MediaSync] Error broadcasting restore request:', err);
-  }
+  // Queue into pending restores so even if partner is offline right now, it will re-trigger
+  addPendingMediaRestore({
+    mediaId,
+    messageId,
+    requestedBy,
+    requestedAt: Date.now()
+  });
+
+  await broadcastRestoreRequest(supabase, mediaId, messageId, requestedBy);
 }

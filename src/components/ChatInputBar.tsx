@@ -106,10 +106,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     if (replyingTo) {
       const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
       el?.focus({ preventScroll: true });
-      try {
-        (window as any).AndroidBridge?.openKeyboard?.();
-        (window as any).Android?.openKeyboard?.();
-      } catch (e) {}
     }
   }, [replyingTo, inputRef]);
 
@@ -120,10 +116,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       requestAnimationFrame(() => {
         adjustTextareaHeight();
         el?.focus({ preventScroll: true });
-        try {
-          (window as any).AndroidBridge?.openKeyboard?.();
-          (window as any).Android?.openKeyboard?.();
-        } catch (e) {}
       });
     } else {
       setInputText('');
@@ -625,16 +617,9 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 setShowEmojiPicker(false);
               }}
               onBlur={() => {
-                setTimeout(() => {
-                  if (typeof document !== 'undefined') {
-                    const activeEl = document.activeElement;
-                    if (activeEl?.id !== 'chat-message-input') {
-                      if (typeof window !== 'undefined' && !(window as any).__keepChatInputActive) {
-                        (window as any).__isChatInputFocused = false;
-                      }
-                    }
-                  }
-                }, 250);
+                if (typeof window !== 'undefined') {
+                  (window as any).__isChatInputFocused = false;
+                }
               }}
               inputMode="text"
               enterKeyHint="send"

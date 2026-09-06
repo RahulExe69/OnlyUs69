@@ -36,8 +36,21 @@ export const THEMES = {
 
 export type ThemeName = keyof typeof THEMES;
 
+export const DEFAULT_THEME: ThemeName = 'romantic';
+
+export const isValidTheme = (themeName: any): themeName is ThemeName => {
+  return typeof themeName === 'string' && themeName in THEMES;
+};
+
+export const getTheme = (themeName?: string | null) => {
+  if (themeName && isValidTheme(themeName)) {
+    return THEMES[themeName];
+  }
+  return THEMES[DEFAULT_THEME];
+};
+
 export const applyTheme = (themeName: ThemeName) => {
-  const theme = THEMES[themeName] || THEMES.romantic;
+  const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
   const root = document.documentElement;
   root.dataset.chatTheme = themeName;
   root.style.setProperty('--theme-bg', theme.bg);
