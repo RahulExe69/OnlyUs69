@@ -8,6 +8,7 @@ export interface OnlyUsNotificationPlugin {
     body: string;
     messageId?: string | number;
     senderRole?: string;
+    replyRole?: string;
     notificationId?: number;
     avatarUrl?: string;
   }): Promise<void>;
@@ -145,6 +146,7 @@ export async function dispatchMessageNotification(
         body,
         messageId: msg.id,
         senderRole: msg.sender_role,
+        replyRole: 'owner',
         notificationId: notifId,
         avatarUrl: partnerPhotoUrl
       });

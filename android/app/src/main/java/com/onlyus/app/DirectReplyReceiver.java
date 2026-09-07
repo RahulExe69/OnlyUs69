@@ -3,6 +3,7 @@ package com.onlyus.app;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
@@ -36,22 +37,28 @@ public class DirectReplyReceiver extends BroadcastReceiver {
 
         final String text = replyText.toString().trim();
         final int notificationId = intent.getIntExtra("notification_id", 1001);
-        final String senderRole = intent.getStringExtra("sender_role") != null ? intent.getStringExtra("sender_role") : "owner";
+        final String replyRole = intent.getStringExtra("reply_role") != null ? intent.getStringExtra("reply_role") : "owner";
         final String senderName = intent.getStringExtra("sender_name") != null ? intent.getStringExtra("sender_name") : "Nusrat";
 
-        // Provide immediate visual feedback on the notification card without opening the app
+        // 1. Immediately acknowledge on the notification card without opening the app
         updateNotificationReplied(context, notificationId, senderName, text);
 
-        // Notify active WebView if MainActivity is alive
+        // 2. Record reply timestamp in SharedPreferences to prevent duplicate triggers in SyncService
+        try {
+            SharedPreferences prefs = context.getSharedPreferences("onlyus_sync_prefs", Context.MODE_PRIVATE);
+            prefs.edit().putLong("last_reply_sent_at", System.currentTimeMillis()).apply();
+        } catch (Exception ignored) {}
+
+        // 3. Notify active WebView if MainActivity is alive (so active chat updates instantly)
         MainActivity.notifyReplyReceivedInApp(text);
 
-        // Send directly to Supabase in a background thread
+        // 4. Send directly to Supabase via background executor
         Executors.newSingleThreadExecutor().execute(() -> {
-            boolean success = sendReplyToSupabase(text, senderRole);
+            boolean success = sendReplyToSupabase(text, replyRole);
             if (!success) {
                 Log.e(TAG, "Direct reply failed to post to Supabase");
             } else {
-                Log.d(TAG, "Direct reply successfully posted to Supabase");
+                Log.d(TAG, "Direct reply successfully posted to Supabase as " + replyRole);
             }
         });
     }

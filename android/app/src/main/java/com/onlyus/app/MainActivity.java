@@ -20,7 +20,12 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity implements SensorEventListener {
     private static MainActivity instance;
+    private static volatile boolean isAppForeground = false;
     private SensorManager sensorManager;
+
+    public static boolean isAppInForeground() {
+        return isAppForeground;
+    }
     private Sensor accelerometer;
     private float lastX, lastY, lastZ;
     private long lastUpdate = 0;
@@ -141,6 +146,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     @Override
     public void onPause() {
         super.onPause();
+        isAppForeground = false;
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
@@ -169,8 +175,17 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     @Override
     public void onResume() {
         super.onResume();
+        isAppForeground = true;
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+        }
+
+        // Start background message sync service for Rahul's edition
+        if (!getPackageName().contains("notes")) {
+            try {
+                android.content.Intent serviceIntent = new android.content.Intent(this, OnlyUsSyncService.class);
+                startService(serviceIntent);
+            } catch (Exception ignored) {}
         }
     }
 

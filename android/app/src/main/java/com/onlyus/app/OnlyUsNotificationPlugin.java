@@ -7,10 +7,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Base64;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -19,10 +25,17 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.Executors;
 
 @CapacitorPlugin(name = "OnlyUsNotification")
 public class OnlyUsNotificationPlugin extends Plugin {
     private static final String TAG = "OnlyUsNotification";
+    private static Bitmap sCachedAvatarBitmap = null;
 
     @PluginMethod
     public void showChatNotification(PluginCall call) {
@@ -32,16 +45,58 @@ public class OnlyUsNotificationPlugin extends Plugin {
             return;
         }
 
-        // Stealth edition has zero notifications
+        // Stealth notes edition has zero notifications
         if (context.getPackageName().contains("notes")) {
             call.resolve();
             return;
         }
 
-        String title = call.getString("title", "Nusrat");
-        String body = call.getString("body", "Sent you a message");
-        String senderRole = call.getString("senderRole", "owner");
-        int notificationId = call.getInt("notificationId", (int) (System.currentTimeMillis() % 100000));
+        final String title = call.getString("title", "Nusrat");
+        final String body = call.getString("body", "Sent you a message");
+        final String replyRole = call.getString("replyRole", "owner");
+        final String avatarUrl = call.getString("avatarUrl", null);
+        final int notificationId = call.getInt("notificationId", (int) (System.currentTimeMillis() % 100000));
+
+        // Execute in background thread to allow downloading / decoding avatar without blocking UI
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                showChatNotificationNative(context, title, body, notificationId, replyRole, avatarUrl);
+                call.resolve();
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to post chat notification: " + e.getMessage(), e);
+                call.reject("Failed to show notification", e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void cancelChatNotification(PluginCall call) {
+        Context context = getContext();
+        if (context != null) {
+            int notificationId = call.getInt("notificationId", -1);
+            if (notificationId != -1) {
+                NotificationManagerCompat.from(context).cancel(notificationId);
+            } else {
+                NotificationManagerCompat.from(context).cancelAll();
+            }
+        }
+        call.resolve();
+    }
+
+    /**
+     * Native notification dispatcher callable from both the JS plugin bridge and background SyncService.
+     */
+    public static void showChatNotificationNative(
+        Context context,
+        String title,
+        String body,
+        int notificationId,
+        String replyRole,
+        String avatarUrl
+    ) {
+        if (context == null || context.getPackageName().contains("notes")) {
+            return;
+        }
 
         createNotificationChannel(context);
 
@@ -62,15 +117,16 @@ public class OnlyUsNotificationPlugin extends Plugin {
             activityFlags
         );
 
-        // 2. Direct Reply Action with RemoteInput (Tapping send fires broadcast WITHOUT opening app!)
+        // 2. Direct Reply Action with RemoteInput (tapping Send fires broadcast WITHOUT opening app!)
         RemoteInput remoteInput = new RemoteInput.Builder(DirectReplyReceiver.KEY_TEXT_REPLY)
             .setLabel("Reply to " + title + "...")
             .build();
 
         Intent replyIntent = new Intent(context, DirectReplyReceiver.class);
         replyIntent.setAction(DirectReplyReceiver.ACTION_DIRECT_REPLY);
+        replyIntent.setPackage(context.getPackageName());
         replyIntent.putExtra("notification_id", notificationId);
-        replyIntent.putExtra("sender_role", senderRole);
+        replyIntent.putExtra("reply_role", replyRole != null && !replyRole.isEmpty() ? replyRole : "owner");
         replyIntent.putExtra("sender_name", title);
 
         int broadcastFlags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -93,22 +149,10 @@ public class OnlyUsNotificationPlugin extends Plugin {
         .setAllowGeneratedReplies(true)
         .build();
 
-        // 3. Open Action Button
-        NotificationCompat.Action openAction = new NotificationCompat.Action.Builder(
-            R.drawable.ic_launcher,
-            "Open",
-            openPendingIntent
-        ).build();
+        // 3. Large Icon: Nusrat's Actual Profile Picture (circular cropped)
+        Bitmap largeAvatar = resolveCircularAvatar(context, avatarUrl);
 
-        // 4. Large Icon: Nusrat's Profile Avatar
-        Bitmap largeAvatar = null;
-        try {
-            largeAvatar = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_nusrat_avatar);
-        } catch (Exception e) {
-            Log.w(TAG, "Could not decode avatar drawable: " + e.getMessage());
-        }
-
-        // 5. Build Notification
+        // 4. Build Notification with Heads-Up High Priority
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, OnlyUsConfig.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_onlyus)
             .setContentTitle(title)
@@ -118,8 +162,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
             .setColor(0xFFE11D48)
             .setContentIntent(openPendingIntent)
             .setAutoCancel(true)
-            .addAction(replyAction)
-            .addAction(openAction);
+            .addAction(replyAction);
 
         if (largeAvatar != null) {
             builder.setLargeIcon(largeAvatar);
@@ -127,31 +170,117 @@ public class OnlyUsNotificationPlugin extends Plugin {
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build());
-            call.resolve();
         } catch (SecurityException se) {
-            Log.e(TAG, "Missing notification permission: " + se.getMessage());
-            call.reject("Missing notification permission", se);
+            Log.e(TAG, "Missing POST_NOTIFICATIONS permission: " + se.getMessage());
         } catch (Exception e) {
-            Log.e(TAG, "Error posting notification: " + e.getMessage());
-            call.reject("Failed to show notification", e);
+            Log.e(TAG, "Error posting notification: " + e.getMessage(), e);
         }
     }
 
-    @PluginMethod
-    public void cancelChatNotification(PluginCall call) {
-        Context context = getContext();
-        if (context != null) {
-            int notificationId = call.getInt("notificationId", -1);
-            if (notificationId != -1) {
-                NotificationManagerCompat.from(context).cancel(notificationId);
-            } else {
-                NotificationManagerCompat.from(context).cancelAll();
+    /**
+     * Downloads/decodes partner photo and crops into a crisp, circular WhatsApp-style avatar.
+     */
+    public static Bitmap resolveCircularAvatar(Context context, String avatarUrl) {
+        Bitmap rawBitmap = null;
+
+        // 1. Try decoding from provided URL or base64 string
+        if (avatarUrl != null && !avatarUrl.trim().isEmpty()) {
+            String trimmed = avatarUrl.trim();
+            if (trimmed.startsWith("data:image")) {
+                try {
+                    int comma = trimmed.indexOf(',');
+                    String b64 = comma != -1 ? trimmed.substring(comma + 1) : trimmed;
+                    byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+                    rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to decode base64 avatar: " + e.getMessage());
+                }
+            } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                try {
+                    URL url = new URL(trimmed);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4000);
+                    conn.setDoInput(true);
+                    conn.connect();
+                    if (conn.getResponseCode() == 200) {
+                        try (InputStream is = conn.getInputStream()) {
+                            rawBitmap = BitmapFactory.decodeStream(is);
+                        }
+                    }
+                    conn.disconnect();
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to fetch avatar over HTTP: " + e.getMessage());
+                }
+            }
+
+            // Save decoded raw bitmap to disk cache for offline / background access
+            if (rawBitmap != null && context != null) {
+                try {
+                    File cacheFile = new File(context.getCacheDir(), "nusrat_avatar_cached.png");
+                    try (FileOutputStream fos = new FileOutputStream(cacheFile)) {
+                        rawBitmap.compress(Bitmap.CompressFormat.PNG, 90, fos);
+                    }
+                } catch (Exception ignored) {}
             }
         }
-        call.resolve();
+
+        // 2. Fallback to disk cache if download failed or avatarUrl was null
+        if (rawBitmap == null && context != null) {
+            try {
+                File cacheFile = new File(context.getCacheDir(), "nusrat_avatar_cached.png");
+                if (cacheFile.exists()) {
+                    rawBitmap = BitmapFactory.decodeFile(cacheFile.getAbsolutePath());
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 3. Fallback to bundled drawable avatar
+        if (rawBitmap == null && context != null) {
+            try {
+                rawBitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.ic_nusrat_avatar);
+            } catch (Exception ignored) {}
+        }
+
+        if (rawBitmap == null) return null;
+
+        return getCircularBitmap(rawBitmap);
     }
 
-    private void createNotificationChannel(Context context) {
+    /**
+     * Crops any bitmap into an anti-aliased circle for notifications.
+     */
+    public static Bitmap getCircularBitmap(Bitmap bitmap) {
+        if (bitmap == null) return null;
+        try {
+            int size = Math.min(bitmap.getWidth(), bitmap.getHeight());
+            Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(output);
+
+            final Paint paint = new Paint();
+            final Rect srcRect = new Rect(
+                (bitmap.getWidth() - size) / 2,
+                (bitmap.getHeight() - size) / 2,
+                (bitmap.getWidth() + size) / 2,
+                (bitmap.getHeight() + size) / 2
+            );
+            final Rect destRect = new Rect(0, 0, size, size);
+
+            paint.setAntiAlias(true);
+            paint.setFilterBitmap(true);
+            canvas.drawARGB(0, 0, 0, 0);
+            canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+
+            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+            canvas.drawBitmap(bitmap, srcRect, destRect, paint);
+
+            return output;
+        } catch (Exception e) {
+            return bitmap;
+        }
+    }
+
+    private static void createNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = context.getSystemService(NotificationManager.class);
             if (manager != null) {

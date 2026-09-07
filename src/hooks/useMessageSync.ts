@@ -9,6 +9,7 @@ import { dispatchMessageNotification } from '../lib/notifications';
 export interface UseMessageSyncOptions {
   user: any;
   userProfile: UserProfile | null;
+  partnerProfile?: UserProfile | null;
   isOwner: boolean;
   onScrollToBottom?: (smooth?: boolean) => void;
 }
@@ -16,6 +17,7 @@ export interface UseMessageSyncOptions {
 export function useMessageSync({
   user,
   userProfile,
+  partnerProfile,
   isOwner,
   onScrollToBottom,
 }: UseMessageSyncOptions) {
@@ -294,8 +296,9 @@ export function useMessageSync({
               // WhatsApp-style notification when partner sends message and window is backgrounded or tab inactive
               const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
               if (msg.sender_role !== myRole) {
-                const partnerName = myRole === 'owner' ? 'Nusrat' : 'Rahul';
-                dispatchMessageNotification(msg, partnerName);
+                const partnerName = myRole === 'owner' ? (partnerProfile?.display_name || 'Nusrat') : (partnerProfile?.display_name || 'Rahul');
+                const partnerPhoto = partnerProfile?.photo_url;
+                dispatchMessageNotification(msg, partnerName, partnerPhoto);
               }
 
               return [...filtered, msg];

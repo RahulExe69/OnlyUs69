@@ -243,6 +243,7 @@ export default function App() {
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
     user,
     userProfile,
+    partnerProfile,
     isOwner,
   });
   const [showSettings, setShowSettings] = useState(false);

@@ -10,43 +10,105 @@ const DENSITIES = [
   { name: 'xxxhdpi', size: 192, statSize: 96 }
 ];
 
-const NOTES_SVG = `
+// Full-bleed Notes app icon (used for standard square & round launchers)
+const NOTES_FULL_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFD646" />
-      <stop offset="100%" stop-color="#F59E0B" />
+    <linearGradient id="fullBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="40%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
     </linearGradient>
     <linearGradient id="sheetGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#FFFFFF" />
       <stop offset="100%" stop-color="#FFFDF7" />
     </linearGradient>
+    <linearGradient id="foldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5E7EB" />
+      <stop offset="100%" stop-color="#D1D5DB" />
+    </linearGradient>
+    <filter id="cardShadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#78350F" flood-opacity="0.28" />
+    </filter>
   </defs>
-  <rect x="32" y="32" width="448" height="448" rx="100" fill="url(#bgGrad)" />
-  <rect x="96" y="88" width="320" height="340" rx="26" fill="url(#sheetGrad)" />
-  <path d="M 96,114 A 26,26 0 0,1 122,88 L 390,88 A 26,26 0 0,1 416,114 L 416,156 L 96,156 Z" fill="#D97706" />
-  <!-- Notepad spiral rings -->
-  <circle cx="136" cy="88" r="9" fill="#78350F" />
-  <circle cx="180" cy="88" r="9" fill="#78350F" />
-  <circle cx="224" cy="88" r="9" fill="#78350F" />
-  <circle cx="268" cy="88" r="9" fill="#78350F" />
-  <circle cx="312" cy="88" r="9" fill="#78350F" />
-  <circle cx="356" cy="88" r="9" fill="#78350F" />
-  <circle cx="136" cy="88" r="5" fill="#FEF3C7" />
-  <circle cx="180" cy="88" r="5" fill="#FEF3C7" />
-  <circle cx="224" cy="88" r="5" fill="#FEF3C7" />
-  <circle cx="268" cy="88" r="5" fill="#FEF3C7" />
-  <circle cx="312" cy="88" r="5" fill="#FEF3C7" />
-  <circle cx="356" cy="88" r="5" fill="#FEF3C7" />
-  <!-- Lines -->
-  <rect x="136" y="202" width="240" height="14" rx="7" fill="#D1D5DB" />
-  <rect x="136" y="250" width="190" height="14" rx="7" fill="#D1D5DB" />
-  <rect x="136" y="298" width="220" height="14" rx="7" fill="#D1D5DB" />
-  <rect x="136" y="346" width="160" height="14" rx="7" fill="#D1D5DB" />
-  <!-- Subtle Pen in bottom right -->
-  <path d="M 320,380 L 376,324 L 396,344 L 340,400 Z" fill="#F59E0B" />
-  <path d="M 314,406 L 320,380 L 340,400 Z" fill="#B45309" />
-  <circle cx="316" cy="404" r="2" fill="#1F2937" />
+
+  <!-- Full-bleed background filling 100% of canvas -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#fullBgGrad)" />
+
+  <!-- Centered White Notepad with Folded Corner & Subtle Shadow -->
+  <g filter="url(#cardShadow)">
+    <!-- Notepad Body with clipped top-right corner -->
+    <path d="M 120,86 L 332,86 L 392,146 L 392,420 A 24,24 0 0,1 368,444 L 144,444 A 24,24 0 0,1 120,420 Z" fill="url(#sheetGrad)" />
+    <!-- Folded top-right corner triangle -->
+    <path d="M 332,86 L 332,146 L 392,146 Z" fill="url(#foldGrad)" />
+    <!-- Subtle shade under fold -->
+    <path d="M 332,146 L 332,156 L 392,146 Z" fill="#9CA3AF" opacity="0.3" />
+  </g>
+
+  <!-- Top accent bar on notepad -->
+  <path d="M 144,116 L 310,116" stroke="#F59E0B" stroke-width="12" stroke-linecap="round" />
+
+  <!-- Notepad Ruled Content Lines -->
+  <rect x="144" y="168" width="224" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="144" y="216" width="180" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="144" y="264" width="210" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="144" y="312" width="150" height="14" rx="7" fill="#E5E7EB" />
+
+  <!-- Google Keep Style Checklist Badges -->
+  <circle cx="154" cy="374" r="8" fill="#10B981" />
+  <path d="M 150,374 L 153,377 L 158,371" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="174" y="367" width="120" height="14" rx="7" fill="#D1D5DB" />
+
+  <!-- Stylized Pencil in Bottom Right -->
+  <g transform="translate(320, 360) rotate(-45)">
+    <rect x="-8" y="-36" width="16" height="50" rx="3" fill="#D97706" />
+    <path d="M -8,14 L 0,30 L 8,14 Z" fill="#FDE68A" />
+    <polygon points="-2,26 0,30 2,26" fill="#1F2937" />
+    <rect x="-8" y="-46" width="16" height="10" rx="3" fill="#F43F5E" />
+  </g>
+</svg>
+`;
+
+// Adaptive Foreground (transparent background, icon safely inside 66% circle zone)
+const NOTES_FOREGROUND_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="fgSheetGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#FFFDF7" />
+    </linearGradient>
+    <linearGradient id="fgFoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5E7EB" />
+      <stop offset="100%" stop-color="#D1D5DB" />
+    </linearGradient>
+    <filter id="fgShadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#78350F" flood-opacity="0.32" />
+    </filter>
+  </defs>
+
+  <!-- Transparent background: relies on @color/ic_launcher_background (#F59E0B) -->
+  <g filter="url(#fgShadow)">
+    <path d="M 124,96 L 328,96 L 388,156 L 388,414 A 24,24 0 0,1 364,438 L 148,438 A 24,24 0 0,1 124,414 Z" fill="url(#fgSheetGrad)" />
+    <path d="M 328,96 L 328,156 L 388,156 Z" fill="url(#fgFoldGrad)" />
+    <path d="M 328,156 L 328,166 L 388,156 Z" fill="#9CA3AF" opacity="0.3" />
+  </g>
+
+  <path d="M 148,124 L 306,124" stroke="#F59E0B" stroke-width="12" stroke-linecap="round" />
+  <rect x="148" y="174" width="216" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="148" y="222" width="176" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="148" y="270" width="202" height="14" rx="7" fill="#E5E7EB" />
+  <rect x="148" y="318" width="144" height="14" rx="7" fill="#E5E7EB" />
+
+  <circle cx="158" cy="374" r="8" fill="#10B981" />
+  <path d="M 154,374 L 157,377 L 162,371" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="178" y="367" width="116" height="14" rx="7" fill="#D1D5DB" />
+
+  <g transform="translate(320, 360) rotate(-45)">
+    <rect x="-8" y="-36" width="16" height="50" rx="3" fill="#D97706" />
+    <path d="M -8,14 L 0,30 L 8,14 Z" fill="#FDE68A" />
+    <polygon points="-2,26 0,30 2,26" fill="#1F2937" />
+    <rect x="-8" y="-46" width="16" height="10" rx="3" fill="#F43F5E" />
+  </g>
 </svg>
 `;
 
@@ -115,7 +177,8 @@ async function main() {
   const nusratRes = path.join(process.cwd(), 'android', 'app', 'src', 'nusrat', 'res');
   const mainRes = path.join(process.cwd(), 'android', 'app', 'src', 'main', 'res');
 
-  const notesBuffer = Buffer.from(NOTES_SVG);
+  const notesFullBuffer = Buffer.from(NOTES_FULL_SVG);
+  const notesFgBuffer = Buffer.from(NOTES_FOREGROUND_SVG);
   const statIconBuffer = Buffer.from(ONLYUS_STAT_SVG);
   const nusratAvatarBuffer = Buffer.from(NUSRAT_AVATAR_SVG);
   const faviconBuffer = fs.readFileSync(faviconPath);
@@ -153,26 +216,20 @@ async function main() {
       .png()
       .toFile(path.join(rahulDir, 'ic_launcher_foreground.png'));
 
-    // Nusrat Launcher Icons
-    await sharp(notesBuffer)
+    // Nusrat Launcher Icons (100% Full-bleed without blank borders)
+    await sharp(notesFullBuffer)
       .resize(size, size, { fit: 'cover' })
       .png()
       .toFile(path.join(nusratDir, 'ic_launcher.png'));
 
-    await sharp(notesBuffer)
+    await sharp(notesFullBuffer)
       .resize(size, size, { fit: 'cover' })
       .png()
       .toFile(path.join(nusratDir, 'ic_launcher_round.png'));
 
-    await sharp(notesBuffer)
-      .resize(fgInner, fgInner, { fit: 'contain' })
-      .extend({
-        top: fgPadding,
-        bottom: fgPadding,
-        left: fgPadding,
-        right: fgPadding,
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      })
+    // Nusrat adaptive icon foreground (seamlessly overlays on #F59E0B background)
+    await sharp(notesFgBuffer)
+      .resize(size, size, { fit: 'contain' })
       .png()
       .toFile(path.join(nusratDir, 'ic_launcher_foreground.png'));
   }
