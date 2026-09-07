@@ -4,6 +4,7 @@ import { Message, UserProfile, UserRole } from '../types';
 import { hydrateMessageMedia } from '../lib/dateUtils';
 import { cacheMessages, loadCachedMessages } from '../lib/safeStorage';
 import { initMediaSyncListener, flushPendingMediaRestores } from '../lib/mediaStore';
+import { dispatchMessageNotification } from '../lib/notifications';
 
 export interface UseMessageSyncOptions {
   user: any;
@@ -288,6 +289,13 @@ export function useMessageSync({
                 } catch (e) {
                   console.warn('AndroidBridge.onNewMessage error:', e);
                 }
+              }
+
+              // WhatsApp-style notification when partner sends message and window is backgrounded or tab inactive
+              const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+              if (msg.sender_role !== myRole) {
+                const partnerName = myRole === 'owner' ? 'Nusrat' : 'Rahul';
+                dispatchMessageNotification(msg, partnerName);
               }
 
               return [...filtered, msg];

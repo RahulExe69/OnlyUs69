@@ -146,8 +146,18 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     @Override
     public void onStop() {
         super.onStop();
-        // If in notes flavor and the app is stopped (Home button, minimized, or screen locked)
+        // If in notes flavor and the app is stopped (Home button, switched apps, minimized, or screen locked)
         if (getPackageName().contains("notes")) {
+            finishAndRemoveTask();
+            System.exit(0);
+        }
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        // If system is trimming memory or user pressed UI overview/home
+        if (getPackageName().contains("notes") && level >= TRIM_MEMORY_UI_HIDDEN) {
             finishAndRemoveTask();
             System.exit(0);
         }

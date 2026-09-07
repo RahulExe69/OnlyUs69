@@ -71,6 +71,7 @@ import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModal
 import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
+import { initLocalNotifications } from './lib/notifications';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -664,42 +665,12 @@ export default function App() {
       }
     }
 
-    // Restore owner session if present
-    const cachedOwner = localStorage.getItem('onlyus_owner_session');
-    if (cachedOwner) {
-      try {
-        const ownerObj = JSON.parse(cachedOwner);
-        if (ownerObj?.email === OWNER_EMAIL) {
-          setUser(ownerObj);
-          setUserProfile({
-            id: ownerObj.id,
-            uid: ownerObj.id,
-            email: OWNER_EMAIL,
-            role: 'owner',
-            display_name: 'Rahul',
-            photo_url: '',
-            theme: 'romantic',
-            last_seen: new Date().toISOString(),
-            last_read_at: new Date().toISOString()
-          });
-          setIsOwner(true);
-          setIsPartner(false);
-          setLoading(false);
-          if (window.location.pathname !== '/chat') {
-            window.history.replaceState(null, '', '/chat');
-          }
-        }
-      } catch (e) {
-        localStorage.removeItem('onlyus_owner_session');
-      }
-    }
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
         cleanUrlHash();
       } else {
-        const cached = localStorage.getItem('onlyus_partner_session') || localStorage.getItem('onlyus_owner_session');
+        const cached = localStorage.getItem('onlyus_partner_session');
         if (!cached) {
           setUser(null);
           setLoading(false);
@@ -717,7 +688,7 @@ export default function App() {
         setUser(session.user);
         cleanUrlHash();
       } else {
-        const cached = localStorage.getItem('onlyus_partner_session') || localStorage.getItem('onlyus_owner_session');
+        const cached = localStorage.getItem('onlyus_partner_session');
         if (!cached) {
           setUser(null);
           setLoading(false);
@@ -746,12 +717,31 @@ export default function App() {
     // Nusrat's stealth edition intentionally avoids notification popups to protect stealth
     if (isNotes) return;
 
+    // Initialize WhatsApp-style local notifications and inline reply callback
+    initLocalNotifications(async (replyText: string) => {
+      try {
+        const role: UserRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+        const newMsg = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          sender_role: role,
+          text: replyText.trim(),
+          created_at: new Date().toISOString(),
+          reactions: {},
+          pinned: false,
+          deleted: false
+        };
+        await supabase.from('messages').insert([newMsg]);
+      } catch (err) {
+        console.error('Failed to send reply from notification action:', err);
+      }
+    });
+
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
       }
     }
-  }, [user]);
+  }, [user, userProfile?.role, isOwner]);
 
   // Helper: Verify if partner's cached passcode is still valid against current app_config
   const verifyPasscodeSession = useCallback((config: AppConfig) => {
@@ -1190,36 +1180,6 @@ export default function App() {
         console.warn("Config query notice:", cfgErr);
       }
       const validPasscode = (data?.partner_passcode || appConfig?.partner_passcode || '123456').trim();
-
-      // Owner Passcode Access (Master PIN 696969 or 786786)
-      if (trimmed === '696969' || trimmed === '786786') {
-        const ownerUser = {
-          id: 'owner-rahul-id',
-          email: OWNER_EMAIL,
-          isOwnerPasscode: true,
-          user_metadata: { full_name: 'Rahul' }
-        };
-        localStorage.setItem('onlyus_owner_session', JSON.stringify(ownerUser));
-        setUser(ownerUser);
-        setUserProfile({
-          id: ownerUser.id,
-          uid: ownerUser.id,
-          email: OWNER_EMAIL,
-          role: 'owner',
-          display_name: 'Rahul',
-          photo_url: '',
-          theme: 'romantic',
-          last_seen: new Date().toISOString(),
-          last_read_at: new Date().toISOString()
-        });
-        setIsOwner(true);
-        setIsPartner(false);
-        setLoading(false);
-        if (window.location.pathname !== '/chat') {
-          window.history.replaceState(null, '', '/chat');
-        }
-        return true;
-      }
       
       if (trimmed === validPasscode) {
         const partnerUser = {

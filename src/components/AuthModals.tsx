@@ -74,7 +74,7 @@ export function LoginView({
             }`}
           >
             <KeyRound className="w-3.5 h-3.5" />
-            <span>Passcode (PIN)</span>
+            <span>Nusrat (PIN)</span>
           </button>
           <button
             type="button"
@@ -86,7 +86,7 @@ export function LoginView({
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>Google Login</span>
+            <span>Rahul (Google)</span>
           </button>
         </div>
 
