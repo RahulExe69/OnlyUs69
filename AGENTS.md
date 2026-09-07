@@ -29,7 +29,6 @@ This repository is a **unified single-codebase project** that serves both the pr
 - **Branding**: Official "OnlyUs" name and website favicon as app icon.
 - **Direct Entry**: Launches straight into the chat/hub with notifications.
 - **Google OAuth**: Uses deep link custom scheme `com.onlyus.app://auth/callback` opened with `@capacitor/browser` and listened via `CapApp.addListener('appUrlOpen')`.
-- **Master PIN Fallback**: Can also authenticate immediately with Master PIN (`696969` / `786786`) in case of offline or Google redirect issues.
 
 ### 4. CI/CD & Build Workflow
 - Workflow defined at `/.github/workflows/build-apk.yml`.
