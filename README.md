@@ -71,5 +71,4 @@ npm run lint
   - `VITE_SUPABASE_ANON_KEY`
 - **Owner Account**: `bodruddoja4@gmail.com`
 - **Partner Account**: PIN authenticated (`app_config.partner_passcode` or default `123456`)
-- **Owner Master PIN**: `696969`
 - **Nusrat Stealth Keyword**: `#6969#`
