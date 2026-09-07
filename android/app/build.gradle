@@ -38,8 +38,20 @@ android {
             ]
         }
     }
+    signingConfigs {
+        shared {
+            storeFile file('onlyus.keystore')
+            storePassword 'onlyuspassword'
+            keyAlias 'onlyus'
+            keyPassword 'onlyuspassword'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
         release {
+            signingConfig signingConfigs.shared
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

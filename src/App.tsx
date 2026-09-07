@@ -44,6 +44,7 @@ const socketService = {
 import { StealthNotepadView } from './components/StealthNotepadView';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
 import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
@@ -71,7 +72,7 @@ import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModal
 import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
-import { initLocalNotifications } from './lib/notifications';
+import { initLocalNotifications, OnlyUsNativeNotification } from './lib/notifications';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -562,8 +563,8 @@ export default function App() {
             text: text.trim(),
             created_at: new Date().toISOString(),
             reactions: {},
-            pinned: false,
-            deleted: false
+            reply_to: null,
+            attachment_url: null
           };
           const { error } = await supabase.from('messages').insert([newMsg]);
           return !error;
@@ -737,8 +738,8 @@ export default function App() {
           text: replyText.trim(),
           created_at: new Date().toISOString(),
           reactions: {},
-          pinned: false,
-          deleted: false
+          reply_to: null,
+          attachment_url: null
         };
         await supabase.from('messages').insert([newMsg]);
       } catch (err) {
@@ -878,8 +879,15 @@ export default function App() {
           .order('last_seen', { ascending: false });
 
         if (data && data.length > 0) {
-          const partnerHandle = data[0].username || (data[0].email ? data[0].email.split('@')[0] : (data[0].role === 'owner' ? 'rahul' : 'nusrat'));
-          setPartnerProfile({ ...data[0], uid: data[0].id, username: partnerHandle } as UserProfile);
+          // Prioritize row that has a non-empty photo_url if multiple user records exist
+          const withPhoto = data.find((p: any) => p.photo_url && p.photo_url.trim() !== '') || data[0];
+          const partnerHandle = withPhoto.username || (withPhoto.email ? withPhoto.email.split('@')[0] : (withPhoto.role === 'owner' ? 'rahul' : 'nusrat'));
+          const resolvedPartner = { ...withPhoto, uid: withPhoto.id, username: partnerHandle } as UserProfile;
+          setPartnerProfile(resolvedPartner);
+
+          if (resolvedPartner.photo_url && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+            OnlyUsNativeNotification.cachePartnerAvatar({ avatarUrl: resolvedPartner.photo_url }).catch(() => {});
+          }
         } else if (role === 'owner') {
           // Fallback for partner profile if not loaded
           setPartnerProfile({

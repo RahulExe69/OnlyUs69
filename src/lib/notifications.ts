@@ -12,6 +12,7 @@ export interface OnlyUsNotificationPlugin {
     notificationId?: number;
     avatarUrl?: string;
   }): Promise<void>;
+  cachePartnerAvatar(options: { avatarUrl: string }): Promise<void>;
   cancelChatNotification(options?: { notificationId?: number }): Promise<void>;
 }
 

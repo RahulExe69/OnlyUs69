@@ -158,7 +158,7 @@ public class OnlyUsSyncService extends Service {
     private String resolvePartnerAvatarUrl() {
         String cached = prefs.getString(KEY_CACHED_AVATAR_URL, null);
         try {
-            URL url = new URL(OnlyUsConfig.SUPABASE_URL + "/rest/v1/users?role=eq.partner&select=photo_url,username,display_name&limit=1");
+            URL url = new URL(OnlyUsConfig.SUPABASE_URL + "/rest/v1/users?role=eq.partner&photo_url=not.is.null&photo_url=neq.&order=last_seen.desc&select=photo_url,username,display_name&limit=1");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("apikey", OnlyUsConfig.SUPABASE_ANON_KEY);

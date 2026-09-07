@@ -70,6 +70,19 @@ public class OnlyUsNotificationPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void cachePartnerAvatar(PluginCall call) {
+        String avatarUrl = call.getString("avatarUrl");
+        Context context = getContext();
+        if (avatarUrl != null && !avatarUrl.trim().isEmpty() && context != null) {
+            final String urlToCache = avatarUrl.trim();
+            Executors.newSingleThreadExecutor().execute(() -> {
+                resolveCircularAvatar(context, urlToCache);
+            });
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void cancelChatNotification(PluginCall call) {
         Context context = getContext();
         if (context != null) {
@@ -217,7 +230,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
             // Save decoded raw bitmap to disk cache for offline / background access
             if (rawBitmap != null && context != null) {
                 try {
-                    File cacheFile = new File(context.getCacheDir(), "nusrat_avatar_cached.png");
+                    File cacheFile = new File(context.getFilesDir(), "nusrat_avatar_cached.png");
                     try (FileOutputStream fos = new FileOutputStream(cacheFile)) {
                         rawBitmap.compress(Bitmap.CompressFormat.PNG, 90, fos);
                     }
@@ -228,7 +241,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
         // 2. Fallback to disk cache if download failed or avatarUrl was null
         if (rawBitmap == null && context != null) {
             try {
-                File cacheFile = new File(context.getCacheDir(), "nusrat_avatar_cached.png");
+                File cacheFile = new File(context.getFilesDir(), "nusrat_avatar_cached.png");
                 if (cacheFile.exists()) {
                     rawBitmap = BitmapFactory.decodeFile(cacheFile.getAbsolutePath());
                 }

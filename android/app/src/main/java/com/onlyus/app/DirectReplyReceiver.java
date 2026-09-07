@@ -9,6 +9,9 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.RemoteInput;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -97,13 +100,14 @@ public class DirectReplyReceiver extends BroadcastReceiver {
             sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
             String nowIso = sdf.format(new Date());
 
+            // Schema-compliant payload exactly matching App.tsx insert fields
             JSONObject payload = new JSONObject();
             payload.put("sender_role", senderRole);
             payload.put("text", text);
             payload.put("created_at", nowIso);
             payload.put("reactions", new JSONObject());
-            payload.put("pinned", false);
-            payload.put("deleted", false);
+            payload.put("reply_to", JSONObject.NULL);
+            payload.put("attachment_url", JSONObject.NULL);
 
             byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = conn.getOutputStream()) {
@@ -112,7 +116,22 @@ public class DirectReplyReceiver extends BroadcastReceiver {
             }
 
             int responseCode = conn.getResponseCode();
-            return responseCode >= 200 && responseCode < 300;
+            if (responseCode >= 200 && responseCode < 300) {
+                return true;
+            }
+
+            // Log Supabase error stream if request failed
+            try (InputStream es = conn.getErrorStream();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(es, StandardCharsets.UTF_8))) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                Log.e(TAG, "Supabase reply failed with HTTP " + responseCode + ": " + sb.toString());
+            } catch (Exception ignored) {}
+
+            return false;
         } catch (Exception e) {
             Log.e(TAG, "Exception posting reply to Supabase: " + e.getMessage(), e);
             return false;
