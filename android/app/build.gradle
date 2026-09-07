@@ -16,6 +16,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions = ["edition"]
+    productFlavors {
+        nusrat {
+            dimension "edition"
+            applicationId "com.onlyus.notes"
+            versionNameSuffix "-nusrat"
+            manifestPlaceholders = [
+                appName: "Notes"
+            ]
+        }
+        rahul {
+            dimension "edition"
+            applicationId "com.onlyus.app"
+            versionNameSuffix "-rahul"
+            manifestPlaceholders = [
+                appName: "OnlyUs"
+            ]
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

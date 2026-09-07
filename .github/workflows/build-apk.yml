@@ -1,22 +1,20 @@
-name: Build OnlyUs Android APK
+name: Build OnlyUs Dual Android APKs
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
     inputs:
-      build_type:
-        description: 'Build Type (debug or release)'
-        required: true
-        default: 'debug'
-        type: choice
-        options:
-          - debug
-          - release
+      version_tag:
+        description: 'Release Tag Version (e.g. v1.0.0)'
+        required: false
+        default: 'v1.0.0'
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Compile Android APK
+    name: Compile Nusrat & Rahul APKs
     runs-on: ubuntu-latest
 
     steps:
@@ -58,37 +56,61 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x ./android/gradlew
 
-      - name: Build Debug APK
-        if: ${{ github.event.inputs.build_type != 'release' }}
+      - name: Build Dual Android APKs (Nusrat Stealth + Rahul Direct)
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleNusratDebug assembleRahulDebug --no-daemon --stacktrace
 
-      - name: Build Release APK (Unsigned)
-        if: ${{ github.event.inputs.build_type == 'release' }}
+      - name: Organize APK Artifacts
         run: |
-          cd android
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp android/app/build/outputs/apk/nusrat/debug/app-nusrat-debug.apk OnlyUs-Nusrat-Stealth.apk
+          cp android/app/build/outputs/apk/rahul/debug/app-rahul-debug.apk OnlyUs-Rahul-Direct.apk
 
-      - name: Upload Debug APK Artifact
-        if: ${{ github.event.inputs.build_type != 'release' }}
+      - name: Upload Nusrat Stealth APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OnlyUs-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: OnlyUs-Nusrat-Stealth-APK
+          path: OnlyUs-Nusrat-Stealth.apk
           retention-days: 30
 
-      - name: Upload Release APK Artifact
-        if: ${{ github.event.inputs.build_type == 'release' }}
+      - name: Upload Rahul Direct APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OnlyUs-Release-APK
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: OnlyUs-Rahul-Direct-APK
+          path: OnlyUs-Rahul-Direct.apk
           retention-days: 30
+
+      - name: Publish Dual APKs to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.version_tag || 'v1.0.0' }}
+          name: OnlyUs Android Companion (${{ inputs.version_tag || 'v1.0.0' }})
+          draft: false
+          prerelease: false
+          body: |
+            ### 💖 OnlyUs Android Dual Edition Companion Apps
+
+            Download the edition that fits your device:
+
+            - 📓 **`OnlyUs-Nusrat-Stealth.apk`** *(Nusrat Edition)*:
+              - Disguised on the home screen as **"Notes"** with a clean notepad interface.
+              - **Secret Unlock**: Type **`#6969#`** into the notepad search bar to reveal OnlyUs!
+              - **Panic Exit**: Shake phone to immediately exit and close the app.
+              - **Recent-Apps Protection**: Protected with `FLAG_SECURE` so recent-apps drawer shows blank.
+              - **Auto-Lock**: Returns to Notes when screen turns off or app is minimized.
+
+            - 💬 **`OnlyUs-Rahul-Direct.apk`** *(Rahul Edition)*:
+              - Appears on the home screen as **"OnlyUs"**.
+              - Direct entry into the full chat with notifications, instant real-time sync, voice notes, and games.
+          files: |
+            OnlyUs-Nusrat-Stealth.apk
+            OnlyUs-Rahul-Direct.apk
 
       - name: Workflow Summary
         run: |
-          echo "### OnlyUs Android APK Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "The APK has been compiled and is ready for download in the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
-          echo "- **Target Device**: Android 7.0+ (API 24 to 36)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Includes**: Realtime Supabase Sync, Audio/Voice notes, Google & PIN Auth, and Hardware Acceleration." >> $GITHUB_STEP_SUMMARY
+          echo "### OnlyUs Dual Android APKs Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
+          echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Notifications)" >> $GITHUB_STEP_SUMMARY

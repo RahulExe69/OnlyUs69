@@ -41,8 +41,10 @@ const socketService = {
   onMessageUpdated: () => {},
   onMessageDeleted: () => {}
 };
+import { StealthNotepadView } from './components/StealthNotepadView';
+import { App as CapApp } from '@capacitor/app';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -98,6 +100,75 @@ export default function App() {
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
+
+  // Stealth Disguise Vault State (Notepad vs OnlyUs)
+  const [isStealthUnlocked, setIsStealthUnlocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const pref = localStorage.getItem('onlyus_stealth_mode');
+    if (pref === 'true') return false;
+    if (window.location.search.includes('stealth') || window.location.search.includes('edition=nusrat')) {
+      return false;
+    }
+    return true;
+  });
+
+  const lockVault = useCallback(() => {
+    setIsStealthUnlocked(false);
+  }, []);
+
+  // Panic shake listener when vault is unlocked: shake to exit & lock
+  useEffect(() => {
+    if (!isStealthUnlocked) return;
+    let lastX = 0, lastY = 0, lastZ = 0, lastTime = 0;
+    const handleMotion = (event: DeviceMotionEvent) => {
+      const current = event.accelerationIncludingGravity;
+      if (!current) return;
+      const currentTime = Date.now();
+      if ((currentTime - lastTime) > 100) {
+        const diffTime = currentTime - lastTime;
+        lastTime = currentTime;
+        const x = current.x || 0, y = current.y || 0, z = current.z || 0;
+        const speed = Math.abs(x + y + z - lastX - lastY - lastZ) / diffTime * 10000;
+        if (speed > 2200) {
+          setIsStealthUnlocked(false);
+          try { CapApp.exitApp(); } catch {}
+        }
+        lastX = x; lastY = y; lastZ = z;
+      }
+    };
+    window.addEventListener('devicemotion', handleMotion, { passive: true });
+    return () => window.removeEventListener('devicemotion', handleMotion);
+  }, [isStealthUnlocked]);
+
+  // Screen lock, home button, & minimize auto-lock listener
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        const pref = localStorage.getItem('onlyus_stealth_mode');
+        if (pref === 'true') {
+          setIsStealthUnlocked(false);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    let appStateSub: any = null;
+    try {
+      appStateSub = CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) {
+          const pref = localStorage.getItem('onlyus_stealth_mode');
+          if (pref === 'true') {
+            setIsStealthUnlocked(false);
+          }
+        }
+      });
+    } catch {}
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (appStateSub && appStateSub.remove) appStateSub.remove();
+    };
+  }, []);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
     user,
     userProfile,
@@ -1342,6 +1413,10 @@ export default function App() {
     return `Last seen on ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
+  if (!isStealthUnlocked) {
+    return <StealthNotepadView onUnlock={() => setIsStealthUnlocked(true)} />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--theme-bg)] text-[var(--theme-text)] flex items-center justify-center transition-colors duration-300">
@@ -1520,6 +1595,14 @@ export default function App() {
                               </button>
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
+                                onClick={() => { lockVault(); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-amber-600 hover:bg-amber-500/10 flex items-center gap-3 transition-colors"
+                              >
+                                <BookOpen className="w-4 h-4 text-amber-600" />
+                                Lock to Notes
+                              </button>
+                              <button 
+                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
@@ -1607,6 +1690,7 @@ export default function App() {
             isOwner={isOwner}
             onLogout={handleLogout}
             onProfileUpdated={(newMe) => setUserProfile(newMe)}
+            onLockVault={lockVault}
           />
         )}
       </AnimatePresence>

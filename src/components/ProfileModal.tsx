@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X } from 'lucide-react';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, Shield, EyeOff, BookOpen, Smartphone } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig } from '../types';
@@ -14,6 +14,7 @@ interface ProfileModalProps {
   isOwner: boolean;
   onLogout: () => void;
   onProfileUpdated?: (profile: UserProfile) => void;
+  onLockVault?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -23,8 +24,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   isOwner,
   onLogout,
   onProfileUpdated,
+  onLockVault,
 }) => {
   const [activeTab, setActiveTab] = useState<'me' | 'access'>('me');
+  const [stealthEnabled, setStealthEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('onlyus_stealth_mode') === 'true';
+  });
+
+  const toggleStealthMode = () => {
+    const next = !stealthEnabled;
+    setStealthEnabled(next);
+    localStorage.setItem('onlyus_stealth_mode', next ? 'true' : 'false');
+  };
 
   // My profile state
   const [name, setName] = useState(profile.display_name || (profile.role === 'owner' ? 'Rahul' : 'Nusrat'));
@@ -272,6 +283,63 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <p className="mt-1.5 text-[11px] text-[var(--theme-text)]/60 ml-1">
                   Displayed underneath your name in Nicknames & chat profile
                 </p>
+              </div>
+
+              {/* Stealth Disguise Vault Card */}
+              <div className="bg-[var(--theme-surface)] p-5 rounded-3xl border border-[var(--theme-border)] shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-600">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-[var(--theme-text)]">Stealth Disguise (Notepad)</h4>
+                      <p className="text-[11px] text-[var(--theme-text)]/60">Disguises OnlyUs as a functional Notes app</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleStealthMode}
+                    className={`w-12 h-7 rounded-full transition-colors relative p-0.5 ${
+                      stealthEnabled ? 'bg-amber-500' : 'bg-[var(--theme-border)]'
+                    }`}
+                  >
+                    <div
+                      className={`w-6 h-6 rounded-full bg-white shadow-md transition-transform transform ${
+                        stealthEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-[var(--theme-text)]/75 space-y-1.5 bg-[var(--theme-bg)]/50 p-3 rounded-2xl border border-[var(--theme-border)]/50">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-amber-600 font-mono bg-amber-100/80 px-1.5 py-0.5 rounded">#6969#</span>
+                    <span>Type in search bar to unlock OnlyUs</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--theme-accent)]">⚡ Shake Phone:</span>
+                    <span>Instantly exits and locks back to Notes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--theme-accent)]">🔒 Auto Lock:</span>
+                    <span>Locks when screen turns off or app minimizes</span>
+                  </div>
+                </div>
+
+                {onLockVault && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onLockVault();
+                    }}
+                    className="w-full py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs rounded-xl border border-amber-300/40 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <EyeOff className="w-3.5 h-3.5" />
+                    Lock to Notepad Now
+                  </button>
+                )}
               </div>
 
               <div className="pt-4 border-t border-[var(--theme-border)] flex flex-col gap-3.5">
