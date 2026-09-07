@@ -43,6 +43,7 @@ const socketService = {
 };
 import { StealthNotepadView } from './components/StealthNotepadView';
 import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
 import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
@@ -104,6 +105,14 @@ export default function App() {
   // Stealth Disguise Vault State (Notepad vs OnlyUs)
   const [isStealthUnlocked, setIsStealthUnlocked] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
+    // 1. If unlocked during this active app session
+    if (sessionStorage.getItem('onlyus_vault_unlocked') === 'true') {
+      return true;
+    }
+    // 2. If running inside Nusrat's Notes APK flavor (Native User-Agent or package check)
+    if (navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
+      return false;
+    }
     const pref = localStorage.getItem('onlyus_stealth_mode');
     if (pref === 'true') return false;
     if (window.location.search.includes('stealth') || window.location.search.includes('edition=nusrat')) {
@@ -112,8 +121,26 @@ export default function App() {
     return true;
   });
 
+  // Verify package identity asynchronously: if com.onlyus.notes, lock immediately
+  useEffect(() => {
+    CapApp.getInfo().then(info => {
+      if (info.id.includes('notes')) {
+        localStorage.setItem('onlyus_stealth_mode', 'true');
+        if (sessionStorage.getItem('onlyus_vault_unlocked') !== 'true') {
+          setIsStealthUnlocked(false);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   const lockVault = useCallback(() => {
+    sessionStorage.removeItem('onlyus_vault_unlocked');
     setIsStealthUnlocked(false);
+  }, []);
+
+  const handleUnlockVault = useCallback(() => {
+    sessionStorage.setItem('onlyus_vault_unlocked', 'true');
+    setIsStealthUnlocked(true);
   }, []);
 
   // Panic shake listener when vault is unlocked: shake to exit & lock
@@ -145,7 +172,8 @@ export default function App() {
     const handleVisibility = () => {
       if (document.hidden) {
         const pref = localStorage.getItem('onlyus_stealth_mode');
-        if (pref === 'true') {
+        if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
+          sessionStorage.removeItem('onlyus_vault_unlocked');
           setIsStealthUnlocked(false);
         }
       }
@@ -157,8 +185,38 @@ export default function App() {
       appStateSub = CapApp.addListener('appStateChange', ({ isActive }) => {
         if (!isActive) {
           const pref = localStorage.getItem('onlyus_stealth_mode');
-          if (pref === 'true') {
+          if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
+            sessionStorage.removeItem('onlyus_vault_unlocked');
             setIsStealthUnlocked(false);
+          }
+        }
+      });
+    } catch {}
+
+    // Android Deep Link Handler for Google OAuth Callback in APK
+    let appUrlSub: any = null;
+    try {
+      appUrlSub = CapApp.addListener('appUrlOpen', async ({ url }) => {
+        try {
+          await Browser.close();
+        } catch {}
+
+        if (url.includes('access_token=') || url.includes('refresh_token=')) {
+          const hashPart = url.includes('#') 
+            ? url.substring(url.indexOf('#') + 1) 
+            : (url.includes('?') ? url.substring(url.indexOf('?') + 1) : '');
+          const params = new URLSearchParams(hashPart);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            const { data, error: sessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (!sessionErr && data?.session?.user) {
+              setUser(data.session.user);
+            }
           }
         }
       });
@@ -167,6 +225,7 @@ export default function App() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       if (appStateSub && appStateSub.remove) appStateSub.remove();
+      if (appUrlSub && appUrlSub.remove) appUrlSub.remove();
     };
   }, []);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
@@ -605,12 +664,42 @@ export default function App() {
       }
     }
 
+    // Restore owner session if present
+    const cachedOwner = localStorage.getItem('onlyus_owner_session');
+    if (cachedOwner) {
+      try {
+        const ownerObj = JSON.parse(cachedOwner);
+        if (ownerObj?.email === OWNER_EMAIL) {
+          setUser(ownerObj);
+          setUserProfile({
+            id: ownerObj.id,
+            uid: ownerObj.id,
+            email: OWNER_EMAIL,
+            role: 'owner',
+            display_name: 'Rahul',
+            photo_url: '',
+            theme: 'romantic',
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString()
+          });
+          setIsOwner(true);
+          setIsPartner(false);
+          setLoading(false);
+          if (window.location.pathname !== '/chat') {
+            window.history.replaceState(null, '', '/chat');
+          }
+        }
+      } catch (e) {
+        localStorage.removeItem('onlyus_owner_session');
+      }
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
         cleanUrlHash();
       } else {
-        const cached = localStorage.getItem('onlyus_partner_session');
+        const cached = localStorage.getItem('onlyus_partner_session') || localStorage.getItem('onlyus_owner_session');
         if (!cached) {
           setUser(null);
           setLoading(false);
@@ -628,7 +717,7 @@ export default function App() {
         setUser(session.user);
         cleanUrlHash();
       } else {
-        const cached = localStorage.getItem('onlyus_partner_session');
+        const cached = localStorage.getItem('onlyus_partner_session') || localStorage.getItem('onlyus_owner_session');
         if (!cached) {
           setUser(null);
           setLoading(false);
@@ -1046,10 +1135,26 @@ export default function App() {
   const handleLogin = async () => {
     setError(null);
     try {
-      await supabase.auth.signInWithOAuth({ 
-        provider: 'google', 
-        options: { redirectTo: `${window.location.origin}/chat` } 
-      });
+      const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform();
+
+      if (isNative) {
+        const { data, error } = await supabase.auth.signInWithOAuth({ 
+          provider: 'google', 
+          options: { 
+            redirectTo: 'com.onlyus.app://auth/callback',
+            skipBrowserRedirect: true 
+          } 
+        });
+        if (error) throw error;
+        if (data?.url) {
+          await Browser.open({ url: data.url, windowName: '_self' });
+        }
+      } else {
+        await supabase.auth.signInWithOAuth({ 
+          provider: 'google', 
+          options: { redirectTo: `${window.location.origin}/chat` } 
+        });
+      }
     } catch (err: any) {
       console.error("Login failed:", err);
       if (err.code === 'auth/unauthorized-domain') {
@@ -1057,7 +1162,7 @@ export default function App() {
       } else if (err.code === 'auth/popup-closed-by-user') {
         // Silent
       } else {
-        setError(`Login error: ${err.message}`);
+        setError(`Login error: ${err.message || err.toString()}`);
       }
     }
   };
@@ -1065,13 +1170,44 @@ export default function App() {
   const handlePasscodeLogin = async (code: string): Promise<boolean> => {
     setError(null);
     try {
+      const trimmed = code.trim();
       const { data, error: cfgErr } = await supabase.from('app_config').select('*').eq('id', 'main').single();
       if (cfgErr && cfgErr.code !== 'PGRST116') {
         console.warn("Config query notice:", cfgErr);
       }
       const validPasscode = (data?.partner_passcode || appConfig?.partner_passcode || '123456').trim();
+
+      // Owner Passcode Access (Master PIN 696969 or 786786)
+      if (trimmed === '696969' || trimmed === '786786') {
+        const ownerUser = {
+          id: 'owner-rahul-id',
+          email: OWNER_EMAIL,
+          isOwnerPasscode: true,
+          user_metadata: { full_name: 'Rahul' }
+        };
+        localStorage.setItem('onlyus_owner_session', JSON.stringify(ownerUser));
+        setUser(ownerUser);
+        setUserProfile({
+          id: ownerUser.id,
+          uid: ownerUser.id,
+          email: OWNER_EMAIL,
+          role: 'owner',
+          display_name: 'Rahul',
+          photo_url: '',
+          theme: 'romantic',
+          last_seen: new Date().toISOString(),
+          last_read_at: new Date().toISOString()
+        });
+        setIsOwner(true);
+        setIsPartner(false);
+        setLoading(false);
+        if (window.location.pathname !== '/chat') {
+          window.history.replaceState(null, '', '/chat');
+        }
+        return true;
+      }
       
-      if (code.trim() === validPasscode) {
+      if (trimmed === validPasscode) {
         const partnerUser = {
           id: '625ede11-c534-4475-be39-63554fdbb7a7',
           email: 'bodruddoja2@gmail.com',
@@ -1079,7 +1215,7 @@ export default function App() {
           user_metadata: { full_name: 'Nusrat' }
         };
         localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
-        localStorage.setItem('onlyus_partner_passcode', code.trim());
+        localStorage.setItem('onlyus_partner_passcode', trimmed);
         setUser(partnerUser);
         setUserProfile({
           id: partnerUser.id,
@@ -1414,7 +1550,7 @@ export default function App() {
   };
 
   if (!isStealthUnlocked) {
-    return <StealthNotepadView onUnlock={() => setIsStealthUnlocked(true)} />;
+    return <StealthNotepadView onUnlock={handleUnlockVault} />;
   }
 
   if (loading) {

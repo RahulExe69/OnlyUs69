@@ -6,15 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "icons": "node scripts/generate-flavor-icons.js",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "cap:sync": "cap sync",
-    "cap:build": "npm run build && cap sync",
+    "cap:build": "npm run build && npm run icons && cap sync",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.5.1",
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.104.0",
@@ -43,6 +45,7 @@
     "@types/react-dom": "^19.2.5",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.1.1",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4.1.14",
     "ts-morph": "^28.0.0",
     "tsx": "^4.21.0",

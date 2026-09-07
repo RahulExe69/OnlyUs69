@@ -113,7 +113,7 @@ export function LoginView({
           >
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-[#6E6E6E] mb-2 block text-center opacity-70">
-                Enter 6-Digit Passcode
+                Enter 6-Digit Passcode (PIN)
               </label>
               
               {/* PIN input display boxes */}
