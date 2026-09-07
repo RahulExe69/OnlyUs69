@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "vite build && vite preview --port 3000",
-    "preview": "vite preview",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "cap:sync": "cap sync",
+    "cap:build": "npm run build && cap sync",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.104.0",
     "@tailwindcss/vite": "^4.1.14",
@@ -31,6 +34,7 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@firebase/eslint-plugin-security-rules": "^0.0.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",

@@ -1,0 +1,30 @@
+{
+  "name": "OnlyUs V3",
+  "short_name": "OnlyUs",
+  "id": "/",
+  "description": "A private, 1-to-1 chat application for Rahul and Nusrat.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8F6",
+  "theme_color": "#FF8FA3",
+  "icons": [
+    {
+      "src": "/favicon.webp",
+      "sizes": "192x192",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.webp",
+      "sizes": "1254x1254",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ]
+}
