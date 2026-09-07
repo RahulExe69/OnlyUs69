@@ -57,19 +57,23 @@ export async function initLocalNotifications(onReplyReceived?: (text: string) =>
 
     // Listen to notification actions (such as inline reply)
     if (!isListenerRegistered) {
-      LocalNotifications.addListener('localNotificationActionPerformed', async (action: ActionPerformed) => {
-        if (action.actionId === 'reply' && action.inputValue && onReplyReceived) {
-          const replyText = action.inputValue.trim();
-          if (replyText) {
-            try {
-              await onReplyReceived(replyText);
-            } catch (err) {
-              console.error('Failed to send inline reply:', err);
+      isListenerRegistered = true;
+      try {
+        await LocalNotifications.addListener('localNotificationActionPerformed', async (action: ActionPerformed) => {
+          if (action.actionId === 'reply' && action.inputValue && onReplyReceived) {
+            const replyText = action.inputValue.trim();
+            if (replyText) {
+              try {
+                await onReplyReceived(replyText);
+              } catch (err) {
+                console.error('Failed to send inline reply:', err);
+              }
             }
           }
-        }
-      });
-      isListenerRegistered = true;
+        });
+      } catch (listenerErr) {
+        console.warn('LocalNotifications action listener notice:', listenerErr);
+      }
     }
   } catch (err) {
     console.warn('LocalNotifications init notice:', err);

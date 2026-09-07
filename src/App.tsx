@@ -182,51 +182,62 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibility);
 
     let appStateSub: any = null;
-    try {
-      appStateSub = CapApp.addListener('appStateChange', ({ isActive }) => {
-        if (!isActive) {
-          const pref = localStorage.getItem('onlyus_stealth_mode');
-          if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
-            sessionStorage.removeItem('onlyus_vault_unlocked');
-            setIsStealthUnlocked(false);
-          }
-        }
-      });
-    } catch {}
-
-    // Android Deep Link Handler for Google OAuth Callback in APK
     let appUrlSub: any = null;
-    try {
-      appUrlSub = CapApp.addListener('appUrlOpen', async ({ url }) => {
-        try {
-          await Browser.close();
-        } catch {}
 
-        if (url.includes('access_token=') || url.includes('refresh_token=')) {
-          const hashPart = url.includes('#') 
-            ? url.substring(url.indexOf('#') + 1) 
-            : (url.includes('?') ? url.substring(url.indexOf('?') + 1) : '');
-          const params = new URLSearchParams(hashPart);
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
-
-          if (accessToken && refreshToken) {
-            const { data, error: sessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (!sessionErr && data?.session?.user) {
-              setUser(data.session.user);
+    (async () => {
+      try {
+        appStateSub = await CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) {
+            const pref = localStorage.getItem('onlyus_stealth_mode');
+            if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
+              sessionStorage.removeItem('onlyus_vault_unlocked');
+              setIsStealthUnlocked(false);
             }
           }
-        }
-      });
-    } catch {}
+        });
+      } catch {}
+
+      // Android Deep Link Handler for Google OAuth Callback in APK
+      try {
+        appUrlSub = await CapApp.addListener('appUrlOpen', async ({ url }) => {
+          try {
+            await Browser.close();
+          } catch {}
+
+          if (url.includes('access_token=') || url.includes('refresh_token=')) {
+            const hashPart = url.includes('#') 
+              ? url.substring(url.indexOf('#') + 1) 
+              : (url.includes('?') ? url.substring(url.indexOf('?') + 1) : '');
+            const params = new URLSearchParams(hashPart);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              const { data, error: sessionErr } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (!sessionErr && data?.session?.user) {
+                setUser(data.session.user);
+              }
+            }
+          }
+        });
+      } catch {}
+    })();
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      if (appStateSub && appStateSub.remove) appStateSub.remove();
-      if (appUrlSub && appUrlSub.remove) appUrlSub.remove();
+      try {
+        if (appStateSub && typeof appStateSub.remove === 'function') {
+          appStateSub.remove();
+        }
+      } catch {}
+      try {
+        if (appUrlSub && typeof appUrlSub.remove === 'function') {
+          appUrlSub.remove();
+        }
+      } catch {}
     };
   }, []);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
