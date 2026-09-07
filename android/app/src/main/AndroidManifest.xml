@@ -47,6 +47,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Direct Reply Receiver: handles inline replies in background without opening MainActivity -->
+        <receiver
+            android:name=".DirectReplyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.onlyus.app.ACTION_DIRECT_REPLY" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->

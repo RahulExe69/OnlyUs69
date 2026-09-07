@@ -555,9 +555,8 @@ export default function App() {
       window.sendNativeDirectReply = async (text: string) => {
         if (!text || !text.trim()) return false;
         try {
-          const role = isOwner ? 'owner' : 'partner';
+          const role = isOwner ? 'owner' : (userProfile?.role || 'owner');
           const newMsg = {
-            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             sender_role: role,
             text: text.trim(),
             created_at: new Date().toISOString(),
@@ -731,9 +730,8 @@ export default function App() {
     // Initialize WhatsApp-style local notifications and inline reply callback
     initLocalNotifications(async (replyText: string) => {
       try {
-        const role: UserRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+        const role: UserRole = isOwner ? 'owner' : (userProfile?.role || 'owner');
         const newMsg = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           sender_role: role,
           text: replyText.trim(),
           created_at: new Date().toISOString(),

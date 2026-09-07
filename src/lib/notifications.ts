@@ -1,14 +1,47 @@
+import { registerPlugin, Capacitor } from '@capacitor/core';
 import { LocalNotifications, ActionPerformed } from '@capacitor/local-notifications';
 import { Message } from '../types';
 
+export interface OnlyUsNotificationPlugin {
+  showChatNotification(options: {
+    title: string;
+    body: string;
+    messageId?: string | number;
+    senderRole?: string;
+    notificationId?: number;
+    avatarUrl?: string;
+  }): Promise<void>;
+  cancelChatNotification(options?: { notificationId?: number }): Promise<void>;
+}
+
+export const OnlyUsNativeNotification = registerPlugin<OnlyUsNotificationPlugin>('OnlyUsNotification');
+
 let isChannelCreated = false;
 let isListenerRegistered = false;
+let currentReplyCallback: ((text: string) => Promise<void>) | null = null;
+
+// Attach global listener for direct replies sent from Android DirectReplyReceiver
+if (typeof window !== 'undefined') {
+  (window as any).onNativeDirectReplyReceived = async (text: string) => {
+    if (text && currentReplyCallback) {
+      try {
+        await currentReplyCallback(text);
+      } catch (e) {
+        console.warn('Error handling in-app reply sync:', e);
+      }
+    }
+  };
+}
 
 /**
  * Initializes notification channels and action listeners.
  * Action types support WhatsApp-style inline quick reply and open action.
  */
 export async function initLocalNotifications(onReplyReceived?: (text: string) => Promise<void>) {
+  if (onReplyReceived) {
+    currentReplyCallback = onReplyReceived;
+  }
+
   const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
   if (isNotes) return; // Stealth edition has zero notifications
 
@@ -60,11 +93,11 @@ export async function initLocalNotifications(onReplyReceived?: (text: string) =>
       isListenerRegistered = true;
       try {
         await LocalNotifications.addListener('localNotificationActionPerformed', async (action: ActionPerformed) => {
-          if (action.actionId === 'reply' && action.inputValue && onReplyReceived) {
+          if (action.actionId === 'reply' && action.inputValue) {
             const replyText = action.inputValue.trim();
-            if (replyText) {
+            if (replyText && currentReplyCallback) {
               try {
-                await onReplyReceived(replyText);
+                await currentReplyCallback(replyText);
               } catch (err) {
                 console.error('Failed to send inline reply:', err);
               }
@@ -83,7 +116,11 @@ export async function initLocalNotifications(onReplyReceived?: (text: string) =>
 /**
  * Dispatches a WhatsApp-style notification when Nusrat sends a message.
  */
-export async function dispatchMessageNotification(msg: Message, senderName: string = 'Nusrat') {
+export async function dispatchMessageNotification(
+  msg: Message,
+  senderName: string = 'Nusrat',
+  partnerPhotoUrl?: string
+) {
   const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
   if (isNotes) return; // Zero notifications in stealth edition
 
@@ -97,9 +134,28 @@ export async function dispatchMessageNotification(msg: Message, senderName: stri
     body = 'Sent you a message';
   }
 
-  // 1. Native Capacitor LocalNotification for Android
+  const notifId = Math.floor(Date.now() % 100000);
+
+  // 1. First priority on native Android: Custom Direct Reply Plugin
+  // Ensures inline replies are handled by BroadcastReceiver (never opens app in background)
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+    try {
+      await OnlyUsNativeNotification.showChatNotification({
+        title: senderName,
+        body,
+        messageId: msg.id,
+        senderRole: msg.sender_role,
+        notificationId: notifId,
+        avatarUrl: partnerPhotoUrl
+      });
+      return;
+    } catch (pluginErr) {
+      console.warn('OnlyUsNativeNotification fallback to LocalNotifications:', pluginErr);
+    }
+  }
+
+  // 2. Native Capacitor LocalNotification fallback
   try {
-    const notifId = Math.floor(Date.now() % 100000);
     await LocalNotifications.schedule({
       notifications: [
         {
@@ -108,7 +164,9 @@ export async function dispatchMessageNotification(msg: Message, senderName: stri
           id: notifId,
           channelId: 'onlyus_chat_messages',
           actionTypeId: 'CHAT_MESSAGE_ACTIONS',
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_stat_onlyus',
+          largeIcon: 'ic_nusrat_avatar',
+          iconColor: '#E11D48',
           sound: 'default',
           extra: {
             messageId: msg.id,
@@ -118,7 +176,7 @@ export async function dispatchMessageNotification(msg: Message, senderName: stri
       ]
     });
   } catch (err) {
-    // 2. Web Notification fallback
+    // 3. Web Notification fallback
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
         new Notification(senderName, {
@@ -132,3 +190,4 @@ export async function dispatchMessageNotification(msg: Message, senderName: stri
     }
   }
 }
+

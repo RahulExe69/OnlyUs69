@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends BridgeActivity implements SensorEventListener {
+    private static MainActivity instance;
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private float lastX, lastY, lastZ;
@@ -28,7 +29,9 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(OnlyUsNotificationPlugin.class);
         super.onCreate(savedInstanceState);
+        instance = this;
 
         boolean isNotes = getPackageName().contains("notes");
 
@@ -168,6 +171,28 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         super.onResume();
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (instance == this) {
+            instance = null;
+        }
+        super.onDestroy();
+    }
+
+    public static void notifyReplyReceivedInApp(final String text) {
+        if (instance != null && instance.getBridge() != null && instance.getBridge().getWebView() != null) {
+            instance.runOnUiThread(() -> {
+                try {
+                    String escaped = text.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "");
+                    instance.getBridge().getWebView().evaluateJavascript(
+                        "if (typeof window !== 'undefined' && window.onNativeDirectReplyReceived) { window.onNativeDirectReplyReceived('" + escaped + "'); }",
+                        null
+                    );
+                } catch (Exception ignored) {}
+            });
         }
     }
 }

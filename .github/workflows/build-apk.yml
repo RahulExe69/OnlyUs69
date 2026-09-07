@@ -3,10 +3,20 @@ name: Build OnlyUs Dual Android APKs
 on:
   workflow_dispatch:
     inputs:
-      version_tag:
-        description: 'Release Tag Version (e.g. v1.0.0)'
+      version_name:
+        description: 'APK Version Name (e.g. 1.0.1 or 1.1.0)'
         required: false
-        default: 'v1.0.0'
+        default: '1.0.1'
+        type: string
+      version_code:
+        description: 'APK Version Code (integer e.g. 2, 3... Leave empty to auto-use GitHub run number)'
+        required: false
+        default: ''
+        type: string
+      version_tag:
+        description: 'GitHub Release Tag (e.g. v1.0.1, leave empty to auto-use v<version_name>)'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -20,6 +30,31 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Resolve Versioning Parameters
+        id: vars
+        run: |
+          RAW_NAME="${{ inputs.version_name }}"
+          if [ -z "$RAW_NAME" ]; then
+            RAW_NAME="1.0.1"
+          fi
+          # Strip leading 'v' if entered by user (e.g. 'v1.0.1' -> '1.0.1')
+          CLEAN_NAME="${RAW_NAME#v}"
+
+          RAW_CODE="${{ inputs.version_code }}"
+          if [ -z "$RAW_CODE" ]; then
+            RAW_CODE="${{ github.run_number }}"
+          fi
+
+          RAW_TAG="${{ inputs.version_tag }}"
+          if [ -z "$RAW_TAG" ]; then
+            RAW_TAG="v${CLEAN_NAME}"
+          fi
+
+          echo "version_name=${CLEAN_NAME}" >> $GITHUB_OUTPUT
+          echo "version_code=${RAW_CODE}" >> $GITHUB_OUTPUT
+          echo "version_tag=${RAW_TAG}" >> $GITHUB_OUTPUT
+          echo "✅ Building with versionName=${CLEAN_NAME}, versionCode=${RAW_CODE}, releaseTag=${RAW_TAG}"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -62,25 +97,35 @@ jobs:
       - name: Build Dual Android APKs (Nusrat Stealth + Rahul Direct)
         run: |
           cd android
-          ./gradlew assembleNusratDebug assembleRahulDebug --no-daemon --stacktrace
+          ./gradlew assembleNusratDebug assembleRahulDebug \
+            -PversionCode=${{ steps.vars.outputs.version_code }} \
+            -PversionName=${{ steps.vars.outputs.version_name }} \
+            --no-daemon --stacktrace
 
       - name: Organize APK Artifacts
         run: |
+          VER="${{ steps.vars.outputs.version_name }}"
           cp android/app/build/outputs/apk/nusrat/debug/app-nusrat-debug.apk OnlyUs-Nusrat-Stealth.apk
           cp android/app/build/outputs/apk/rahul/debug/app-rahul-debug.apk OnlyUs-Rahul-Direct.apk
+          cp OnlyUs-Nusrat-Stealth.apk OnlyUs-Nusrat-Stealth-v${VER}.apk
+          cp OnlyUs-Rahul-Direct.apk OnlyUs-Rahul-Direct-v${VER}.apk
 
       - name: Upload Nusrat Stealth APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OnlyUs-Nusrat-Stealth-APK
-          path: OnlyUs-Nusrat-Stealth.apk
+          path: |
+            OnlyUs-Nusrat-Stealth.apk
+            OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
       - name: Upload Rahul Direct APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OnlyUs-Rahul-Direct-APK
-          path: OnlyUs-Rahul-Direct.apk
+          path: |
+            OnlyUs-Rahul-Direct.apk
+            OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
       - name: Publish Dual APKs to GitHub Releases
@@ -88,12 +133,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ inputs.version_tag || 'v1.0.0' }}
-          name: OnlyUs Android Companion (${{ inputs.version_tag || 'v1.0.0' }})
+          tag_name: ${{ steps.vars.outputs.version_tag }}
+          name: OnlyUs Android Companion (${{ steps.vars.outputs.version_tag }})
           draft: false
           prerelease: false
           body: |
-            ### 💖 OnlyUs Android Dual Edition Companion Apps
+            ### 💖 OnlyUs Android Dual Edition Companion Apps (${{ steps.vars.outputs.version_tag }})
+
+            **Version:** `${{ steps.vars.outputs.version_name }}` (Code: `${{ steps.vars.outputs.version_code }}`)
 
             Download the edition that fits your device:
 
@@ -107,13 +154,19 @@ jobs:
             - 💬 **`OnlyUs-Rahul-Direct.apk`** *(Rahul Edition)*:
               - Appears on the home screen as **"OnlyUs"**.
               - Direct entry into the full chat with notifications, instant real-time sync, voice notes, and games.
+              - Full inline reply from notification bar without background interruption.
           files: |
             OnlyUs-Nusrat-Stealth.apk
             OnlyUs-Rahul-Direct.apk
+            OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
+            OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
 
       - name: Workflow Summary
         run: |
           echo "### OnlyUs Dual Android APKs Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "Version: **${{ steps.vars.outputs.version_name }}** (Build code: **${{ steps.vars.outputs.version_code }}**)" >> $GITHUB_STEP_SUMMARY
+          echo "Release Tag: **${{ steps.vars.outputs.version_tag }}**" >> $GITHUB_STEP_SUMMARY
           echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
           echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Notifications)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Inline Notifications)" >> $GITHUB_STEP_SUMMARY
+
