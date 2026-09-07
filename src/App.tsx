@@ -739,6 +739,20 @@ export default function App() {
     };
   }, []);
 
+  // Permissions: Request notifications on initial login for Direct edition (Rahul)
+  useEffect(() => {
+    if (!user) return;
+    const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
+    // Nusrat's stealth edition intentionally avoids notification popups to protect stealth
+    if (isNotes) return;
+
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, [user]);
+
   // Helper: Verify if partner's cached passcode is still valid against current app_config
   const verifyPasscodeSession = useCallback((config: AppConfig) => {
     const isPartnerSession = localStorage.getItem('onlyus_partner_session');

@@ -61,6 +61,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [audioLevels, setAudioLevels] = useState<number[]>([15, 25, 40, 20, 35, 50, 30, 20]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [micPermissionNotice, setMicPermissionNotice] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [previewProgress, setPreviewProgress] = useState(0);
@@ -266,7 +267,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       }
     } catch (err: any) {
       console.error('Microphone access error:', err);
-      alert('Could not access microphone. Please ensure microphone permissions are allowed.');
+      setMicPermissionNotice('Microphone permission is needed to record voice notes. Tap "Allow" to enable.');
     }
   };
 
@@ -394,6 +395,38 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   return (
     <div className="mt-4 lg:mt-6 pt-4 lg:pt-6 border-t border-[var(--theme-border)] bg-[var(--theme-bg)]/80 backdrop-blur-md">
       <AnimatePresence>
+        {micPermissionNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="mb-2 mx-4 p-2.5 bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-accent)]/30 rounded-2xl flex items-center justify-between text-xs shadow-md"
+          >
+            <div className="flex items-center gap-2 flex-1 mr-2 min-w-0">
+              <Mic className="w-4 h-4 shrink-0 text-[var(--theme-accent)]" />
+              <span className="truncate">{micPermissionNotice}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setMicPermissionNotice(null);
+                  handleStartRecording();
+                }}
+                className="px-3 py-1 bg-[var(--theme-accent)] text-white rounded-xl text-xs font-semibold active:scale-95 transition-all shadow-sm"
+              >
+                Allow
+              </button>
+              <button
+                type="button"
+                onClick={() => setMicPermissionNotice(null)}
+                className="p-1 hover:bg-[var(--theme-text)]/10 rounded-lg text-[var(--theme-text)]/50 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
         {replyingTo && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}

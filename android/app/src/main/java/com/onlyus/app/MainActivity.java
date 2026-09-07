@@ -1,13 +1,22 @@
 package com.onlyus.app;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends BridgeActivity implements SensorEventListener {
     private SensorManager sensorManager;
@@ -15,12 +24,15 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     private float lastX, lastY, lastZ;
     private long lastUpdate = 0;
     private static final int SHAKE_THRESHOLD = 2200;
+    private static final int PERMISSION_REQ_CODE = 1001;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        if (getPackageName().contains("notes")) {
+        boolean isNotes = getPackageName().contains("notes");
+
+        if (isNotes) {
             // 1. Prevent screenshots & hide preview in recent apps drawer
             getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
@@ -35,6 +47,48 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
                     sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
                 }
             }
+        }
+
+        // 3. Request app-specific permissions on initial launch
+        requestAppPermissions(isNotes);
+    }
+
+    private void requestAppPermissions(boolean isNotes) {
+        List<String> needed = new ArrayList<>();
+
+        // Microphone (voice notes)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.RECORD_AUDIO);
+        }
+
+        // Camera (photos & media)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.CAMERA);
+        }
+
+        // Android 13+ (API 33+) granular media & notifications
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_MEDIA_IMAGES);
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_MEDIA_VIDEO);
+            }
+            // Rahul's Direct edition needs Notifications
+            if (!isNotes) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    needed.add(Manifest.permission.POST_NOTIFICATIONS);
+                }
+            }
+        } else {
+            // Android 12 and below storage
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            }
+        }
+
+        if (!needed.isEmpty()) {
+            ActivityCompat.requestPermissions(this, needed.toArray(new String[0]), PERMISSION_REQ_CODE);
         }
     }
 
@@ -82,12 +136,17 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     @Override
-    protected void onPause() {
+    public void onPause() {
         super.onPause();
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
-        // If in notes flavor, pressing home button or turning screen off immediately destroys task
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        // If in notes flavor and the app is stopped (Home button, minimized, or screen locked)
         if (getPackageName().contains("notes")) {
             finishAndRemoveTask();
             System.exit(0);
@@ -95,7 +154,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
