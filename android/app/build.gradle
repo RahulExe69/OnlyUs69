@@ -3,8 +3,14 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.onlyus.app"
     compileSdk = rootProject.ext.compileSdkVersion
-    def appVersionCode = (project.findProperty('versionCode') ?: System.getenv('APP_VERSION_CODE') ?: "1").toInteger()
-    def appVersionName = project.findProperty('versionName') ?: System.getenv('APP_VERSION_NAME') ?: "1.0.0"
+    def rawCode = project.findProperty('versionCode') ?: System.getenv('APP_VERSION_CODE') ?: "1"
+    def appVersionCode = 1
+    try {
+        appVersionCode = rawCode.toString().trim().toInteger()
+    } catch(Exception ignored) {
+        appVersionCode = 1
+    }
+    def appVersionName = (project.findProperty('versionName') ?: System.getenv('APP_VERSION_NAME') ?: "1.0.0").toString().trim()
 
     defaultConfig {
         applicationId "com.onlyus.app"
@@ -85,9 +91,11 @@ apply from: 'capacitor.build.gradle'
 
 try {
     def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
+    if (servicesJSON.exists() && servicesJSON.length() > 0) {
         apply plugin: 'com.google.gms.google-services'
+    } else {
+        logger.info("google-services.json not found, google-services plugin not applied.")
     }
 } catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    logger.info("google-services.json error: " + e.message)
 }

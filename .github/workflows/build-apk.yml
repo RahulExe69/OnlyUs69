@@ -81,11 +81,12 @@ jobs:
 
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: true
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Sync Capacitor Web Assets
         run: npx cap sync android
@@ -104,10 +105,24 @@ jobs:
       - name: Organize APK Artifacts
         run: |
           VER="${{ steps.vars.outputs.version_name }}"
-          cp android/app/build/outputs/apk/nusrat/debug/app-nusrat-debug.apk OnlyUs-Nusrat-Stealth.apk
-          cp android/app/build/outputs/apk/rahul/debug/app-rahul-debug.apk OnlyUs-Rahul-Direct.apk
-          cp OnlyUs-Nusrat-Stealth.apk OnlyUs-Nusrat-Stealth-v${VER}.apk
-          cp OnlyUs-Rahul-Direct.apk OnlyUs-Rahul-Direct-v${VER}.apk
+          NUSRAT_APK=$(find android/app/build/outputs/apk/nusrat -name "*.apk" | head -n 1)
+          RAHUL_APK=$(find android/app/build/outputs/apk/rahul -name "*.apk" | head -n 1)
+          echo "Found Nusrat APK: $NUSRAT_APK"
+          echo "Found Rahul APK: $RAHUL_APK"
+          if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
+            cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
+            cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
+          else
+            echo "::error::Nusrat APK not found"
+            exit 1
+          fi
+          if [ -n "$RAHUL_APK" ] && [ -f "$RAHUL_APK" ]; then
+            cp "$RAHUL_APK" OnlyUs-Rahul-Direct.apk
+            cp "$RAHUL_APK" "OnlyUs-Rahul-Direct-v${VER}.apk"
+          else
+            echo "::error::Rahul APK not found"
+            exit 1
+          fi
 
       - name: Upload Nusrat Stealth APK to Artifacts
         uses: actions/upload-artifact@v4
