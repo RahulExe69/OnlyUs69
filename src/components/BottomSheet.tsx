@@ -16,27 +16,27 @@ export function BottomSheet({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center px-4 pb-4">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center px-3 sm:px-4 pb-3 sm:pb-4 pointer-events-auto">
+          {/* Fast hardware-accelerated dark backdrop with zero blur filter lag */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-[4px]"
+            className="fixed inset-0 bg-black/60 transform-gpu"
           />
+          {/* Native-feeling instant bottom sheet with cubic-bezier easing */}
           <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-lg bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2.5rem] overflow-hidden shadow-2xl pt-2 pb-6 lg:pb-8 backdrop-blur-xl"
-            style={{
-              boxShadow: '0 24px 80px color-mix(in srgb, var(--theme-text) 25%, transparent)',
-            }}
+            initial={{ y: '100%', opacity: 0.95 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0.95 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="relative w-full max-w-lg bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-border)] rounded-[2rem] overflow-hidden shadow-2xl pt-2 pb-6 lg:pb-8 transform-gpu will-change-transform z-10"
           >
-            <div className="w-12 h-1 bg-[var(--theme-text)]/15 rounded-full mx-auto my-3" />
+            <div className="w-12 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto my-3" />
             <div className="px-6 pb-2">
-              <h3 className="text-sm font-black text-[var(--theme-accent)] uppercase tracking-[0.3em] text-center">{title}</h3>
+              <h3 className="text-xs font-black text-[var(--theme-accent)] uppercase tracking-[0.25em] text-center">{title}</h3>
             </div>
             {children}
           </motion.div>
@@ -58,13 +58,18 @@ export function AttachmentOption({
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 group">
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ touchAction: 'manipulation' }}
+      className="flex flex-col items-center gap-2 group cursor-pointer"
+    >
       <div
-        className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all group-hover:shadow-[0_4px_16px_color-mix(in_srgb,var(--theme-accent)_20%,transparent)]`}
+        className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform`}
       >
         {icon}
       </div>
-      <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-65 group-hover:opacity-100 transition-opacity">
+      <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-75 group-hover:opacity-100 transition-opacity">
         {label}
       </span>
     </button>

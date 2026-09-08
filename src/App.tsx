@@ -46,7 +46,7 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -68,6 +68,9 @@ import { NudgeOverlay } from './components/NudgeOverlay';
 import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './components/BottomSheet';
 import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
 import { MessageItem } from './components/MessageItem';
+import { InstagramReelInfo } from './lib/instagram';
+import { InstagramReelModal } from './components/InstagramReelModal';
+import { ShareReelModal } from './components/ShareReelModal';
 import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModals';
 import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
@@ -1973,10 +1976,13 @@ const ChatView = React.memo(function ChatView({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<ChatInputBarHandle>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [triggerVoiceRecord, setTriggerVoiceRecord] = useState(false);
+  const [activeReel, setActiveReel] = useState<InstagramReelInfo | null>(null);
+  const [showShareReelModal, setShowShareReelModal] = useState(false);
 
   // Mobile / Browser Hardware Back Button Overlay Closers inside ChatArea
   useOverlayBack(!!activeMediaViewer, () => {
@@ -2030,6 +2036,31 @@ const ChatView = React.memo(function ChatView({
     
     // Clear input so selecting the same file again triggers change
     e.target.value = '';
+  };
+
+  const handleSelectAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    onSetShowAttachmentMenu(false);
+
+    // Read audio duration using an Audio object
+    const objectUrl = URL.createObjectURL(file);
+    const audioTest = new Audio();
+    audioTest.preload = 'metadata';
+    audioTest.src = objectUrl;
+
+    const onLoaded = () => {
+      const duration = isFinite(audioTest.duration) && audioTest.duration > 0 ? audioTest.duration : 0;
+      handleSendVoiceNote(file, duration, file.name);
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    audioTest.onloadedmetadata = onLoaded;
+    audioTest.onerror = () => {
+      handleSendVoiceNote(file, 0, file.name);
+      URL.revokeObjectURL(objectUrl);
+    };
   };
 
   const handleSendMediaMessage = async (caption: string, filesToSend: SelectedMediaFile[]) => {
@@ -2306,7 +2337,7 @@ const ChatView = React.memo(function ChatView({
     }
   };
 
-  const handleSendVoiceNote = async (audioBlob: Blob, durationSeconds: number) => {
+  const handleSendVoiceNote = async (audioBlob: Blob, durationSeconds: number, customTitle?: string) => {
     const tempId = `temp-audio-${Date.now()}`;
     const mediaId = `media_${Date.now()}_audio`;
     const activeReply = replyingTo ? {
@@ -2318,11 +2349,12 @@ const ChatView = React.memo(function ChatView({
     onSetReplyingTo(null);
 
     const localUrl = URL.createObjectURL(audioBlob);
+    const fileName = customTitle || `Voice Note (${Math.round(durationSeconds)}s)`;
     const audioAttachment: MediaAttachment = {
       id: mediaId,
       type: 'audio',
       url: localUrl,
-      fileName: `Voice Note (${Math.round(durationSeconds)}s)`,
+      fileName: fileName,
       duration: Math.round(durationSeconds),
       fileSize: audioBlob.size,
       mimeType: audioBlob.type || 'audio/webm',
@@ -2355,7 +2387,9 @@ const ChatView = React.memo(function ChatView({
           reader.readAsDataURL(audioBlob);
         });
 
-        const storagePath = `${mediaId}.webm`;
+        const extMatch = customTitle?.match(/\.([0-9a-z]+)$/i);
+        const ext = extMatch ? extMatch[1].toLowerCase() : (audioBlob.type?.includes('mp3') ? 'mp3' : 'webm');
+        const storagePath = `${mediaId}.${ext}`;
         let cloudUrl = '';
         try {
           const { error: uploadError } = await supabase.storage
@@ -2404,7 +2438,7 @@ const ChatView = React.memo(function ChatView({
           } : message);
         });
       } catch (err) {
-        console.error('Voice note send error:', err);
+        console.error('Audio upload error:', err);
         setMessages(prev => prev.map(message => message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message));
       }
     })();
@@ -2661,6 +2695,7 @@ const ChatView = React.memo(function ChatView({
                 isPartnerOnline={isPartnerOnline}
                 onJoinGame={handleJoinGame}
                 onTriggerNudge={onSendNudge}
+                onOpenReel={setActiveReel}
               />
             ))
           )}
@@ -2738,7 +2773,7 @@ const ChatView = React.memo(function ChatView({
         onClearExternalVoiceRecordTrigger={() => setTriggerVoiceRecord(false)}
       />
 
-      {/* Hidden file inputs for Camera and Gallery */}
+      {/* Hidden file inputs for Camera, Gallery, and Audio */}
       <input 
         type="file" 
         ref={cameraInputRef} 
@@ -2754,6 +2789,13 @@ const ChatView = React.memo(function ChatView({
         accept="image/*,video/*" 
         className="hidden" 
         onChange={(e) => handleSelectMedia(e, false)} 
+      />
+      <input 
+        type="file" 
+        ref={audioInputRef} 
+        accept="audio/*" 
+        className="hidden" 
+        onChange={handleSelectAudio} 
       />
 
       <BottomSheet 
@@ -2781,30 +2823,21 @@ const ChatView = React.memo(function ChatView({
             }} 
           />
           <AttachmentOption 
-            icon={<Video className="w-6 h-6" />} 
-            label="Video" 
-            color="bg-[var(--theme-surface)] text-[var(--theme-accent)] border border-[var(--theme-border)]" 
+            icon={<Instagram className="w-6 h-6" />} 
+            label="Reel" 
+            color="bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
-              fileInputRef.current?.click();
+              setShowShareReelModal(true);
             }} 
           />
           <AttachmentOption 
-            icon={<Mic className="w-6 h-6" />} 
-            label="Voice Note" 
-            color="bg-[#8B5CF6]/20 text-[#8B5CF6]" 
+            icon={<Headphones className="w-6 h-6" />} 
+            label="Audio" 
+            color="bg-orange-500 text-white" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
-              setTriggerVoiceRecord(true);
-            }} 
-          />
-          <AttachmentOption 
-            icon={<Sparkles className="w-6 h-6" />} 
-            label="Feelings" 
-            color="bg-[#FF8FA3]/20 text-[#FF8FA3]" 
-            onClick={() => {
-              onSetShowAttachmentMenu(false);
-              onSetShowNudgeMenu(true);
+              audioInputRef.current?.click();
             }} 
           />
         </div>
@@ -2852,13 +2885,15 @@ const ChatView = React.memo(function ChatView({
           ].map((f) => (
             <button
               key={f.id}
+              type="button"
+              style={{ touchAction: 'manipulation' }}
               onClick={() => {
                 onSendNudge(f.id);
                 onSetShowNudgeMenu(false);
               }}
-              className="flex flex-col items-center gap-2 p-2 rounded-2xl transition-all duration-200 hover:scale-105 active:scale-95 group"
+              className="flex flex-col items-center gap-2 p-2 rounded-2xl transition-all duration-150 hover:scale-105 active:scale-95 group cursor-pointer"
             >
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-all duration-200 group-hover:rotate-6 bg-[var(--theme-bg)] border border-[var(--theme-border)] group-hover:border-[var(--theme-accent)]/40 group-hover:shadow-[0_4px_16px_color-mix(in_srgb,var(--theme-accent)_20%,transparent)]">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-transform duration-150 group-hover:rotate-6 bg-[var(--theme-bg)] border border-[var(--theme-border)] group-hover:border-[var(--theme-accent)]/40">
                 <span className="select-none leading-none">{f.emoji}</span>
               </div>
               <span className="text-[12px] font-bold text-[var(--theme-text)] opacity-85 group-hover:opacity-100 tracking-tight text-center whitespace-nowrap">
@@ -2868,6 +2903,20 @@ const ChatView = React.memo(function ChatView({
           ))}
         </div>
       </BottomSheet>
+
+      {/* Instagram Reel In-App Fullscreen Player */}
+      <InstagramReelModal 
+        reel={activeReel} 
+        onClose={() => setActiveReel(null)} 
+      />
+
+      {/* Quick Share Reel Modal */}
+      <ShareReelModal 
+        isOpen={showShareReelModal}
+        onClose={() => setShowShareReelModal(false)}
+        onSend={handleSendMessage}
+        recipientName={partnerProfile?.display_name || (role === 'owner' ? 'Nusrat' : 'Rahul')}
+      />
     </div>
   );
 });

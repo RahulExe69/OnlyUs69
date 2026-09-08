@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Mic, Volume2, AlertCircle } from 'lucide-react';
+import { Play, Pause, Mic, Music, Volume2, AlertCircle } from 'lucide-react';
 import { MediaAttachment, UserRole } from '../types';
 import { getLocalMedia, saveLocalMedia, downloadAndCacheRemoteMedia } from '../lib/mediaStore';
 
@@ -256,9 +256,13 @@ export const VoiceNoteBubble = React.memo<VoiceNoteBubbleProps>(function VoiceNo
 
           {/* Time & Speed Controls Row */}
           <div className="flex items-center justify-between text-[11px] leading-tight mt-0.5 font-medium opacity-80">
-            <div className="flex items-center gap-1.5">
-              <Mic className="w-3 h-3 opacity-70" />
-              <span>{isPlaying ? formatSeconds(currentTime) : formatSeconds(duration || currentTime)}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {media.fileName && !media.fileName.toLowerCase().startsWith('voice note') ? (
+                <Music className="w-3 h-3 opacity-70 shrink-0 text-current" />
+              ) : (
+                <Mic className="w-3 h-3 opacity-70 shrink-0" />
+              )}
+              <span className="truncate">{isPlaying ? formatSeconds(currentTime) : (media.fileName && !media.fileName.toLowerCase().startsWith('voice note') ? media.fileName : formatSeconds(duration || currentTime))}</span>
             </div>
 
             <div className="flex items-center gap-2">

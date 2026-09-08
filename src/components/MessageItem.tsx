@@ -5,6 +5,8 @@ import { Message, UserRole, UserProfile, MediaAttachment } from '../types';
 import { getMillis, parseDate } from '../lib/dateUtils';
 import { useOverlayBack } from '../lib/overlayManager';
 import { WhatsAppMediaBubble } from './WhatsAppMediaBubble';
+import { parseInstagramReel, extractTextWithoutInstagramUrl, InstagramReelInfo } from '../lib/instagram';
+import { InstagramReelCard } from './InstagramReelCard';
 
 interface MessageItemProps {
   msg: Message;
@@ -28,6 +30,7 @@ interface MessageItemProps {
   onJoinGame?: (game: { id: string; type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' }) => void;
   onTriggerNudge?: (type: string) => void;
   onFocusInput?: () => void;
+  onOpenReel?: (reel: InstagramReelInfo) => void;
 }
 
 function MessageItemComponent({
@@ -52,7 +55,8 @@ function MessageItemComponent({
   onJoinGame,
   onTriggerNudge,
   onFocusInput,
-}) {
+  onOpenReel,
+}: MessageItemProps) {
   const isOwn = msg.sender_role === role;
   const itemRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -104,6 +108,16 @@ function MessageItemComponent({
 
     return msg.replyTo || null;
   }, [msg.replyTo, (msg as any).reply_to, replyToMessage, allMessages, role]);
+
+  const detectedReel = useMemo(() => {
+    if (msg.deleted || !msg.text) return null;
+    return parseInstagramReel(msg.text);
+  }, [msg.deleted, msg.text]);
+
+  const textWithoutUrl = useMemo(() => {
+    if (!detectedReel || !msg.text) return msg.text;
+    return extractTextWithoutInstagramUrl(msg.text);
+  }, [detectedReel, msg.text]);
 
   useEffect(() => {
     if (!showPicker) return;
@@ -603,6 +617,24 @@ function MessageItemComponent({
                     <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
                       <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
                       <span>{isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
+                    </div>
+                  ) : detectedReel ? (
+                    <div className="flex-1 min-w-0 flex flex-col select-none">
+                      {textWithoutUrl ? (
+                        <span
+                          className="whitespace-pre-wrap break-words mb-1"
+                          style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+                        >
+                          {textWithoutUrl}
+                          {msg.isEdited && <span className="text-[9px] opacity-40 ml-1 italic tracking-tight">(edited)</span>}
+                        </span>
+                      ) : null}
+                      <InstagramReelCard
+                        reel={detectedReel}
+                        isOwn={isOwn}
+                        onWatch={() => onOpenReel?.(detectedReel)}
+                        selectionActive={selectionActive || isSelected}
+                      />
                     </div>
                   ) : msg.text ? (
                     <span
