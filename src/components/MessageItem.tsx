@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { CornerUpLeft, Clock3, Check, CheckCheck, Ban, Gamepad2 } from 'lucide-react';
+import { CornerUpLeft, Clock3, Check, Ban, Gamepad2 } from 'lucide-react';
 import { Message, UserRole, UserProfile, MediaAttachment } from '../types';
 import { getMillis, parseDate } from '../lib/dateUtils';
 import { useOverlayBack } from '../lib/overlayManager';
@@ -255,27 +255,55 @@ function MessageItemComponent({
     const wasRead = getMillis(msg.timestamp) > 0 && getMillis(msg.timestamp) <= partnerLastReadAt;
     if (wasRead) {
       return (
-        <CheckCheck
+        <span
           aria-label="Read"
-          className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-sky-300' : 'text-sky-500'} opacity-100`}
-          strokeWidth={2.35}
-        />
+          className="inline-flex items-center relative w-[19px] h-4 flex-none overflow-visible select-none"
+        >
+          <Check
+            aria-hidden="true"
+            className={`w-4 h-4 absolute left-0 top-0 block flex-none ${
+              onDarkOverlay ? 'text-sky-300' : 'text-[#34B7F1]'
+            }`}
+            strokeWidth={2.4}
+          />
+          <Check
+            aria-hidden="true"
+            className={`w-4 h-4 absolute left-[5px] top-0 block flex-none ${
+              onDarkOverlay ? 'text-sky-300' : 'text-[#34B7F1]'
+            }`}
+            strokeWidth={2.4}
+          />
+        </span>
       );
     }
     if (isPartnerOnline) {
       return (
-        <CheckCheck
+        <span
           aria-label="Delivered"
-          className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-white/90' : 'text-current'}`}
-          strokeWidth={2.35}
-        />
+          className={`inline-flex items-center relative w-[19px] h-4 flex-none overflow-visible select-none ${
+            onDarkOverlay ? 'text-white/90' : 'text-current opacity-70'
+          }`}
+        >
+          <Check
+            aria-hidden="true"
+            className="w-4 h-4 absolute left-0 top-0 block flex-none"
+            strokeWidth={2.4}
+          />
+          <Check
+            aria-hidden="true"
+            className="w-4 h-4 absolute left-[5px] top-0 block flex-none"
+            strokeWidth={2.4}
+          />
+        </span>
       );
     }
     return (
       <Check
         aria-label="Sent"
-        className={`block w-4 h-4 flex-none overflow-visible ${onDarkOverlay ? 'text-white/90' : 'text-current'}`}
-        strokeWidth={2.35}
+        className={`block w-4 h-4 flex-none overflow-visible ${
+          onDarkOverlay ? 'text-white/90' : 'text-current opacity-70'
+        }`}
+        strokeWidth={2.4}
       />
     );
   };
@@ -586,9 +614,9 @@ function MessageItemComponent({
                     </span>
                   ) : null}
                   <div
-                    className={`ml-auto flex min-w-[2.5rem] shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none opacity-50 tracking-tight font-medium select-none`}
+                    className="ml-auto flex shrink-0 items-center justify-end gap-1 overflow-visible whitespace-nowrap text-[10px] leading-none tracking-tight font-medium select-none"
                   >
-                    <span>{displayTime()}</span>
+                    <span className="opacity-60">{displayTime()}</span>
                     {renderReceipt(false)}
                   </div>
                 </div>

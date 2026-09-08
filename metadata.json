@@ -1,8 +1,10 @@
 {
-  "name": "OnlyUs V4",
+  "name": "OnlyUs V5 (B1)",
   "description": "A private, 1-to-1 chat application for Rahul and his partner Nusrat, with support for multiple partner emails mapped to a single identity.",
   "requestFramePermissions": [
     "microphone"
   ],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
