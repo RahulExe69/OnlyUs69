@@ -23,6 +23,8 @@ export interface ConnectHeartsProps {
   partnerProfile: UserProfile | null;
   latestPartnerMessage?: Message | null;
   isPartnerOnline?: boolean;
+  isPartnerInGameRoom?: boolean;
+  isGameMinimized?: boolean;
   onClose: () => void;
   onMinimize?: () => void;
   onLeave?: () => void;
@@ -47,6 +49,8 @@ export default function ConnectHearts({
   partnerProfile,
   latestPartnerMessage = null,
   isPartnerOnline = false,
+  isPartnerInGameRoom = false,
+  isGameMinimized = false,
   onClose,
   onMinimize,
   onLeave,
@@ -58,12 +62,16 @@ export default function ConnectHearts({
   const [winner, setWinner] = useState<UserRole | 'draw' | null>(null);
   const [winningCells, setWinningCells] = useState<[number, number][] | null>(null);
   const [scores, setScores] = useState({ owner: 0, partner: 0, draws: 0 });
-  const [partnerInGame, setPartnerInGame] = useState(false);
+  const [partnerInGame, setPartnerInGame] = useState(isPartnerInGameRoom);
   const [nudgeSent, setNudgeSent] = useState(false);
   const [inGameMessages, setInGameMessages] = useState<InGameChatMessage[]>([]);
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
   const [lastDropped, setLastDropped] = useState<{ r: number; c: number } | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  useEffect(() => {
+    setPartnerInGame(isPartnerInGameRoom);
+  }, [isPartnerInGameRoom]);
 
   const channelRef = useRef<any>(null);
   const currentGameStateRef = useRef({
@@ -252,9 +260,11 @@ export default function ConnectHearts({
       if (!isSubscribed) return;
       const state = channel.presenceState();
       const presences = Object.values(state).flat() as any[];
-      const otherPlayerPresent = presences.some(
+      const otherPres = presences.find(
         (p) => p && p.role && p.role !== role
       );
+      const otherPlayerPresent = (isPartnerInGameRoom !== undefined ? isPartnerInGameRoom : false) || 
+        !!(otherPres && otherPres.in_game !== false && otherPres.location !== 'chat');
       setPartnerInGame(otherPlayerPresent);
     };
 
@@ -307,7 +317,8 @@ export default function ConnectHearts({
       })
       .on('broadcast', { event: 'game_closed' }, () => {
         if (!isSubscribed) return;
-        onClose();
+        if (onLeave) onLeave();
+        else onClose();
       })
       .on('broadcast', { event: 'game_chat' }, ({ payload }) => {
         if (!isSubscribed || !payload) return;
@@ -325,6 +336,8 @@ export default function ConnectHearts({
           await channel.track({
             role,
             name: myName,
+            in_game: !isGameMinimized,
+            location: isGameMinimized ? 'chat' : 'game',
             joinedAt: Date.now(),
           });
         }
@@ -336,6 +349,21 @@ export default function ConnectHearts({
       supabase.removeChannel(channel);
     };
   }, [sessionId, role, userProfile?.uid]);
+
+  // Sync game presence when minimization state changes
+  useEffect(() => {
+    if (channelRef.current && role) {
+      try {
+        channelRef.current.track({
+          role,
+          name: myName,
+          in_game: !isGameMinimized,
+          location: isGameMinimized ? 'chat' : 'game',
+          joinedAt: Date.now(),
+        });
+      } catch (_) {}
+    }
+  }, [isGameMinimized, role, myName]);
 
   // Drop Disc into Column
   const handleDropDisc = async (col: number) => {
@@ -540,6 +568,23 @@ export default function ConnectHearts({
 
         {/* Right: Leave Game & Nudge */}
         <div className="flex items-center gap-1.5 pointer-events-auto">
+          {partnerInGame ? (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 text-[10px] font-bold backdrop-blur-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>In Game Room</span>
+            </div>
+          ) : isPartnerOnline ? (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 text-[10px] font-bold backdrop-blur-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+              <span>In Chat</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-neutral-500/15 border border-neutral-500/30 text-[var(--theme-text)]/50 text-[10px] font-medium backdrop-blur-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
+              <span>Offline</span>
+            </div>
+          )}
+
           {!partnerInGame && (
             <button
               onClick={handleNudgePartner}
@@ -645,9 +690,20 @@ export default function ConnectHearts({
               </span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
-                {role === 'owner' ? 'You' : 'Rahul'}
-              </span>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                  {role === 'owner' ? 'You' : 'Rahul'}
+                </span>
+                {role !== 'owner' && (
+                  partnerInGame ? (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500">In Room</span>
+                  ) : isPartnerOnline ? (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400">In Chat</span>
+                  ) : (
+                    <span className="text-[8px] font-medium px-1.5 py-0.5 rounded-full bg-neutral-500/15 text-[var(--theme-text)]/40">Offline</span>
+                  )
+                )}
+              </div>
               <span className="text-xs font-black text-sky-500 leading-tight">
                 {scores.owner}
               </span>
@@ -675,9 +731,20 @@ export default function ConnectHearts({
             }`}
           >
             <div className="flex flex-col items-end">
-              <span className="text-[11px] leading-tight text-[var(--theme-text)]">
-                {role === 'partner' ? 'You' : 'Nusrat'}
-              </span>
+              <div className="flex items-center gap-1">
+                {role !== 'partner' && (
+                  partnerInGame ? (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500">In Room</span>
+                  ) : isPartnerOnline ? (
+                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400">In Chat</span>
+                  ) : (
+                    <span className="text-[8px] font-medium px-1.5 py-0.5 rounded-full bg-neutral-500/15 text-[var(--theme-text)]/40">Offline</span>
+                  )
+                )}
+                <span className="text-[11px] leading-tight text-[var(--theme-text)]">
+                  {role === 'partner' ? 'You' : 'Nusrat'}
+                </span>
+              </div>
               <span className="text-xs font-black text-pink-500 leading-tight">
                 {scores.partner}
               </span>
@@ -742,6 +809,8 @@ export default function ConnectHearts({
               <span>
                 {isMyTurn
                   ? 'Your Turn ✨ Tap any column'
+                  : !partnerInGame && isPartnerOnline
+                  ? `${partnerName}'s Turn (In Chat) • Tap Nudge!`
                   : `${partnerName}'s Turn ⏳`}
               </span>
             </div>

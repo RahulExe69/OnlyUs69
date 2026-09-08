@@ -10,6 +10,7 @@ import DotsAndBoxes from './DotsAndBoxesModal';
 export interface GameOverlayManagerProps {
   activeGame: { id: string; type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null;
   isGameMinimized: boolean;
+  isPartnerInGameRoom?: boolean;
   minimizedCountdown: number;
   showGamesMenu: boolean;
   onCloseGamesMenu: () => void;
@@ -29,6 +30,7 @@ export interface GameOverlayManagerProps {
 export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
   activeGame,
   isGameMinimized,
+  isPartnerInGameRoom = false,
   minimizedCountdown,
   showGamesMenu,
   onCloseGamesMenu,
@@ -57,9 +59,9 @@ export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
         isPartnerOnline={isPartnerOnline}
       />
 
-      {/* Minimized Game Floating Banner */}
+      {/* Minimized Game Floating Banner - Only shows if one person is inside the game and this user minimized */}
       <AnimatePresence>
-        {activeGame && isGameMinimized && (
+        {activeGame && isGameMinimized && isPartnerInGameRoom && (
           <motion.div
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -98,6 +100,8 @@ export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
               partnerProfile={partnerProfile}
               latestPartnerMessage={latestPartnerMessage}
               isPartnerOnline={isPartnerOnline}
+              isPartnerInGameRoom={isPartnerInGameRoom}
+              isGameMinimized={isGameMinimized}
               onClose={onMinimizeGame}
               onMinimize={onMinimizeGame}
               onLeave={onTerminateGame}
@@ -114,6 +118,8 @@ export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
               partnerProfile={partnerProfile}
               latestPartnerMessage={latestPartnerMessage}
               isPartnerOnline={isPartnerOnline}
+              isPartnerInGameRoom={isPartnerInGameRoom}
+              isGameMinimized={isGameMinimized}
               onClose={onMinimizeGame}
               onMinimize={onMinimizeGame}
               onLeave={onTerminateGame}
@@ -130,6 +136,8 @@ export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
               partnerProfile={partnerProfile}
               latestPartnerMessage={latestPartnerMessage}
               isPartnerOnline={isPartnerOnline}
+              isPartnerInGameRoom={isPartnerInGameRoom}
+              isGameMinimized={isGameMinimized}
               onClose={onMinimizeGame}
               onMinimize={onMinimizeGame}
               onLeave={onTerminateGame}

@@ -307,11 +307,19 @@ export default function App() {
   const [showNudgeMenu, setShowNudgeMenu] = useState(false);
   const [activeGame, setActiveGame] = useState<{ id: string, type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null>(null);
   const [isGameMinimized, setIsGameMinimized] = useState(false);
+  const [isPartnerInGameRoom, setIsPartnerInGameRoom] = useState(false);
   const [minimizedCountdown, setMinimizedCountdown] = useState(60);
   const minimizedTimerRef = useRef<any>(null);
 
+  const activeGameRef = useRef(activeGame);
+  activeGameRef.current = activeGame;
+  const isGameMinimizedRef = useRef(isGameMinimized);
+  isGameMinimizedRef.current = isGameMinimized;
+  const isPartnerInGameRoomRef = useRef(isPartnerInGameRoom);
+  isPartnerInGameRoomRef.current = isPartnerInGameRoom;
+
   const handleMinimizeGame = useCallback(() => {
-    if (!activeGame) return;
+    if (!activeGameRef.current) return;
     setIsGameMinimized(true);
     setMinimizedCountdown(60);
 
@@ -325,24 +333,35 @@ export default function App() {
           clearInterval(minimizedTimerRef.current);
           minimizedTimerRef.current = null;
           // 1 minute expired -> Terminate session in DB & unmount
-          if (activeGame?.id) {
-            supabase.from('games').update({ status: 'closed' }).eq('id', activeGame.id).then();
+          const currentGame = activeGameRef.current;
+          if (currentGame?.id) {
+            if (mainChannelRef.current) {
+              try {
+                mainChannelRef.current.send({
+                  type: 'broadcast',
+                  event: 'game_closed',
+                  payload: { sessionId: currentGame.id },
+                });
+              } catch (_) {}
+            }
+            supabase.from('games').update({ status: 'closed' }).eq('id', currentGame.id).then();
             supabase.from('messages').update({
               gameInvite: {
-                sessionId: activeGame.id,
-                gameType: activeGame.type,
+                sessionId: currentGame.id,
+                gameType: currentGame.type,
                 status: 'closed',
               },
-            }).filter('gameInvite->>sessionId', 'eq', activeGame.id).then();
+            }).filter('gameInvite->>sessionId', 'eq', currentGame.id).then();
           }
           setActiveGame(null);
           setIsGameMinimized(false);
+          setIsPartnerInGameRoom(false);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, [activeGame]);
+  }, []);
 
   const handleResumeGame = useCallback(() => {
     if (minimizedTimerRef.current) {
@@ -352,28 +371,41 @@ export default function App() {
     setIsGameMinimized(false);
   }, []);
 
-  const handleTerminateGame = useCallback(async () => {
+  const handleTerminateGame = useCallback(async (notifyPartner: boolean = true) => {
     if (minimizedTimerRef.current) {
       clearInterval(minimizedTimerRef.current);
       minimizedTimerRef.current = null;
     }
-    if (activeGame?.id) {
+    const currentGame = activeGameRef.current;
+    setActiveGame(null);
+    setIsGameMinimized(false);
+    setIsPartnerInGameRoom(false);
+
+    if (currentGame?.id) {
+      if (notifyPartner && mainChannelRef.current) {
+        try {
+          mainChannelRef.current.send({
+            type: 'broadcast',
+            event: 'game_closed',
+            payload: { sessionId: currentGame.id },
+          });
+        } catch (_) {}
+      }
+
       try {
-        await supabase.from('games').update({ status: 'closed' }).eq('id', activeGame.id);
+        await supabase.from('games').update({ status: 'closed' }).eq('id', currentGame.id);
         await supabase.from('messages').update({
           gameInvite: {
-            sessionId: activeGame.id,
-            gameType: activeGame.type,
+            sessionId: currentGame.id,
+            gameType: currentGame.type,
             status: 'closed',
           },
-        }).filter('gameInvite->>sessionId', 'eq', activeGame.id);
+        }).filter('gameInvite->>sessionId', 'eq', currentGame.id);
       } catch (err) {
         console.warn('Terminate game note:', err);
       }
     }
-    setActiveGame(null);
-    setIsGameMinimized(false);
-  }, [activeGame]);
+  }, []);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -980,6 +1012,26 @@ export default function App() {
       setSocketOnlineUsers([...new Set(onlineIds)]);
       setSocketOnlineRoles([...new Set(onlineRoles)]);
 
+      // Check partner's in-game status
+      const myId = user?.id || '';
+      const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+      const partnerRole = myRole === 'owner' ? 'partner' : 'owner';
+      const partnerPres = presences.find(p => p && (p.role === partnerRole || (p.user_id && p.user_id !== myId)));
+      const isPartnerInGame = !!(
+        partnerPres &&
+        partnerPres.in_game === true &&
+        (!activeGameRef.current || partnerPres.game_id === activeGameRef.current.id)
+      );
+      setIsPartnerInGameRoom(isPartnerInGame);
+
+      // If this user is minimized in chat, and partner presence explicitly reports they are NOT in the game room:
+      // Then both players have left the game arena, so automatically terminate the game session!
+      if (activeGameRef.current && isGameMinimizedRef.current) {
+        if (partnerPres && partnerPres.in_game === false) {
+          handleTerminateGame(false);
+        }
+      }
+
       // Safety: If they are not active/online, they are definitely not typing
       setSocketTypingUsers(prev => prev.filter(id => onlineIds.includes(id)));
     };
@@ -988,6 +1040,11 @@ export default function App() {
       .on('presence', { event: 'sync' }, updatePresenceState)
       .on('presence', { event: 'join' }, updatePresenceState)
       .on('presence', { event: 'leave' }, updatePresenceState)
+      .on('broadcast', { event: 'game_closed' }, ({ payload }) => {
+        if (activeGameRef.current && (!payload?.sessionId || payload.sessionId === activeGameRef.current.id)) {
+          handleTerminateGame(false);
+        }
+      })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         const { userId, isTyping } = payload;
         setSocketTypingUsers(prev => {
@@ -1033,7 +1090,10 @@ export default function App() {
             user_id: user.id, 
             online_at: new Date().toISOString(),
             is_active: currentVisible,
-            role: myRole
+            role: myRole,
+            in_game: !!activeGameRef.current && !isGameMinimizedRef.current,
+            game_id: (activeGameRef.current && !isGameMinimizedRef.current) ? activeGameRef.current.id : null,
+            location: (activeGameRef.current && !isGameMinimizedRef.current) ? 'game' : 'chat',
           });
           setIsSocketConnected(true);
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
@@ -1050,17 +1110,20 @@ export default function App() {
     };
   }, [user?.id]);
 
-  // Sync tab activity to Presence without resubscribing
+  // Sync tab activity and in-game presence without resubscribing
   useEffect(() => {
     if (mainChannelRef.current && isSocketConnected && user) {
       mainChannelRef.current.track({
         user_id: user.id,
         online_at: new Date().toISOString(),
         is_active: isTabActive,
-        role: userProfile?.role || (isOwner ? 'owner' : 'partner')
+        role: userProfile?.role || (isOwner ? 'owner' : 'partner'),
+        in_game: !!activeGame && !isGameMinimized,
+        game_id: (activeGame && !isGameMinimized) ? activeGame.id : null,
+        location: (activeGame && !isGameMinimized) ? 'game' : 'chat',
       });
     }
-  }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner]);
+  }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner, activeGame?.id, isGameMinimized]);
 
   const lastBroadcastTypingStateRef = useRef<boolean>(false);
   const lastBroadcastTypingTimeRef = useRef<number>(0);
@@ -1519,6 +1582,9 @@ export default function App() {
     );
 
     if (isSocketOnline) {
+      if (isPartnerInGameRoom) {
+        return "In Game Room 🎮";
+      }
       return "Online";
     }
 
@@ -1698,16 +1764,24 @@ export default function App() {
                             {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
                           </div>
                         )}
-                        {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' && (
+                        {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'In Game Room 🎮' ? (
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse"></div>
+                        ) : formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? (
                           <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full"></div>
-                        )}
+                        ) : null}
                       </div>
                       
                       <div className="min-w-0">
                         <h2 className="text-[15px] lg:text-[16px] font-bold text-[var(--theme-text)] truncate leading-tight">
                           {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
                         </h2>
-                        <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? 'text-green-500' : 'text-[#6E6E6E]/60'}`}>
+                        <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${
+                          formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'In Game Room 🎮'
+                            ? 'text-purple-500'
+                            : formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'
+                            ? 'text-green-500'
+                            : 'text-[#6E6E6E]/60'
+                        }`}>
                           {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid)}
                         </p>
                       </div>
@@ -1895,6 +1969,7 @@ export default function App() {
       <GameOverlayManager
         activeGame={activeGame}
         isGameMinimized={isGameMinimized}
+        isPartnerInGameRoom={isPartnerInGameRoom}
         minimizedCountdown={minimizedCountdown}
         showGamesMenu={showGamesMenu}
         onCloseGamesMenu={() => setShowGamesMenu(false)}
