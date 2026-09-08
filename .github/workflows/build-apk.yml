@@ -62,7 +62,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Node Dependencies
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Build Web Application
         env:
