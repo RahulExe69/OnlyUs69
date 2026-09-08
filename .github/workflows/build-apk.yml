@@ -38,7 +38,6 @@ jobs:
           if [ -z "$RAW_NAME" ]; then
             RAW_NAME="1.0.1"
           fi
-          # Strip leading 'v' if entered by user (e.g. 'v1.0.1' -> '1.0.1')
           CLEAN_NAME="${RAW_NAME#v}"
 
           RAW_CODE="${{ inputs.version_code }}"
@@ -63,7 +62,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Node Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Web Application
         env:
@@ -83,15 +82,10 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
         with:
-          cache-read-only: false
+          cache-read-only: true
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
 
       - name: Sync Capacitor Web Assets
         run: npx cap sync android
@@ -105,7 +99,7 @@ jobs:
           ./gradlew assembleNusratDebug assembleRahulDebug \
             -PversionCode=${{ steps.vars.outputs.version_code }} \
             -PversionName=${{ steps.vars.outputs.version_name }} \
-            --no-daemon --stacktrace
+            --no-daemon --build-cache --parallel --stacktrace
 
       - name: Organize APK Artifacts
         run: |
@@ -174,4 +168,3 @@ jobs:
           echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
           echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
           echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Inline Notifications)" >> $GITHUB_STEP_SUMMARY
-
