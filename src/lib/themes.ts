@@ -31,6 +31,9 @@ export const THEMES = {
   },
   aurora: {
     name: 'Aurora Drift', note: 'A luminous northern-sky wash with soft glass.', bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif'
+  },
+  '3d-aura': {
+    name: 'Quantum Aura 3D', note: 'Fluid 3D volumetric glowing orbs & stardust field (Aura Farm style).', bg: '#080811', text: '#F5F3FF', header: 'rgba(12, 11, 24, .82)', owner: '#A855F7', ownerText: '#FFFFFF', partner: '#1E1B38', partnerText: '#E0E7FF', input: '#121124', surface: '#0F0E20', accent: '#C084FC', border: 'rgba(168, 85, 247, .3)', decoration: 'radial-gradient(circle at 50% 20%, rgba(168,85,247,.22), transparent 45%), radial-gradient(circle at 80% 80%, rgba(59,130,246,.18), transparent 40%)', font: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif'
   }
 };
 

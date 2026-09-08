@@ -58,6 +58,7 @@ import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
 import { THEMES, ThemeName, applyTheme } from './lib/themes';
+import { QuantumAuraBackground } from './components/QuantumAuraBackground';
 import { getMillis, parseDate, hydrateMessageMedia } from './lib/dateUtils';
 import { ProfileModal } from './components/ProfileModal';
 import { PartnerInfoModal } from './components/PartnerInfoModal';
@@ -75,7 +76,7 @@ import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModal
 import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
-import { initLocalNotifications, OnlyUsNativeNotification } from './lib/notifications';
+import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
 import Cropper, { Area } from 'react-easy-crop';
 import imageCompression from 'browser-image-compression';
 
@@ -107,6 +108,12 @@ export default function App() {
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
 
+  // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
+  const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return navigator.userAgent.includes('OnlyUsFlavor/Notes') || window.location.search.includes('edition=nusrat');
+  });
+
   // Stealth Disguise Vault State (Notepad vs OnlyUs)
   const [isStealthUnlocked, setIsStealthUnlocked] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -114,26 +121,32 @@ export default function App() {
     if (sessionStorage.getItem('onlyus_vault_unlocked') === 'true') {
       return true;
     }
-    // 2. If running inside Nusrat's Notes APK flavor (Native User-Agent or package check)
-    if (navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
+    // 2. Only locked initially if running inside Nusrat's Notes APK flavor
+    if (navigator.userAgent.includes('OnlyUsFlavor/Notes') || window.location.search.includes('edition=nusrat')) {
       return false;
     }
     const pref = localStorage.getItem('onlyus_stealth_mode');
     if (pref === 'true') return false;
-    if (window.location.search.includes('stealth') || window.location.search.includes('edition=nusrat')) {
+    if (window.location.search.includes('stealth')) {
       return false;
     }
     return true;
   });
 
-  // Verify package identity asynchronously: if com.onlyus.notes, lock immediately
+  // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
     CapApp.getInfo().then(info => {
-      if (info.id.includes('notes')) {
+      const isNotes = info.id.includes('notes');
+      if (isNotes) {
+        setIsNotesFlavor(true);
         localStorage.setItem('onlyus_stealth_mode', 'true');
         if (sessionStorage.getItem('onlyus_vault_unlocked') !== 'true') {
           setIsStealthUnlocked(false);
         }
+      } else {
+        // Explicitly Rahul's APK or standard flavor: clear stealth preference
+        localStorage.removeItem('onlyus_stealth_mode');
+        setIsStealthUnlocked(true);
       }
     }).catch(() => {});
   }, []);
@@ -749,6 +762,10 @@ export default function App() {
         console.error('Failed to send reply from notification action:', err);
       }
     });
+
+    // Register high-priority FCM token for background/closed app push delivery
+    const role: UserRole = isOwner ? 'owner' : (userProfile?.role || 'owner');
+    syncFcmTokenToSupabase(user.id, role);
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') {
@@ -1724,14 +1741,16 @@ export default function App() {
                                 <UserIcon className="w-4 h-4 text-[var(--theme-accent)]" />
                                 My Profile
                               </button>
-                              <button 
-                                onPointerDown={(e) => e.preventDefault()}
-                                onClick={() => { lockVault(); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-amber-600 hover:bg-amber-500/10 flex items-center gap-3 transition-colors"
-                              >
-                                <BookOpen className="w-4 h-4 text-amber-600" />
-                                Lock to Notes
-                              </button>
+                              {isNotesFlavor && (
+                                <button 
+                                  onPointerDown={(e) => e.preventDefault()}
+                                  onClick={() => { lockVault(); setShowMenu(false); }}
+                                  className="w-full px-4 py-3 text-left text-sm font-medium text-amber-600 hover:bg-amber-500/10 flex items-center gap-3 transition-colors"
+                                >
+                                  <BookOpen className="w-4 h-4 text-amber-600" />
+                                  Lock to Notes
+                                </button>
+                              )}
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
@@ -1762,6 +1781,9 @@ export default function App() {
 
         <div className="flex-1 overflow-hidden relative">
             <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
+            {(userProfile?.theme === '3d-aura' || document.documentElement.dataset.chatTheme === '3d-aura') && (
+              <QuantumAuraBackground />
+            )}
             <div className="relative z-10 h-full flex flex-col">
               <ChatView 
                 role={userProfile?.role || 'partner'} 
@@ -1821,7 +1843,8 @@ export default function App() {
             isOwner={isOwner}
             onLogout={handleLogout}
             onProfileUpdated={(newMe) => setUserProfile(newMe)}
-            onLockVault={lockVault}
+            onLockVault={isNotesFlavor ? lockVault : undefined}
+            isNotesFlavor={isNotesFlavor}
           />
         )}
       </AnimatePresence>
@@ -2322,6 +2345,16 @@ const ChatView = React.memo(function ChatView({
       }]).select().single();
       
       if (error) throw error;
+
+      // Dispatches high-priority push notification to partner's device
+      triggerPushNotification({
+        senderRole: role,
+        senderName: role === 'owner' ? 'Rahul' : (userProfile?.display_name || 'Nusrat'),
+        text: text,
+        avatarUrl: userProfile?.photo_url || undefined,
+        messageId: savedMessage?.id
+      });
+
       setMessages(prev => {
         const isExisting = prev.some(m => m.id === savedMessage.id);
         if (isExisting) {

@@ -62,6 +62,15 @@
             android:name=".OnlyUsSyncService"
             android:exported="false" />
 
+        <!-- Firebase Cloud Messaging Service: High-priority background & killed-state push notifications -->
+        <service
+            android:name=".OnlyUsFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Auto-restart service upon device reboot / app update -->
         <receiver
             android:name=".BootReceiver"

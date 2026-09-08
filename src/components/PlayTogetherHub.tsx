@@ -308,7 +308,7 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
                     More Games Soon 💕
                   </h3>
                   <p className="text-[11px] text-[var(--theme-text)]/50 font-medium leading-snug line-clamp-2 mt-0.5">
-                    Ludo & more 1-on-1 couple duels in the works!
+                    More romantic 1-on-1 couple duels in the works!
                   </p>
                 </div>
 

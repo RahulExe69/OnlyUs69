@@ -241,6 +241,29 @@ body {
 :root[data-chat-theme="aurora"] .chat-theme .chat-bubble-owner,
 :root[data-chat-theme="aurora"] .chat-theme .chat-bubble-partner { border-radius: 24px; backdrop-filter: blur(12px); border-color: color-mix(in srgb, var(--theme-accent) 32%, white); }
 
+:root[data-chat-theme="3d-aura"] .chat-theme .chat-bubble-owner {
+  border-radius: 20px 20px 4px 20px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.9), rgba(126, 34, 206, 0.85));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(216, 180, 254, 0.35);
+  box-shadow: 0 8px 24px -4px rgba(168, 85, 247, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+:root[data-chat-theme="3d-aura"] .chat-theme .chat-bubble-partner {
+  border-radius: 20px 20px 20px 4px;
+  background: rgba(30, 27, 56, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+:root[data-chat-theme="3d-aura"] .theme-accent-button {
+  box-shadow: 0 4px 16px -2px rgba(168, 85, 247, 0.45);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
 .theme-settings { background: var(--theme-surface); color: var(--theme-text); }
 .theme-settings input { background: var(--theme-input-bg) !important; border-color: var(--theme-border) !important; color: var(--theme-text) !important; }
 .theme-settings .bg-\[\#FFF8F6\],

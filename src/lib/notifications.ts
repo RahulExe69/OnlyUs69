@@ -1,6 +1,7 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { LocalNotifications, ActionPerformed } from '@capacitor/local-notifications';
 import { Message } from '../types';
+import { supabase } from './supabase';
 
 export interface OnlyUsNotificationPlugin {
   showChatNotification(options: {
@@ -14,6 +15,8 @@ export interface OnlyUsNotificationPlugin {
   }): Promise<void>;
   cachePartnerAvatar(options: { avatarUrl: string }): Promise<void>;
   cancelChatNotification(options?: { notificationId?: number }): Promise<void>;
+  getFcmToken(): Promise<{ token: string }>;
+  addListener(eventName: 'fcmTokenRefresh', listenerFunc: (data: { token: string }) => void): Promise<any>;
 }
 
 export const OnlyUsNativeNotification = registerPlugin<OnlyUsNotificationPlugin>('OnlyUsNotification');
@@ -21,6 +24,90 @@ export const OnlyUsNativeNotification = registerPlugin<OnlyUsNotificationPlugin>
 let isChannelCreated = false;
 let isListenerRegistered = false;
 let currentReplyCallback: ((text: string) => Promise<void>) | null = null;
+let isTokenListenerRegistered = false;
+
+/**
+ * Registers the device's high-priority FCM token into Supabase so messages wake up the phone
+ */
+export async function syncFcmTokenToSupabase(userId: string, role: string) {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+    return;
+  }
+
+  const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
+  if (isNotes) return; // Stealth edition has zero push tokens registered
+
+  try {
+    const { token } = await OnlyUsNativeNotification.getFcmToken();
+    if (token && token.trim() !== '') {
+      await supabase.from('fcm_tokens').upsert(
+        {
+          user_id: userId,
+          role,
+          token: token.trim(),
+          platform: 'android',
+          device_model: typeof navigator !== 'undefined' ? navigator.userAgent : 'Android',
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'token' }
+      );
+    }
+
+    if (!isTokenListenerRegistered) {
+      isTokenListenerRegistered = true;
+      OnlyUsNativeNotification.addListener('fcmTokenRefresh', async (data: { token: string }) => {
+        if (data && data.token && data.token.trim() !== '') {
+          try {
+            await supabase.from('fcm_tokens').upsert(
+              {
+                user_id: userId,
+                role,
+                token: data.token.trim(),
+                platform: 'android',
+                device_model: typeof navigator !== 'undefined' ? navigator.userAgent : 'Android',
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: 'token' }
+            );
+          } catch (e) {
+            console.warn('Failed to sync refreshed FCM token to Supabase:', e);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('FCM token registration notice:', err);
+  }
+}
+
+/**
+ * Triggers instant high-priority FCM push delivery via the Supabase Edge Function
+ */
+export async function triggerPushNotification(options: {
+  senderRole: string;
+  senderName: string;
+  text?: string;
+  avatarUrl?: string;
+  messageId?: string;
+}) {
+  try {
+    const edgeUrl = 'https://vrstmtjfqlbfyxtsothf.supabase.co/functions/v1/send-push';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyc3RtdGpmcWxiZnl4dHNvdGhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3ODc2MTIsImV4cCI6MjA5MjM2MzYxMn0.hThpbqIhYdxyR7Ze9UcBW5gHkX5WnTeTJM7cMfvM6wc';
+
+    await fetch(edgeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': `Bearer ${anonKey}`
+      },
+      body: JSON.stringify(options)
+    });
+  } catch (err) {
+    // Non-blocking: PostgreSQL trigger will also guarantee delivery
+    console.warn('Edge push trigger notice:', err);
+  }
+}
 
 // Attach global listener for direct replies sent from Android DirectReplyReceiver
 if (typeof window !== 'undefined') {

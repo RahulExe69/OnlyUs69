@@ -141,6 +141,14 @@ export const ThemeCustomizePage: React.FC<ThemeCustomizePageProps> = ({
                           <Check className="w-3.5 h-3.5 stroke-[3]" />
                         </div>
                       )}
+
+                      {/* Special 3D Aura Farm Badge */}
+                      {themeName === '3d-aura' && (
+                        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[8px] font-black tracking-wider uppercase shadow-md flex items-center gap-0.5">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          <span>3D Live</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Theme Details */}
@@ -149,6 +157,11 @@ export const ThemeCustomizePage: React.FC<ThemeCustomizePageProps> = ({
                         <h4 className="text-[13px] sm:text-[15px] font-bold text-[var(--theme-text)] leading-tight truncate">
                           {theme.name}
                         </h4>
+                        {themeName === '3d-aura' && !isApplied && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-500/20 text-purple-400 border border-purple-500/30 flex-shrink-0">
+                            3D
+                          </span>
+                        )}
                         {isApplied && (
                           <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex-shrink-0">
                             Active

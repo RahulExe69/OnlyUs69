@@ -35,3 +35,43 @@ This repository is a **unified single-codebase project** that serves both the pr
 - **Manual Trigger only** (`workflow_dispatch`) so pushing website updates does NOT unnecessarily re-compile APKs.
 - Automatically generates icons via `npm run icons` (`scripts/generate-flavor-icons.js`).
 - Compiles both variants (`assembleNusratDebug`, `assembleRahulDebug`) and publishes them directly to GitHub Releases.
+
+---
+
+## 🔑 AI Studio Secrets & Supabase Automation
+- **Supabase Credentials in AI Studio**:
+  - `SUPABASE_PROJECT_ID`: `vrstmtjfqlbfyxtsothf`
+  - `SUPABASE_ACCESS_TOKEN`: Configured in AI Studio Settings -> Secrets.
+  - The AI agent has direct programmatic access to the Supabase Management API (`api.supabase.com/v1/projects/{ref}`) to run database queries (`/database/query`), manage Edge Functions (`/functions`), and manage project secrets (`/secrets`).
+  - The user prefers automated schema updates, triggers, and edge function deploys rather than manual Supabase dashboard operations.
+
+---
+
+## 🔔 Firebase Cloud Messaging (FCM) & Push Architecture
+OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-latency notification delivery to Rahul's Android device even when the app is in the background, screen locked, or killed/swiped away.
+
+### 1. Firebase Project & Android Configuration
+- **Firebase Project**: `onlyus69`
+- **Config file**: `/android/app/google-services.json` (contains configuration for both `com.onlyus.app` and `com.onlyus.notes`).
+- **Dependencies**: Integrated via Gradle BOM (`com.google.firebase:firebase-bom` and `com.google.firebase:firebase-messaging`).
+- **Firebase Service Account Secrets**: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` are stored securely inside Supabase Project Secrets.
+
+### 2. Native Android Service & Notification Dispatch
+- **`OnlyUsFirebaseMessagingService`** (`/android/app/src/main/java/com/onlyus/app/OnlyUsFirebaseMessagingService.java`):
+  - Extends `FirebaseMessagingService`.
+  - Registered in `AndroidManifest.xml` with `com.google.firebase.MESSAGING_EVENT`.
+  - Intercepts incoming High-Priority FCM Data messages and passes title, body, reply role, and avatar to `OnlyUsNotificationPlugin.showChatNotificationNative(...)`.
+  - Automatically caches new FCM registration tokens and notifies JavaScript listeners.
+  - In Nusrat's stealth flavor (`com.onlyus.notes`), all notification display is blocked to maintain complete privacy.
+
+### 3. Edge Function & Database Webhook Dispatch
+- **Edge Function**: `send-push` (`/supabase/functions/send-push/index.ts`):
+  - Deployed on Supabase Edge Runtime (`https://vrstmtjfqlbfyxtsothf.supabase.co/functions/v1/send-push`).
+  - Generates short-lived Google OAuth2 tokens via Web Crypto RS256 signing and dispatches high-priority `data` payloads via FCM v1 REST API.
+  - Automatically cleans up invalidated or unregistered tokens from `public.fcm_tokens`.
+- **Database Trigger**: `on_message_inserted_fcm_push` on `public.messages`:
+  - Utilizes PostgreSQL `pg_net` extension (`net.http_post`) to trigger `send-push` asynchronously whenever a non-deleted message is inserted into `messages`.
+- **Client Sync**:
+  - `syncFcmTokenToSupabase` in `/src/lib/notifications.ts` registers and updates the device's FCM token in the `public.fcm_tokens` table on initial login.
+  - Direct invoke `triggerPushNotification` runs client-side on send for immediate delivery alongside the database trigger.
+

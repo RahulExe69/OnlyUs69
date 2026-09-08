@@ -21,10 +21,12 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.RemoteInput;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -36,6 +38,55 @@ import java.util.concurrent.Executors;
 public class OnlyUsNotificationPlugin extends Plugin {
     private static final String TAG = "OnlyUsNotification";
     private static Bitmap sCachedAvatarBitmap = null;
+    private static OnlyUsNotificationPlugin sInstance = null;
+
+    @Override
+    public void load() {
+        super.load();
+        sInstance = this;
+    }
+
+    public static void notifyTokenRefreshed(String token) {
+        if (sInstance != null && token != null) {
+            JSObject data = new JSObject();
+            data.put("token", token);
+            sInstance.notifyListeners("fcmTokenRefresh", data);
+        }
+    }
+
+    @PluginMethod
+    public void getFcmToken(PluginCall call) {
+        Context context = getContext();
+        if (context == null || context.getPackageName().contains("notes")) {
+            JSObject ret = new JSObject();
+            ret.put("token", "");
+            call.resolve(ret);
+            return;
+        }
+
+        try {
+            FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(task -> {
+                    if (!task.isSuccessful()) {
+                        Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+                        JSObject ret = new JSObject();
+                        ret.put("token", "");
+                        call.resolve(ret);
+                        return;
+                    }
+                    String token = task.getResult();
+                    Log.d(TAG, "FCM token retrieved: " + token);
+                    JSObject ret = new JSObject();
+                    ret.put("token", token != null ? token : "");
+                    call.resolve(ret);
+                });
+        } catch (Exception e) {
+            Log.e(TAG, "Error fetching FCM token: " + e.getMessage(), e);
+            JSObject ret = new JSObject();
+            ret.put("token", "");
+            call.resolve(ret);
+        }
+    }
 
     @PluginMethod
     public void showChatNotification(PluginCall call) {

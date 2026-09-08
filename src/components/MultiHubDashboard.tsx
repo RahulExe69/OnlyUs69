@@ -18,6 +18,7 @@ import {
   Lock
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { QuantumAuraBackground } from './QuantumAuraBackground';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -85,6 +86,9 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
 
   return (
     <div className="theme-hub min-h-screen flex flex-col justify-between relative overflow-hidden select-none">
+      {(userProfile?.theme === '3d-aura' || (typeof document !== 'undefined' && document.documentElement.dataset.chatTheme === '3d-aura')) && (
+        <QuantumAuraBackground />
+      )}
       {/* Background soft ambient glows */}
       <div className="theme-hub-glow absolute -top-32 -left-32 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
       <div className="theme-hub-glow absolute top-1/2 -right-32 w-96 h-96 rounded-full blur-3xl pointer-events-none" />
