@@ -10,13 +10,13 @@ const DENSITIES = [
   { name: 'xxxhdpi', size: 192, statSize: 96 }
 ];
 
-// Full-bleed Notes app icon (used for standard square, round, & adaptive launchers)
+// Realistic amber Notes app icon (full-bleed with amber gradient for legacy launcher)
 const NOTES_FULL_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="fullBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#FBBF24" />
-      <stop offset="40%" stop-color="#F59E0B" />
+      <stop offset="45%" stop-color="#F59E0B" />
       <stop offset="100%" stop-color="#D97706" />
     </linearGradient>
     <linearGradient id="sheetGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -24,44 +24,92 @@ const NOTES_FULL_SVG = `
       <stop offset="100%" stop-color="#FFFDF7" />
     </linearGradient>
     <linearGradient id="foldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#E5E7EB" />
-      <stop offset="100%" stop-color="#D1D5DB" />
+      <stop offset="0%" stop-color="#F1F5F9" />
+      <stop offset="100%" stop-color="#CBD5E1" />
     </linearGradient>
-    <filter id="cardShadow" x="-15%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#78350F" flood-opacity="0.32" />
+    <filter id="padShadow" x="-25%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#78350F" flood-opacity="0.30" />
     </filter>
   </defs>
 
-  <!-- Full-bleed background filling 100% of canvas -->
+  <!-- Full background for legacy square icons -->
   <rect x="0" y="0" width="512" height="512" fill="url(#fullBgGrad)" />
 
-  <!-- Centered White Notepad with Folded Corner & Subtle Shadow -->
-  <g filter="url(#cardShadow)">
-    <path d="M 96,60 L 340,60 L 416,136 L 416,452 A 28,28 0 0,1 388,480 L 124,480 A 28,28 0 0,1 96,452 Z" fill="url(#sheetGrad)" />
-    <path d="M 340,60 L 340,136 L 416,136 Z" fill="url(#foldGrad)" />
-    <path d="M 340,136 L 340,148 L 416,136 Z" fill="#9CA3AF" opacity="0.35" />
+  <!-- Centered Notepad Sheet (Comfortably inside the 65% safe zone) -->
+  <g filter="url(#padShadow)">
+    <path d="M 152,128 L 314,128 L 368,182 L 368,384 A 20,20 0 0,1 348,404 L 172,404 A 20,20 0 0,1 152,384 Z" fill="url(#sheetGrad)" />
+    <!-- Folded dog-ear corner -->
+    <path d="M 314,128 L 314,182 L 368,182 Z" fill="url(#foldGrad)" />
+    <path d="M 314,182 L 314,190 L 368,182 Z" fill="#94A3B8" opacity="0.3" />
   </g>
 
-  <!-- Top accent bar on notepad -->
-  <path d="M 124,96 L 316,96" stroke="#F59E0B" stroke-width="14" stroke-linecap="round" />
+  <!-- Top accent header strip -->
+  <rect x="174" y="152" width="124" height="10" rx="5" fill="#F59E0B" />
 
-  <!-- Notepad Ruled Content Lines -->
-  <rect x="124" y="152" width="264" height="16" rx="8" fill="#E5E7EB" />
-  <rect x="124" y="206" width="216" height="16" rx="8" fill="#E5E7EB" />
-  <rect x="124" y="260" width="248" height="16" rx="8" fill="#E5E7EB" />
-  <rect x="124" y="314" width="180" height="16" rx="8" fill="#E5E7EB" />
+  <!-- Ruled notebook lines -->
+  <rect x="174" y="194" width="168" height="9" rx="4.5" fill="#E2E8F0" />
+  <rect x="174" y="234" width="140" height="9" rx="4.5" fill="#E2E8F0" />
+  <rect x="174" y="274" width="156" height="9" rx="4.5" fill="#E2E8F0" />
 
-  <!-- Checklist item & pencil -->
-  <circle cx="136" cy="380" r="10" fill="#10B981" />
-  <path d="M 131,380 L 135,384 L 141,376" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-  <rect x="158" y="372" width="140" height="16" rx="8" fill="#D1D5DB" />
+  <!-- Checklist item: green check bullet + note title line -->
+  <circle cx="184" cy="318" r="8" fill="#10B981" />
+  <path d="M 180,318 L 183,321 L 188,315" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="200" y="314" width="108" height="9" rx="4.5" fill="#CBD5E1" />
 
-  <!-- Stylized Pencil in Bottom Right -->
-  <g transform="translate(350, 390) rotate(-45)">
-    <rect x="-10" y="-44" width="20" height="60" rx="4" fill="#D97706" />
-    <path d="M -10,16 L 0,36 L 10,16 Z" fill="#FDE68A" />
-    <polygon points="-3,31 0,36 3,31" fill="#1F2937" />
-    <rect x="-10" y="-56" width="20" height="12" rx="4" fill="#F43F5E" />
+  <!-- Stylized Pencil in bottom right corner -->
+  <g transform="translate(328, 336) rotate(-42)">
+    <rect x="-8" y="-36" width="16" height="50" rx="3" fill="#D97706" />
+    <path d="M -8,14 L 0,30 L 8,14 Z" fill="#FDE68A" />
+    <polygon points="-2.5,25 0,30 2.5,25" fill="#1F2937" />
+    <rect x="-8" y="-46" width="16" height="10" rx="3" fill="#F43F5E" />
+  </g>
+</svg>
+`;
+
+// Adaptive Foreground for Notes: Transparent background with the notepad centered in safe zone
+const NOTES_FOREGROUND_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sheetGradFg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#FFFDF7" />
+    </linearGradient>
+    <linearGradient id="foldGradFg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F1F5F9" />
+      <stop offset="100%" stop-color="#CBD5E1" />
+    </linearGradient>
+    <filter id="padShadowFg" x="-25%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#78350F" flood-opacity="0.32" />
+    </filter>
+  </defs>
+
+  <!-- Centered Notepad Sheet (Comfortably inside the 65% safe zone) -->
+  <g filter="url(#padShadowFg)">
+    <path d="M 152,128 L 314,128 L 368,182 L 368,384 A 20,20 0 0,1 348,404 L 172,404 A 20,20 0 0,1 152,384 Z" fill="url(#sheetGradFg)" />
+    <!-- Folded dog-ear corner -->
+    <path d="M 314,128 L 314,182 L 368,182 Z" fill="url(#foldGradFg)" />
+    <path d="M 314,182 L 314,190 L 368,182 Z" fill="#94A3B8" opacity="0.3" />
+  </g>
+
+  <!-- Top accent header strip -->
+  <rect x="174" y="152" width="124" height="10" rx="5" fill="#F59E0B" />
+
+  <!-- Ruled notebook lines -->
+  <rect x="174" y="194" width="168" height="9" rx="4.5" fill="#E2E8F0" />
+  <rect x="174" y="234" width="140" height="9" rx="4.5" fill="#E2E8F0" />
+  <rect x="174" y="274" width="156" height="9" rx="4.5" fill="#E2E8F0" />
+
+  <!-- Checklist item: green check bullet + note title line -->
+  <circle cx="184" cy="318" r="8" fill="#10B981" />
+  <path d="M 180,318 L 183,321 L 188,315" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="200" y="314" width="108" height="9" rx="4.5" fill="#CBD5E1" />
+
+  <!-- Stylized Pencil in bottom right corner -->
+  <g transform="translate(328, 336) rotate(-42)">
+    <rect x="-8" y="-36" width="16" height="50" rx="3" fill="#D97706" />
+    <path d="M -8,14 L 0,30 L 8,14 Z" fill="#FDE68A" />
+    <polygon points="-2.5,25 0,30 2.5,25" fill="#1F2937" />
+    <rect x="-8" y="-46" width="16" height="10" rx="3" fill="#F43F5E" />
   </g>
 </svg>
 `;
@@ -89,6 +137,7 @@ async function main() {
   const mainRes = path.join(process.cwd(), 'android', 'app', 'src', 'main', 'res');
 
   const notesFullBuffer = Buffer.from(NOTES_FULL_SVG);
+  const notesForegroundBuffer = Buffer.from(NOTES_FOREGROUND_SVG);
   const nusratAvatarFallbackBuffer = Buffer.from(NUSRAT_AVATAR_FALLBACK_SVG);
   const faviconBuffer = fs.readFileSync(faviconPath);
 
@@ -99,40 +148,87 @@ async function main() {
     const mipmapName = `mipmap-${name}`;
     const rahulDir = path.join(rahulRes, mipmapName);
     const nusratDir = path.join(nusratRes, mipmapName);
+    const mainDir = path.join(mainRes, mipmapName);
     fs.mkdirSync(rahulDir, { recursive: true });
     fs.mkdirSync(nusratDir, { recursive: true });
+    fs.mkdirSync(mainDir, { recursive: true });
 
-    // Rahul Launcher Icons (Full favicon)
-    await sharp(faviconBuffer)
-      .resize(size, size, { fit: 'cover' })
+    // --- Rahul Launcher Icons (Safe Zone scaled, never zoomed or cut off) ---
+    // Safe zone for adaptive icon foreground is ~66% of the canvas
+    const safeRahulFgSize = Math.round(size * 0.66);
+    const rahulFgIcon = await sharp(faviconBuffer)
+      .resize(safeRahulFgSize, safeRahulFgSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
-      .toFile(path.join(rahulDir, 'ic_launcher.png'));
+      .toBuffer();
 
-    await sharp(faviconBuffer)
-      .resize(size, size, { fit: 'cover' })
+    const rahulForeground = await sharp({
+      create: {
+        width: size,
+        height: size,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      }
+    })
+      .composite([{ input: rahulFgIcon, gravity: 'center' }])
+      .png()
+      .toBuffer();
+
+    await sharp(rahulForeground).toFile(path.join(rahulDir, 'ic_launcher_foreground.png'));
+    await sharp(rahulForeground).toFile(path.join(mainDir, 'ic_launcher_foreground.png'));
+
+    // Legacy standard & round icons for Rahul
+    const legacyRahulSize = Math.round(size * 0.85);
+    const rahulLegacyIcon = await sharp(faviconBuffer)
+      .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: { r: 255, g: 248, b: 246, alpha: 1 } })
+      .png()
+      .toBuffer();
+
+    const rahulStandard = await sharp({
+      create: {
+        width: size,
+        height: size,
+        channels: 4,
+        background: { r: 255, g: 248, b: 246, alpha: 1 }
+      }
+    })
+      .composite([{ input: rahulLegacyIcon, gravity: 'center' }])
+      .png()
+      .toBuffer();
+
+    await sharp(rahulStandard).toFile(path.join(rahulDir, 'ic_launcher.png'));
+    await sharp(rahulStandard).toFile(path.join(mainDir, 'ic_launcher.png'));
+
+    const roundCircleSvg = Buffer.from(
+      `<svg width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="white"/></svg>`
+    );
+    await sharp(rahulStandard)
+      .composite([{ input: roundCircleSvg, blend: 'dest-in' }])
       .png()
       .toFile(path.join(rahulDir, 'ic_launcher_round.png'));
-
-    await sharp(faviconBuffer)
-      .resize(size, size, { fit: 'cover' })
+    await sharp(rahulStandard)
+      .composite([{ input: roundCircleSvg, blend: 'dest-in' }])
       .png()
-      .toFile(path.join(rahulDir, 'ic_launcher_foreground.png'));
+      .toFile(path.join(mainDir, 'ic_launcher_round.png'));
 
-    // Nusrat Launcher Icons (100% Full-bleed without blank borders on any phone shape)
+    // --- Nusrat Launcher Icons (Realistic Notepad, Safe Zone Centered) ---
+    // Adaptive Foreground: Notepad page on transparent background, perfectly inside the 65% safe circle
+    await sharp(notesForegroundBuffer)
+      .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toFile(path.join(nusratDir, 'ic_launcher_foreground.png'));
+
+    // Legacy square icon: Full amber gradient tile with notepad centered
     await sharp(notesFullBuffer)
       .resize(size, size, { fit: 'cover' })
       .png()
       .toFile(path.join(nusratDir, 'ic_launcher.png'));
 
+    // Legacy round icon: Circular amber tile with notepad centered
     await sharp(notesFullBuffer)
       .resize(size, size, { fit: 'cover' })
+      .composite([{ input: roundCircleSvg, blend: 'dest-in' }])
       .png()
       .toFile(path.join(nusratDir, 'ic_launcher_round.png'));
-
-    await sharp(notesFullBuffer)
-      .resize(size, size, { fit: 'cover' })
-      .png()
-      .toFile(path.join(nusratDir, 'ic_launcher_foreground.png'));
   }
 
   // 2. Generate Drawable Icons for Notifications (both rahul & main)
@@ -185,6 +281,7 @@ async function main() {
   }
 
   console.log('✅ All flavor launcher & notification icons generated successfully!');
+  process.exit(0);
 }
 
 main().catch((err) => {

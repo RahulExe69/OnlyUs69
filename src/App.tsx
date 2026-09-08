@@ -747,6 +747,10 @@ export default function App() {
 
     // Initialize WhatsApp-style local notifications and inline reply callback
     initLocalNotifications(async (replyText: string) => {
+      // On native Android, DirectReplyReceiver handles direct insertion into Supabase.
+      // Prevent duplicate insert if running inside Capacitor native container:
+      if (Capacitor.isNativePlatform()) return;
+
       try {
         const role: UserRole = isOwner ? 'owner' : (userProfile?.role || 'owner');
         const newMsg = {
@@ -2555,8 +2559,21 @@ const ChatView = React.memo(function ChatView({
   }, [selectedMessages]);
 
   const partnerLastReadMillis = useMemo(() => {
-    return partnerProfile?.last_read_at ? getMillis(partnerProfile.last_read_at) : partnerLastReadAt;
-  }, [partnerProfile?.last_read_at, partnerLastReadAt]);
+    let lastRead = partnerProfile?.last_read_at ? getMillis(partnerProfile.last_read_at) : partnerLastReadAt;
+
+    // Symmetrical blue tick guarantee: If partner sent a message or replied, they have definitely read all messages prior to that!
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m.sender_role !== role) {
+        const mTs = getMillis(m.timestamp);
+        if (mTs > lastRead) {
+          lastRead = mTs;
+        }
+        break;
+      }
+    }
+    return lastRead;
+  }, [partnerProfile?.last_read_at, partnerLastReadAt, visibleMessages, role]);
 
   // Single-pass reverse computation for interaction points and seen indicator
   const { interactionId, showIndicatorSeenText } = useMemo(() => {

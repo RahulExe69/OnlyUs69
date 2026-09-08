@@ -112,12 +112,16 @@ export async function triggerPushNotification(options: {
 // Attach global listener for direct replies sent from Android DirectReplyReceiver
 if (typeof window !== 'undefined') {
   (window as any).onNativeDirectReplyReceived = async (text: string) => {
-    if (text && currentReplyCallback) {
+    // Note: Android DirectReplyReceiver has already posted the reply directly to Supabase via background HTTP.
+    // We intentionally do NOT invoke currentReplyCallback here to prevent duplicate message insertion!
+    // Supabase Realtime will automatically broadcast the newly inserted message to the active chat in milliseconds.
+    if (text) {
       try {
-        await currentReplyCallback(text);
-      } catch (e) {
-        console.warn('Error handling in-app reply sync:', e);
-      }
+        const container = document.getElementById('message-container');
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      } catch (_) {}
     }
   };
 }

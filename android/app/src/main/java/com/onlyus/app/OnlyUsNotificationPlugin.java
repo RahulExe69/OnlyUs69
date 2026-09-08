@@ -216,11 +216,17 @@ public class OnlyUsNotificationPlugin extends Plugin {
         // 3. Large Icon: Nusrat's Actual Profile Picture (circular cropped)
         Bitmap largeAvatar = resolveCircularAvatar(context, avatarUrl);
 
-        // 4. Build Notification with Heads-Up High Priority
+        // 4. Multi-line expanded style for 5-6 lines of message preview
+        NotificationCompat.BigTextStyle bigTextStyle = new NotificationCompat.BigTextStyle()
+            .setBigContentTitle(title)
+            .bigText(body);
+
+        // 5. Build Notification with Heads-Up High Priority
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, OnlyUsConfig.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_onlyus)
             .setContentTitle(title)
             .setContentText(body)
+            .setStyle(bigTextStyle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setColor(0xFFE11D48)

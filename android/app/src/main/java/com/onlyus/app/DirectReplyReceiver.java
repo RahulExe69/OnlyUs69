@@ -68,10 +68,15 @@ public class DirectReplyReceiver extends BroadcastReceiver {
 
     private void updateNotificationReplied(Context context, int notificationId, String senderName, String replyText) {
         try {
+            NotificationCompat.BigTextStyle repliedStyle = new NotificationCompat.BigTextStyle()
+                .setBigContentTitle(senderName)
+                .bigText("Replied: " + replyText);
+
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, OnlyUsConfig.NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_onlyus)
                 .setContentTitle(senderName)
                 .setContentText("Replied: " + replyText)
+                .setStyle(repliedStyle)
                 .setColor(0xFFE11D48)
                 .setAutoCancel(true)
                 .setTimeoutAfter(3000);
@@ -117,6 +122,8 @@ public class DirectReplyReceiver extends BroadcastReceiver {
 
             int responseCode = conn.getResponseCode();
             if (responseCode >= 200 && responseCode < 300) {
+                // Instantly update user's last_read_at so Nusrat sees blue tick immediately!
+                updateUserLastReadAt(senderRole, nowIso);
                 return true;
             }
 
@@ -135,6 +142,40 @@ public class DirectReplyReceiver extends BroadcastReceiver {
         } catch (Exception e) {
             Log.e(TAG, "Exception posting reply to Supabase: " + e.getMessage(), e);
             return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void updateUserLastReadAt(String role, String nowIso) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(OnlyUsConfig.SUPABASE_URL + "/rest/v1/users?role=eq." + role);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("X-HTTP-Method-Override", "PATCH");
+            conn.setRequestProperty("apikey", OnlyUsConfig.SUPABASE_ANON_KEY);
+            conn.setRequestProperty("Authorization", "Bearer " + OnlyUsConfig.SUPABASE_ANON_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Prefer", "return=minimal");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+
+            JSONObject payload = new JSONObject();
+            payload.put("last_read_at", nowIso);
+            payload.put("last_seen", nowIso);
+
+            byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body);
+                os.flush();
+            }
+
+            int code = conn.getResponseCode();
+            Log.d(TAG, "User " + role + " last_read_at updated with HTTP " + code);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to update last_read_at in users: " + e.getMessage());
         } finally {
             if (conn != null) conn.disconnect();
         }
