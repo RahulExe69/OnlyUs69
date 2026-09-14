@@ -233,6 +233,24 @@ export async function deriveSharedSecret(
 }
 
 /**
+ * Canonicalize a JWK string or object with alphabetically sorted keys
+ * to ensure identical byte hashing across different browsers, platforms, and engines.
+ */
+function canonicalizeJWK(keyInput: string | Record<string, any>): string {
+  try {
+    const obj = typeof keyInput === 'string' ? JSON.parse(keyInput) : keyInput;
+    const sortedKeys = Object.keys(obj).sort();
+    const canonical: Record<string, any> = {};
+    for (const k of sortedKeys) {
+      canonical[k] = obj[k];
+    }
+    return JSON.stringify(canonical);
+  } catch {
+    return typeof keyInput === 'string' ? keyInput.trim() : JSON.stringify(keyInput);
+  }
+}
+
+/**
  * Calculate a matching Safety Number / Security Code (Signal / WhatsApp style)
  * Both users compute the exact same 12-digit number from their public keys.
  */
@@ -240,7 +258,9 @@ export async function computeSafetyNumber(
   pubKeyA: string,
   pubKeyB: string
 ): Promise<string> {
-  const sorted = [pubKeyA, pubKeyB].sort().join('::ONLYUS_E2EE::');
+  const normA = canonicalizeJWK(pubKeyA);
+  const normB = canonicalizeJWK(pubKeyB);
+  const sorted = [normA, normB].sort().join('::ONLYUS_E2EE::');
   const enc = new TextEncoder();
   const hashBuffer = await window.crypto.subtle.digest('SHA-256', enc.encode(sorted));
   const hashArray = Array.from(new Uint8Array(hashBuffer));

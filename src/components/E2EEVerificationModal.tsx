@@ -25,8 +25,8 @@ export const E2EEVerificationModal: React.FC<E2EEVerificationModalProps> = ({
       setSafetyCode(status.safetyNumber);
     });
 
-    // Auto-trigger fast re-negotiation/derivation if not ready when modal opens
-    if (!isE2EEReady() && myProfile?.id) {
+    // Re-verify and compute latest safety number on modal open
+    if (myProfile?.id) {
       const passcode = myProfile.role === 'partner' ? (localStorage.getItem('onlyus_partner_passcode') || undefined) : undefined;
       initializeE2EE(myProfile.id, myProfile.role, passcode).then((status) => {
         setIsReady(status.isReady);
