@@ -2,11 +2,17 @@ package com.onlyus.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Base64;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import org.json.JSONObject;
 
 public class OnlyUsFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "OnlyUsFCMService";
@@ -58,6 +64,18 @@ public class OnlyUsFirebaseMessagingService extends FirebaseMessagingService {
                     notificationId = Integer.parseInt(data.get("notificationId"));
                 } catch (Exception ignored) {}
             }
+
+            // End-to-End Encryption support: decrypt ciphertext in native background if present
+            String isEncrypted = data.get("is_encrypted");
+            String ciphertext = data.get("ciphertext");
+            String iv = data.get("iv");
+
+            if (("true".equalsIgnoreCase(isEncrypted) || "1".equals(isEncrypted)) && ciphertext != null && iv != null) {
+                String decryptedPreview = decryptE2EEPayload(context, ciphertext, iv);
+                if (decryptedPreview != null && !decryptedPreview.trim().isEmpty()) {
+                    body = decryptedPreview;
+                }
+            }
         }
 
         if (title == null && remoteMessage.getNotification() != null) {
@@ -82,5 +100,55 @@ public class OnlyUsFirebaseMessagingService extends FirebaseMessagingService {
             replyRole,
             avatarUrl
         );
+    }
+
+    /**
+     * Decrypts AES-256-GCM encrypted payload using the cached shared secret key.
+     * Matches the Web Crypto SubtleCrypto AES-GCM format used in e2ee.ts.
+     */
+    private String decryptE2EEPayload(Context context, String ciphertextBase64, String ivBase64) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(OnlyUsConfig.PREFS_NAME, Context.MODE_PRIVATE);
+            String sharedKeyBase64 = prefs.getString("e2ee_shared_key_base64", null);
+            if (sharedKeyBase64 == null || sharedKeyBase64.trim().isEmpty()) {
+                Log.d(TAG, "No cached E2EE shared key in SharedPreferences");
+                return null;
+            }
+
+            byte[] keyBytes = Base64.decode(sharedKeyBase64.trim(), Base64.DEFAULT);
+            byte[] ivBytes = Base64.decode(ivBase64.trim(), Base64.DEFAULT);
+            byte[] cipherBytes = Base64.decode(ciphertextBase64.trim(), Base64.DEFAULT);
+
+            SecretKeySpec secretKey = new SecretKeySpec(keyBytes, "AES");
+            // Standard Web Crypto AES-GCM appends 128-bit (16 bytes) authentication tag to ciphertext
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(128, ivBytes);
+
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec);
+
+            byte[] decryptedBytes = cipher.doFinal(cipherBytes);
+            String decryptedJson = new String(decryptedBytes, StandardCharsets.UTF_8);
+
+            JSONObject obj = new JSONObject(decryptedJson);
+            String text = obj.optString("text", "");
+            String attachmentUrl = obj.optString("attachment_url", "");
+
+            if (text != null && !text.trim().isEmpty()) {
+                return text.trim();
+            } else if (attachmentUrl != null && !attachmentUrl.trim().isEmpty()) {
+                try {
+                    JSONObject attachObj = new JSONObject(attachmentUrl);
+                    String type = attachObj.optString("type", "");
+                    if ("audio".equalsIgnoreCase(type)) return "🎤 Voice note";
+                    if ("image".equalsIgnoreCase(type)) return "📷 Photo";
+                    if ("video".equalsIgnoreCase(type)) return "🎥 Video";
+                } catch (Exception ignored) {}
+                return "📎 Media attachment";
+            }
+            return null;
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to decrypt E2EE payload for notification: " + e.getMessage());
+            return null;
+        }
     }
 }

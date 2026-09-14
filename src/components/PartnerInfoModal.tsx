@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Camera, Heart, UserCheck, LayoutGrid, Repeat, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Camera, Heart, UserCheck, LayoutGrid, Repeat, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, Message } from '../types';
@@ -10,6 +10,7 @@ import { getLocalMedia } from '../lib/mediaStore';
 import { hydrateMessageMedia } from '../lib/dateUtils';
 import { ImageCropperModal } from './ImageCropperModal';
 import { ThemeCustomizeSheet } from './ThemeCustomizePage';
+import { E2EEVerificationModal } from './E2EEVerificationModal';
 
 export const ProfileMediaThumbnail: React.FC<{
   item: { url: string; id?: string; fileName?: string; type: string };
@@ -128,6 +129,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
   // Option modals
   const [showCustomiseModal, setShowCustomiseModal] = useState(false);
   const [showWhoCanEditModal, setShowWhoCanEditModal] = useState(false);
+  const [showE2EESheet, setShowE2EESheet] = useState(false);
 
   // Photo change logic
   const [showCropper, setShowCropper] = useState(false);
@@ -139,6 +141,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
   useOverlayBack(view === 'nicknames', () => setView('main'), 'partner-nicknames-view');
   useOverlayBack(showCustomiseModal, () => setShowCustomiseModal(false), 'partner-customise-theme');
   useOverlayBack(showWhoCanEditModal, () => setShowWhoCanEditModal(false), 'who-can-edit-modal');
+  useOverlayBack(showE2EESheet, () => setShowE2EESheet(false), 'partner-e2ee-modal');
   useOverlayBack(!!editingTarget, () => setEditingTarget(null), 'edit-nickname-sheet');
   useOverlayBack(showCropper, () => setShowCropper(false), 'partner-photo-cropper');
 
@@ -442,6 +445,21 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-semibold text-[#111111] leading-tight">Nicknames</p>
                 </div>
+              </button>
+
+              <button 
+                type="button"
+                onClick={() => setShowE2EESheet(true)}
+                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                  <ShieldCheck className="w-4 h-4 stroke-[2]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Encryption & Security</p>
+                  <p className="text-[12px] text-emerald-600 mt-0.5 leading-tight">End-to-end encrypted · Tap to verify</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-neutral-400" />
               </button>
             </div>
 
@@ -804,6 +822,16 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
             image={tempImage} 
             onCancel={() => setShowCropper(false)} 
             onDone={onCropComplete} 
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showE2EESheet && (
+          <E2EEVerificationModal 
+            myProfile={myProfile} 
+            partnerProfile={partner} 
+            onClose={() => setShowE2EESheet(false)} 
           />
         )}
       </AnimatePresence>

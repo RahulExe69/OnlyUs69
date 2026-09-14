@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { UserRole, UserProfile, Message } from '../types';
 import { PlayTogetherHub } from './PlayTogetherHub';
-import TicTacToe from './TicTacToeModal';
-import ConnectHearts from './ConnectHeartsModal';
-import DotsAndBoxes from './DotsAndBoxesModal';
+
+const TicTacToe = lazy(() => import('./TicTacToeModal'));
+const ConnectHearts = lazy(() => import('./ConnectHeartsModal'));
+const DotsAndBoxes = lazy(() => import('./DotsAndBoxesModal'));
 
 export interface GameOverlayManagerProps {
   activeGame: { id: string; type: 'tictactoe' | 'connecthearts' | 'dotsandboxes' } | null;
@@ -92,59 +93,61 @@ export const GameOverlayManager: React.FC<GameOverlayManagerProps> = ({
       {/* Game Arenas (Full Screen, No Chat Header) */}
       {activeGame && (
         <div className={isGameMinimized ? 'hidden' : 'contents'}>
-          {activeGame.type === 'tictactoe' && (
-            <TicTacToe 
-              sessionId={activeGame.id} 
-              role={role} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={isPartnerOnline}
-              isPartnerInGameRoom={isPartnerInGameRoom}
-              isGameMinimized={isGameMinimized}
-              onClose={onMinimizeGame}
-              onMinimize={onMinimizeGame}
-              onLeave={onTerminateGame}
-              onSendNudge={onSendNudge}
-              onSendMainChatMessage={onSendMainChatMessage}
-            />
-          )}
+          <Suspense fallback={null}>
+            {activeGame.type === 'tictactoe' && (
+              <TicTacToe 
+                sessionId={activeGame.id} 
+                role={role} 
+                userProfile={userProfile}
+                partnerProfile={partnerProfile}
+                latestPartnerMessage={latestPartnerMessage}
+                isPartnerOnline={isPartnerOnline}
+                isPartnerInGameRoom={isPartnerInGameRoom}
+                isGameMinimized={isGameMinimized}
+                onClose={onMinimizeGame}
+                onMinimize={onMinimizeGame}
+                onLeave={onTerminateGame}
+                onSendNudge={onSendNudge}
+                onSendMainChatMessage={onSendMainChatMessage}
+              />
+            )}
 
-          {activeGame.type === 'connecthearts' && (
-            <ConnectHearts 
-              sessionId={activeGame.id} 
-              role={role} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={isPartnerOnline}
-              isPartnerInGameRoom={isPartnerInGameRoom}
-              isGameMinimized={isGameMinimized}
-              onClose={onMinimizeGame}
-              onMinimize={onMinimizeGame}
-              onLeave={onTerminateGame}
-              onSendNudge={onSendNudge}
-              onSendMainChatMessage={onSendMainChatMessage}
-            />
-          )}
+            {activeGame.type === 'connecthearts' && (
+              <ConnectHearts 
+                sessionId={activeGame.id} 
+                role={role} 
+                userProfile={userProfile}
+                partnerProfile={partnerProfile}
+                latestPartnerMessage={latestPartnerMessage}
+                isPartnerOnline={isPartnerOnline}
+                isPartnerInGameRoom={isPartnerInGameRoom}
+                isGameMinimized={isGameMinimized}
+                onClose={onMinimizeGame}
+                onMinimize={onMinimizeGame}
+                onLeave={onTerminateGame}
+                onSendNudge={onSendNudge}
+                onSendMainChatMessage={onSendMainChatMessage}
+              />
+            )}
 
-          {activeGame.type === 'dotsandboxes' && (
-            <DotsAndBoxes 
-              sessionId={activeGame.id} 
-              role={role} 
-              userProfile={userProfile}
-              partnerProfile={partnerProfile}
-              latestPartnerMessage={latestPartnerMessage}
-              isPartnerOnline={isPartnerOnline}
-              isPartnerInGameRoom={isPartnerInGameRoom}
-              isGameMinimized={isGameMinimized}
-              onClose={onMinimizeGame}
-              onMinimize={onMinimizeGame}
-              onLeave={onTerminateGame}
-              onSendNudge={onSendNudge}
-              onSendMainChatMessage={onSendMainChatMessage}
-            />
-          )}
+            {activeGame.type === 'dotsandboxes' && (
+              <DotsAndBoxes 
+                sessionId={activeGame.id} 
+                role={role} 
+                userProfile={userProfile}
+                partnerProfile={partnerProfile}
+                latestPartnerMessage={latestPartnerMessage}
+                isPartnerOnline={isPartnerOnline}
+                isPartnerInGameRoom={isPartnerInGameRoom}
+                isGameMinimized={isGameMinimized}
+                onClose={onMinimizeGame}
+                onMinimize={onMinimizeGame}
+                onLeave={onTerminateGame}
+                onSendNudge={onSendNudge}
+                onSendMainChatMessage={onSendMainChatMessage}
+              />
+            )}
+          </Suspense>
         </div>
       )}
     </>

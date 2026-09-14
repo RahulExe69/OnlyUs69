@@ -163,9 +163,11 @@ export default function DotsAndBoxes({
       const otherPres = presences.find(
         (p) => p && p.role && p.role !== role
       );
-      const otherPlayerPresent = (isPartnerInGameRoom !== undefined ? isPartnerInGameRoom : false) || 
-        !!(otherPres && otherPres.in_game !== false && otherPres.location !== 'chat');
-      setPartnerInGame(otherPlayerPresent);
+      // Partner is in game room ONLY if their presence actively indicates they are in the game room (not in chat)
+      const otherPlayerPresent = otherPres
+        ? !!(otherPres.in_game === true && otherPres.location === 'game')
+        : !!isPartnerInGameRoom;
+      setPartnerInGame(prev => (prev !== otherPlayerPresent ? otherPlayerPresent : prev));
     };
 
     channel
@@ -501,7 +503,7 @@ export default function DotsAndBoxes({
       channelRef.current?.send({
         type: 'broadcast',
         event: 'game_closed',
-        payload: { leftBy: role },
+        payload: { leftBy: role, sessionId },
       });
       await supabase.from('games').update({ status: 'closed' }).eq('id', sessionId);
       await supabase

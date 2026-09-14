@@ -95,10 +95,19 @@ Deno.serve(async (req) => {
     const senderRole = record.sender_role || body.senderRole || 'partner';
     const targetRole = body.targetRole || (senderRole === 'owner' ? 'partner' : 'owner');
 
-    let textPreview = record.text || body.text || '';
+    // WhatsApp-style notification text: uses actual text or clean media indicator
+    let textPreview = body.text || record.text || '';
     if (!textPreview) {
       if (record.attachment_url) {
-        textPreview = '📎 Media attachment';
+        try {
+          const parsed = typeof record.attachment_url === 'string' ? JSON.parse(record.attachment_url) : record.attachment_url;
+          if (parsed?.type === 'audio') textPreview = '🎤 Voice note';
+          else if (parsed?.type === 'image') textPreview = '📷 Photo';
+          else if (parsed?.type === 'video') textPreview = '🎥 Video';
+          else textPreview = '📎 Media attachment';
+        } catch {
+          textPreview = '📎 Media attachment';
+        }
       } else {
         textPreview = 'Sent you a message';
       }
@@ -108,6 +117,10 @@ Deno.serve(async (req) => {
     const avatarUrl = body.avatarUrl || '';
     const messageId = record.id ? String(record.id) : String(Date.now());
     const notificationId = String(Math.floor(Date.now() % 100000));
+
+    const isEncrypted = String(record.is_encrypted || (body as any).is_encrypted || false);
+    const ciphertext = (record.ciphertext || (body as any).ciphertext || '') as string;
+    const iv = (record.iv || (body as any).iv || '') as string;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://vrstmtjfqlbfyxtsothf.supabase.co';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -164,6 +177,9 @@ Deno.serve(async (req) => {
             replyRole: targetRole,
             notificationId: notificationId,
             messageId: messageId,
+            is_encrypted: isEncrypted,
+            ciphertext: ciphertext,
+            iv: iv,
           },
           android: {
             priority: 'high',

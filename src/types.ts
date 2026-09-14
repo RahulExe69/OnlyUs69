@@ -20,6 +20,10 @@ export interface UserProfile {
   partnerNicknames?: { [uid: string]: string };
   last_read_at?: any;
   theme?: 'light' | 'dark' | 'romantic' | 'lavender' | 'ocean' | 'sunset' | 'doodle' | 'noir' | 'forest' | 'cyber' | 'aurora' | '3d-aura';
+  public_key?: string;
+  encrypted_private_key?: string;
+  key_salt?: string;
+  key_iv?: string;
 }
 
 export interface MediaAttachment {
@@ -60,6 +64,9 @@ export interface Message {
     mediaType?: 'image' | 'video' | 'audio';
   };
   created_at?: string;
+  ciphertext?: string;
+  iv?: string;
+  is_encrypted?: boolean;
   gameInvite?: {
     gameType: 'tictactoe' | 'connecthearts' | 'dotsandboxes';
     sessionId: string;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { supabase } from './lib/supabase';
 
 // Firestore mocks for migration
@@ -60,11 +60,8 @@ import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemove
 import { THEMES, ThemeName, applyTheme } from './lib/themes';
 import { QuantumAuraBackground } from './components/QuantumAuraBackground';
 import { getMillis, parseDate, hydrateMessageMedia } from './lib/dateUtils';
-import { ProfileModal } from './components/ProfileModal';
-import { PartnerInfoModal } from './components/PartnerInfoModal';
-import { ThemeCustomizePage, ThemeCustomizeSheet } from './components/ThemeCustomizePage';
+import { initializeE2EE, isE2EEReady, encryptChatMessage, resetE2EECache, onE2EEStatusChange, exportSharedSecretBase64 } from './lib/e2ee';
 import { FullImageViewer } from './components/FullImageViewer';
-import { ImageCropperModal } from './components/ImageCropperModal';
 import { NudgeOverlay } from './components/NudgeOverlay';
 import { BottomSheet, AttachmentOption, GameCard, CelebrateIcon } from './components/BottomSheet';
 import { ChatInputBar, ChatInputBarHandle } from './components/ChatInputBar';
@@ -77,8 +74,12 @@ import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
-import Cropper, { Area } from 'react-easy-crop';
-import imageCompression from 'browser-image-compression';
+
+// Dynamic lazy imports for heavy secondary modal dialogs
+const ProfileModal = lazy(() => import('./components/ProfileModal').then(m => ({ default: m.ProfileModal })));
+const PartnerInfoModal = lazy(() => import('./components/PartnerInfoModal').then(m => ({ default: m.PartnerInfoModal })));
+const E2EEVerificationModal = lazy(() => import('./components/E2EEVerificationModal').then(m => ({ default: m.E2EEVerificationModal })));
+const ThemeCustomizeSheet = lazy(() => import('./components/ThemeCustomizePage').then(m => ({ default: m.ThemeCustomizeSheet })));
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
@@ -266,6 +267,36 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
+  const [showE2EEModal, setShowE2EEModal] = useState(false);
+  const [isE2EEActive, setIsE2EEActive] = useState(isE2EEReady());
+
+  // Sync E2EE active state & sync derived shared secret to Android native layer for background notification decryption
+  useEffect(() => {
+    const unsub = onE2EEStatusChange(async (status) => {
+      setIsE2EEActive(status.isReady);
+      if (status.isReady && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+        try {
+          const secretBase64 = await exportSharedSecretBase64();
+          if (secretBase64) {
+            await OnlyUsNativeNotification.cacheSharedSecret({ sharedKeyBase64: secretBase64 });
+          }
+        } catch (e) {
+          console.warn('Failed to sync E2EE shared secret to native layer:', e);
+        }
+      }
+    });
+
+    // Check if already ready immediately
+    if (isE2EEReady() && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+      exportSharedSecretBase64().then(secretBase64 => {
+        if (secretBase64) {
+          OnlyUsNativeNotification.cacheSharedSecret({ sharedKeyBase64: secretBase64 }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
+    return () => unsub();
+  }, []);
   const [showFullImage, setShowFullImage] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -332,30 +363,7 @@ export default function App() {
         if (prev <= 1) {
           clearInterval(minimizedTimerRef.current);
           minimizedTimerRef.current = null;
-          // 1 minute expired -> Terminate session in DB & unmount
-          const currentGame = activeGameRef.current;
-          if (currentGame?.id) {
-            if (mainChannelRef.current) {
-              try {
-                mainChannelRef.current.send({
-                  type: 'broadcast',
-                  event: 'game_closed',
-                  payload: { sessionId: currentGame.id },
-                });
-              } catch (_) {}
-            }
-            supabase.from('games').update({ status: 'closed' }).eq('id', currentGame.id).then();
-            supabase.from('messages').update({
-              gameInvite: {
-                sessionId: currentGame.id,
-                gameType: currentGame.type,
-                status: 'closed',
-              },
-            }).filter('gameInvite->>sessionId', 'eq', currentGame.id).then();
-          }
-          setActiveGame(null);
-          setIsGameMinimized(false);
-          setIsPartnerInGameRoom(false);
+          handleTerminateGame(true);
           return 0;
         }
         return prev - 1;
@@ -474,6 +482,7 @@ export default function App() {
   useOverlayBack(activeHubTab !== 'dashboard', () => setActiveHubTab('dashboard'), 'hub-active-tab');
   useOverlayBack(showProfileModal, () => setShowProfileModal(false), 'profile-modal');
   useOverlayBack(showPartnerInfo, () => setShowPartnerInfo(false), 'partner-info-modal');
+  useOverlayBack(showE2EEModal, () => setShowE2EEModal(false), 'e2ee-modal');
   useOverlayBack(!!showFullImage, () => setShowFullImage(null), 'full-image-viewer');
   useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
   useOverlayBack(showClearChatConfirm, () => setShowClearChatConfirm(false), 'clear-chat-confirm');
@@ -493,6 +502,14 @@ export default function App() {
   useEffect(() => {
     const tickInterval = setInterval(() => setTimeTick(t => t + 1), 10000);
     return () => clearInterval(tickInterval);
+  }, []);
+
+  // Sync E2EE operational status
+  useEffect(() => {
+    const unsub = onE2EEStatusChange((status) => {
+      setIsE2EEActive(status.isReady);
+    });
+    return unsub;
   }, []);
 
   // Automatically close keyboard when navigating away from chat screen or opening full-page modals
@@ -606,14 +623,24 @@ export default function App() {
         if (!text || !text.trim()) return false;
         try {
           const role = isOwner ? 'owner' : (userProfile?.role || 'owner');
-          const newMsg = {
+          let newMsg: any = {
             sender_role: role,
-            text: text.trim(),
             created_at: new Date().toISOString(),
             reactions: {},
             reply_to: null,
             attachment_url: null
           };
+
+          if (isE2EEReady()) {
+            const enc = await encryptChatMessage({ text: text.trim(), reply_to: null, attachment_url: null });
+            newMsg.ciphertext = enc.ciphertext;
+            newMsg.iv = enc.iv;
+            newMsg.is_encrypted = true;
+            newMsg.text = '';
+          } else {
+            newMsg.text = text.trim();
+          }
+
           const { error } = await supabase.from('messages').insert([newMsg]);
           return !error;
         } catch (err) {
@@ -656,14 +683,25 @@ export default function App() {
   const sendMainChatMessageFromGame = async (text: string) => {
     if (!userProfile) return;
     try {
-      await supabase.from('messages').insert([{
+      let insertRow: any = {
         sender_role: userProfile.role,
-        text: text,
         created_at: new Date().toISOString(),
         reactions: {},
         reply_to: null,
         attachment_url: null,
-      }]);
+      };
+
+      if (isE2EEReady()) {
+        const enc = await encryptChatMessage({ text, reply_to: null, attachment_url: null });
+        insertRow.ciphertext = enc.ciphertext;
+        insertRow.iv = enc.iv;
+        insertRow.is_encrypted = true;
+        insertRow.text = '';
+      } else {
+        insertRow.text = text;
+      }
+
+      await supabase.from('messages').insert([insertRow]);
     } catch (err) {
       console.error("Error sending message from game:", err);
     }
@@ -785,14 +823,24 @@ export default function App() {
 
       try {
         const role: UserRole = isOwner ? 'owner' : (userProfile?.role || 'owner');
-        const newMsg = {
+        let newMsg: any = {
           sender_role: role,
-          text: replyText.trim(),
           created_at: new Date().toISOString(),
           reactions: {},
           reply_to: null,
           attachment_url: null
         };
+
+        if (isE2EEReady()) {
+          const enc = await encryptChatMessage({ text: replyText.trim(), reply_to: null, attachment_url: null });
+          newMsg.ciphertext = enc.ciphertext;
+          newMsg.iv = enc.iv;
+          newMsg.is_encrypted = true;
+          newMsg.text = '';
+        } else {
+          newMsg.text = replyText.trim();
+        }
+
         await supabase.from('messages').insert([newMsg]);
       } catch (err) {
         console.error('Failed to send reply from notification action:', err);
@@ -921,6 +969,9 @@ export default function App() {
         console.warn("Notice: fetchProfile network retry", err);
       } finally {
         setLoading(false);
+        // Initialize End-to-End Encryption Keys locally
+        const passcode = role === 'partner' ? (localStorage.getItem('onlyus_partner_passcode') || undefined) : undefined;
+        initializeE2EE(user.id, role, passcode).catch(e => console.warn('E2EE init warning:', e));
       }
     };
     fetchProfile();
@@ -943,6 +994,12 @@ export default function App() {
 
           if (resolvedPartner.photo_url && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
             OnlyUsNativeNotification.cachePartnerAvatar({ avatarUrl: resolvedPartner.photo_url }).catch(() => {});
+          }
+
+          // If partner has public key, derive E2EE shared secret
+          if (resolvedPartner.public_key && user?.id) {
+            const passcode = role === 'partner' ? (localStorage.getItem('onlyus_partner_passcode') || undefined) : undefined;
+            initializeE2EE(user.id, role, passcode).catch(e => console.warn('E2EE partner key derivation warning:', e));
           }
         } else if (role === 'owner') {
           // Fallback for partner profile if not loaded
@@ -1020,15 +1077,16 @@ export default function App() {
       const isPartnerInGame = !!(
         partnerPres &&
         partnerPres.in_game === true &&
+        partnerPres.location === 'game' &&
         (!activeGameRef.current || partnerPres.game_id === activeGameRef.current.id)
       );
-      setIsPartnerInGameRoom(isPartnerInGame);
+      setIsPartnerInGameRoom(prev => (prev !== isPartnerInGame ? isPartnerInGame : prev));
 
-      // If this user is minimized in chat, and partner presence explicitly reports they are NOT in the game room:
-      // Then both players have left the game arena, so automatically terminate the game session!
+      // If this user is minimized in chat, and partner presence reports they are NOT in the game room (e.g. partner also in chat, left, or offline):
+      // Then both players are outside the game arena, so automatically terminate the game session for both!
       if (activeGameRef.current && isGameMinimizedRef.current) {
-        if (partnerPres && partnerPres.in_game === false) {
-          handleTerminateGame(false);
+        if (!partnerPres || partnerPres.in_game === false || partnerPres.location === 'chat') {
+          handleTerminateGame(true);
         }
       }
 
@@ -1124,6 +1182,44 @@ export default function App() {
       });
     }
   }, [isTabActive, isSocketConnected, user?.id, userProfile?.role, isOwner, activeGame?.id, isGameMinimized]);
+
+  // Auto-terminate active game if message invite status is closed
+  useEffect(() => {
+    if (activeGame?.id) {
+      const isClosed = messages.some(
+        (m) => m.gameInvite?.sessionId === activeGame.id && m.gameInvite?.status === 'closed'
+      );
+      if (isClosed) {
+        handleTerminateGame(false);
+      }
+    }
+  }, [messages, activeGame?.id, handleTerminateGame]);
+
+  // Watch games table for remote termination
+  useEffect(() => {
+    if (!activeGame?.id) return;
+    const gameChannel = supabase
+      .channel(`game_status:${activeGame.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${activeGame.id}`,
+        },
+        (payload: any) => {
+          if (payload.new && payload.new.status === 'closed') {
+            handleTerminateGame(false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(gameChannel);
+    };
+  }, [activeGame?.id, handleTerminateGame]);
 
   const lastBroadcastTypingStateRef = useRef<boolean>(false);
   const lastBroadcastTypingTimeRef = useRef<number>(0);
@@ -1296,6 +1392,7 @@ export default function App() {
         localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
         localStorage.setItem('onlyus_partner_passcode', trimmed);
         setUser(partnerUser);
+        initializeE2EE(partnerUser.id, 'partner', trimmed).catch(e => console.warn('E2EE init on partner login:', e));
         setUserProfile({
           id: partnerUser.id,
           uid: partnerUser.id,
@@ -1372,6 +1469,7 @@ export default function App() {
     setAppConfig(null);
     setUserProfile(null);
     setPartnerProfile(null);
+    resetE2EECache();
     
     // 2. Clear Local Cache and Passcode Session
     localStorage.removeItem('onlyus_partner_session');
@@ -1789,6 +1887,15 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowE2EEModal(true)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-xs"
+                      title="End-to-End Encrypted (AES-256-GCM) - Click to verify"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">E2EE</span>
+                    </button>
+
                     <div className="relative">
                       <button 
                         ref={menuBtnRef}
@@ -1836,6 +1943,14 @@ export default function App() {
                               >
                                 <Sparkles className="w-4 h-4 text-[var(--theme-accent)]" />
                                 Customize
+                              </button>
+                              <button 
+                                onPointerDown={(e) => e.preventDefault()}
+                                onClick={() => { setShowE2EEModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
+                              >
+                                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                Encryption & Keys
                               </button>
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
@@ -1912,52 +2027,64 @@ export default function App() {
         </main>
       )}
 
-      <AnimatePresence>
-        {showProfileModal && userProfile && (
-          <ProfileModal 
-            profile={userProfile} 
-            onClose={() => setShowProfileModal(false)}
-            config={appConfig}
-            isOwner={isOwner}
-            onLogout={handleLogout}
-            onProfileUpdated={(newMe) => setUserProfile(newMe)}
-            onLockVault={isNotesFlavor ? lockVault : undefined}
-            isNotesFlavor={isNotesFlavor}
-          />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {showProfileModal && userProfile && (
+            <ProfileModal 
+              profile={userProfile} 
+              onClose={() => setShowProfileModal(false)}
+              config={appConfig}
+              isOwner={isOwner}
+              onLogout={handleLogout}
+              onProfileUpdated={(newMe) => setUserProfile(newMe)}
+              onLockVault={isNotesFlavor ? lockVault : undefined}
+              isNotesFlavor={isNotesFlavor}
+            />
+          )}
+        </AnimatePresence>
 
-      <AnimatePresence>
-        {showPartnerInfo && partnerProfile && (
-          <PartnerInfoModal 
-            partner={partnerProfile}
-            myProfile={userProfile}
-            onClose={() => setShowPartnerInfo(false)}
-            onViewImage={(url) => setShowFullImage(url)}
-            onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
-            onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
-            messages={messages}
-            isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-            currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
-            onThemeSelect={selectTheme}
-            isThemeSaving={isThemeSaving}
-          />
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {showPartnerInfo && partnerProfile && (
+            <PartnerInfoModal 
+              partner={partnerProfile}
+              myProfile={userProfile}
+              onClose={() => setShowPartnerInfo(false)}
+              onViewImage={(url) => setShowFullImage(url)}
+              onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
+              onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
+              messages={messages}
+              isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
+              currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+              onThemeSelect={selectTheme}
+              isThemeSaving={isThemeSaving}
+            />
+          )}
+        </AnimatePresence>
 
-      <AnimatePresence>
-        {showFullImage && (
-          <FullImageViewer url={showFullImage} onClose={() => setShowFullImage(null)} />
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {showE2EEModal && (
+            <E2EEVerificationModal
+              myProfile={userProfile}
+              partnerProfile={partnerProfile}
+              onClose={() => setShowE2EEModal(false)}
+            />
+          )}
+        </AnimatePresence>
 
-      <ThemeCustomizeSheet
-        isOpen={showCustomizeModal}
-        onClose={() => setShowCustomizeModal(false)}
-        currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
-        onThemeSelect={selectTheme}
-        isThemeSaving={isThemeSaving}
-      />
+        <AnimatePresence>
+          {showFullImage && (
+            <FullImageViewer url={showFullImage} onClose={() => setShowFullImage(null)} />
+          )}
+        </AnimatePresence>
+
+        <ThemeCustomizeSheet
+          isOpen={showCustomizeModal}
+          onClose={() => setShowCustomizeModal(false)}
+          currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+          onThemeSelect={selectTheme}
+          isThemeSaving={isThemeSaving}
+        />
+      </Suspense>
       <DeleteChoicesModal
         isOpen={showDeleteChoices}
         onClose={() => setShowDeleteChoices(false)}
@@ -2290,16 +2417,51 @@ const ChatView = React.memo(function ChatView({
         // Serialize compact structured media into attachment_url for Supabase database
         const attachmentPayload = JSON.stringify(finalPrimaryAttachment);
 
-        const { data: savedMessage, error } = await supabase.from('messages').insert([{
+        let insertPayload: any = {
           sender_role: role,
-          text: caption || '',
           created_at: new Date().toISOString(),
           reactions: {},
           reply_to: replyContext ? replyContext.id : null,
-          attachment_url: attachmentPayload
-        }]).select().single();
+        };
+
+        const ready = isE2EEReady();
+        if (ready) {
+          const encrypted = await encryptChatMessage({
+            text: caption || '',
+            reply_to: replyContext ? replyContext.id : null,
+            attachment_url: attachmentPayload
+          });
+          insertPayload.ciphertext = encrypted.ciphertext;
+          insertPayload.iv = encrypted.iv;
+          insertPayload.is_encrypted = true;
+          insertPayload.text = '';
+          insertPayload.attachment_url = null;
+        } else {
+          insertPayload.text = caption || '';
+          insertPayload.attachment_url = attachmentPayload;
+        }
+
+        const { data: savedMessage, error } = await supabase.from('messages').insert([insertPayload]).select().single();
 
         if (error) throw error;
+
+        // Dispatches WhatsApp-style push notification for media
+        let mediaText = '📎 Media attachment';
+        if (finalPrimaryAttachment?.type === 'audio') mediaText = caption ? `🎤 Voice note: ${caption}` : '🎤 Voice note';
+        else if (finalPrimaryAttachment?.type === 'image') mediaText = caption ? `📷 Photo: ${caption}` : '📷 Photo';
+        else if (finalPrimaryAttachment?.type === 'video') mediaText = caption ? `🎥 Video: ${caption}` : '🎥 Video';
+        else if (caption) mediaText = caption;
+
+        triggerPushNotification({
+          senderRole: role,
+          senderName: role === 'owner' ? 'Rahul' : (userProfile?.display_name || 'Nusrat'),
+          text: mediaText,
+          avatarUrl: userProfile?.photo_url || undefined,
+          messageId: savedMessage?.id,
+          ciphertext: insertPayload.ciphertext,
+          iv: insertPayload.iv,
+          is_encrypted: insertPayload.is_encrypted,
+        });
 
         const hydratedMedia = hydrateMessageMedia(savedMessage);
         setMessages(prev => {
@@ -2414,24 +2576,44 @@ const ChatView = React.memo(function ChatView({
     });
 
     try {
-      const { data: savedMessage, error } = await supabase.from('messages').insert([{
+      let insertRow: any = {
         sender_role: role,
-        text: text,
         created_at: new Date().toISOString(),
         reactions: {},
         reply_to: activeReply ? activeReply.id : null,
-        attachment_url: null 
-      }]).select().single();
+      };
+
+      const ready = isE2EEReady();
+      if (ready) {
+        const encrypted = await encryptChatMessage({
+          text: text,
+          reply_to: activeReply ? activeReply.id : null,
+          attachment_url: null,
+        });
+        insertRow.ciphertext = encrypted.ciphertext;
+        insertRow.iv = encrypted.iv;
+        insertRow.is_encrypted = true;
+        insertRow.text = '';
+        insertRow.attachment_url = null;
+      } else {
+        insertRow.text = text;
+        insertRow.attachment_url = null;
+      }
+
+      const { data: savedMessage, error } = await supabase.from('messages').insert([insertRow]).select().single();
       
       if (error) throw error;
 
-      // Dispatches high-priority push notification to partner's device
+      // Dispatches high-priority WhatsApp-style push notification to partner's device
       triggerPushNotification({
         senderRole: role,
         senderName: role === 'owner' ? 'Rahul' : (userProfile?.display_name || 'Nusrat'),
         text: text,
         avatarUrl: userProfile?.photo_url || undefined,
-        messageId: savedMessage?.id
+        messageId: savedMessage?.id,
+        ciphertext: insertRow.ciphertext,
+        iv: insertRow.iv,
+        is_encrypted: insertRow.is_encrypted,
       });
 
       setMessages(prev => {
@@ -2440,7 +2622,11 @@ const ChatView = React.memo(function ChatView({
           return prev.filter(m => m.id !== tempId);
         }
         return prev.map(message => message.id === tempId ? {
-          ...message, ...savedMessage, timestamp: savedMessage.created_at || message.timestamp, deliveryStatus: 'sent'
+          ...message,
+          ...savedMessage,
+          text: text, // preserve sender's plaintext text in memory
+          timestamp: savedMessage.created_at || message.timestamp,
+          deliveryStatus: 'sent'
         } : message);
       });
     } catch (err: any) {
@@ -2524,14 +2710,32 @@ const ChatView = React.memo(function ChatView({
           url: finalUrl,
         };
 
-        const { data: savedMessage, error } = await supabase.from('messages').insert([{
+        const audioPayload = JSON.stringify(finalAudioAttachment);
+        let insertPayload: any = {
           sender_role: role,
-          text: '',
           created_at: new Date().toISOString(),
           reactions: {},
           reply_to: activeReply ? activeReply.id : null,
-          attachment_url: JSON.stringify(finalAudioAttachment)
-        }]).select().single();
+        };
+
+        const ready = isE2EEReady();
+        if (ready) {
+          const encrypted = await encryptChatMessage({
+            text: '',
+            reply_to: activeReply ? activeReply.id : null,
+            attachment_url: audioPayload,
+          });
+          insertPayload.ciphertext = encrypted.ciphertext;
+          insertPayload.iv = encrypted.iv;
+          insertPayload.is_encrypted = true;
+          insertPayload.text = '';
+          insertPayload.attachment_url = null;
+        } else {
+          insertPayload.text = '';
+          insertPayload.attachment_url = audioPayload;
+        }
+
+        const { data: savedMessage, error } = await supabase.from('messages').insert([insertPayload]).select().single();
 
         if (error) throw error;
 
@@ -2558,10 +2762,26 @@ const ChatView = React.memo(function ChatView({
 
   const handleEditMessage = async (msgId: string, newText: string) => {
     try {
-      await supabase.from('messages').update({
-        text: newText,
-        isEdited: true
-      }).eq('id', msgId);
+      const msg = messages.find(m => m.id === msgId);
+      if (isE2EEReady()) {
+        const enc = await encryptChatMessage({
+          text: newText,
+          replyTo: msg?.replyTo || null,
+          media: msg?.media || null,
+        });
+        await supabase.from('messages').update({
+          ciphertext: enc.ciphertext,
+          iv: enc.iv,
+          is_encrypted: true,
+          text: '',
+          isEdited: true
+        }).eq('id', msgId);
+      } else {
+        await supabase.from('messages').update({
+          text: newText,
+          isEdited: true
+        }).eq('id', msgId);
+      }
       onSetEditingMessage(null);
     } catch (err) {
       console.error("Edit error:", err);

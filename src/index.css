@@ -326,3 +326,16 @@ body {
 .theme-hub .group-hover\:text-white:hover { color: var(--theme-accent) !important; }
 .theme-external-hub button:not([class*="bg-white"]),
 .theme-external-hub .bg-emerald-500 { background-color: var(--theme-accent) !important; color: var(--theme-bubble-owner-text) !important; }
+
+/* GPU Acceleration & Performance Optimizations */
+.hardware-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+

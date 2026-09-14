@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -129,6 +130,22 @@ public class OnlyUsNotificationPlugin extends Plugin {
             Executors.newSingleThreadExecutor().execute(() -> {
                 resolveCircularAvatar(context, urlToCache);
             });
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void cacheSharedSecret(PluginCall call) {
+        String sharedKeyBase64 = call.getString("sharedKeyBase64");
+        Context context = getContext();
+        if (context != null && sharedKeyBase64 != null && !sharedKeyBase64.trim().isEmpty()) {
+            try {
+                SharedPreferences prefs = context.getSharedPreferences(OnlyUsConfig.PREFS_NAME, Context.MODE_PRIVATE);
+                prefs.edit().putString("e2ee_shared_key_base64", sharedKeyBase64.trim()).apply();
+                Log.d(TAG, "E2EE shared secret cached in native SharedPreferences");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to cache E2EE shared secret", e);
+            }
         }
         call.resolve();
     }

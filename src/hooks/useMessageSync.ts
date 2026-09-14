@@ -5,6 +5,7 @@ import { hydrateMessageMedia } from '../lib/dateUtils';
 import { cacheMessages, loadCachedMessages } from '../lib/safeStorage';
 import { initMediaSyncListener, flushPendingMediaRestores } from '../lib/mediaStore';
 import { dispatchMessageNotification } from '../lib/notifications';
+import { decryptRawMessage, decryptRawMessagesBatch, onE2EEStatusChange } from '../lib/e2ee';
 
 export interface UseMessageSyncOptions {
   user: any;
@@ -121,7 +122,8 @@ export function useMessageSync({
 
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
-        const processed = processRawMessages(data, currentList);
+        const decryptedData = await decryptRawMessagesBatch(data);
+        const processed = processRawMessages(decryptedData, currentList);
         setMessages((prev) => {
           const prevMap = new Map<string, Message>();
           prev.forEach((m) => prevMap.set(m.id, m));
@@ -160,6 +162,27 @@ export function useMessageSync({
     let isCancelled = false;
     let retryTimer: any = null;
 
+    // Re-decrypt messages whenever E2EE shared key becomes active
+    const unsubE2EE = onE2EEStatusChange((status) => {
+      if (status.isReady && messagesRef.current.length > 0) {
+        decryptRawMessagesBatch(messagesRef.current).then((decryptedList) => {
+          setMessages((prev) => {
+            let hasChanges = false;
+            const map = new Map(decryptedList.map((m) => [m.id, m]));
+            const updated = prev.map((m) => {
+              const dec = map.get(m.id);
+              if (dec && dec.is_encrypted && dec.text !== m.text) {
+                hasChanges = true;
+                return { ...m, ...dec };
+              }
+              return m;
+            });
+            return hasChanges ? updated : prev;
+          });
+        });
+      }
+    });
+
     const fetchInitialMessages = async (retryAttempt = 0) => {
       try {
         const { data, error: msgErr } = await supabase
@@ -182,7 +205,8 @@ export function useMessageSync({
             }, delay);
           }
         } else if (data) {
-          const processed = processRawMessages(data, []);
+          const decryptedData = await decryptRawMessagesBatch(data);
+          const processed = processRawMessages(decryptedData, []);
 
           // Deduplicate by ID
           const uniqueMapped: Message[] = [];
@@ -225,131 +249,139 @@ export function useMessageSync({
         { event: '*', schema: 'public', table: 'messages' },
         (payload: any) => {
           if (payload.eventType === 'INSERT') {
-            const raw = payload.new;
-            if (!raw || !raw.id) return;
+            const rawIncoming = payload.new;
+            if (!rawIncoming || !rawIncoming.id) return;
 
-            setMessages((prev) => {
-              let replyToObj = null;
-              if (raw.reply_to) {
-                const orig = prev.find((m) => m.id === raw.reply_to);
-                if (orig) {
-                  const isOrigDeletedByMe = orig.deletedBy
-                    ? orig.deletedBy === userProfile?.role
-                    : orig.sender_role === userProfile?.role;
-                  replyToObj = {
-                    id: orig.id,
-                    text: orig.deleted
-                      ? isOrigDeletedByMe
-                        ? 'You deleted this message'
-                        : 'This message was deleted'
-                      : orig.text,
-                    sender_role: orig.sender_role,
-                  };
-                } else {
-                  replyToObj = {
-                    id: raw.reply_to,
-                    text: raw.reply_text || 'Original message',
-                    sender_role:
-                      raw.reply_sender_role ||
-                      (raw.sender_role === 'owner' ? 'partner' : 'owner'),
-                  };
+            decryptRawMessage(rawIncoming).then((raw) => {
+              if (isCancelled) return;
+              setMessages((prev) => {
+                let replyToObj = null;
+                if (raw.reply_to) {
+                  const orig = prev.find((m) => m.id === raw.reply_to);
+                  if (orig) {
+                    const isOrigDeletedByMe = orig.deletedBy
+                      ? orig.deletedBy === userProfile?.role
+                      : orig.sender_role === userProfile?.role;
+                    replyToObj = {
+                      id: orig.id,
+                      text: orig.deleted
+                        ? isOrigDeletedByMe
+                          ? 'You deleted this message'
+                          : 'This message was deleted'
+                        : orig.text,
+                      sender_role: orig.sender_role,
+                    };
+                  } else {
+                    replyToObj = {
+                      id: raw.reply_to,
+                      text: raw.reply_text || 'Original message',
+                      sender_role:
+                        raw.reply_sender_role ||
+                        (raw.sender_role === 'owner' ? 'partner' : 'owner'),
+                    };
+                  }
                 }
-              }
 
-              const hydrated = raw.deleted
-                ? undefined
-                : hydrateMessageMedia(raw);
-              const msg: Message = {
-                ...raw,
-                media: hydrated,
-                mediaList: hydrated?.mediaList,
-                timestamp:
-                  raw.created_at || raw.timestamp || new Date().toISOString(),
-                replyTo: replyToObj,
-              };
+                const hydrated = raw.deleted
+                  ? undefined
+                  : hydrateMessageMedia(raw);
+                const msg: Message = {
+                  ...raw,
+                  media: hydrated,
+                  mediaList: hydrated?.mediaList,
+                  timestamp:
+                    raw.created_at || raw.timestamp || new Date().toISOString(),
+                  replyTo: replyToObj,
+                };
 
-              // Remove any optimistic temp message that matches
-              const filtered = prev.filter(
-                (m) =>
-                  m.id !== msg.id &&
-                  !(
-                    m.id.startsWith('temp') &&
-                    (m.text === msg.text || (m.media && msg.media)) &&
-                    m.sender_role === msg.sender_role
-                  )
-              );
+                // Remove any optimistic temp message that matches
+                const filtered = prev.filter(
+                  (m) =>
+                    m.id !== msg.id &&
+                    !(
+                      m.id.startsWith('temp') &&
+                      (m.text === msg.text || (m.media && msg.media)) &&
+                      m.sender_role === msg.sender_role
+                    )
+                );
 
-              if (
-                typeof window !== 'undefined' &&
-                typeof (window as any).AndroidBridge?.onNewMessage ===
-                  'function'
-              ) {
-                try {
-                  (window as any).AndroidBridge.onNewMessage(
-                    JSON.stringify(msg)
-                  );
-                } catch (e) {
-                  console.warn('AndroidBridge.onNewMessage error:', e);
+                if (
+                  typeof window !== 'undefined' &&
+                  typeof (window as any).AndroidBridge?.onNewMessage ===
+                    'function'
+                ) {
+                  try {
+                    (window as any).AndroidBridge.onNewMessage(
+                      JSON.stringify(msg)
+                    );
+                  } catch (e) {
+                    console.warn('AndroidBridge.onNewMessage error:', e);
+                  }
                 }
-              }
 
-              // WhatsApp-style notification when partner sends message and window is backgrounded or tab inactive
-              const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
-              if (msg.sender_role !== myRole) {
-                const partnerName = myRole === 'owner' ? (partnerProfile?.display_name || 'Nusrat') : (partnerProfile?.display_name || 'Rahul');
-                const partnerPhoto = partnerProfile?.photo_url;
-                dispatchMessageNotification(msg, partnerName, partnerPhoto);
-              }
+                // WhatsApp-style notification when partner sends message and window is backgrounded or tab inactive
+                const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+                if (msg.sender_role !== myRole) {
+                  const partnerName = myRole === 'owner' ? (partnerProfile?.display_name || 'Nusrat') : (partnerProfile?.display_name || 'Rahul');
+                  const partnerPhoto = partnerProfile?.photo_url;
+                  dispatchMessageNotification(msg, partnerName, partnerPhoto);
+                }
 
-              return [...filtered, msg];
+                return [...filtered, msg];
+              });
+
+              if (onScrollToBottom) {
+                requestAnimationFrame(() => onScrollToBottom(false));
+              }
             });
-
-            if (onScrollToBottom) {
-              requestAnimationFrame(() => onScrollToBottom(false));
-            }
           } else if (payload.eventType === 'UPDATE') {
-            const raw = payload.new;
-            setMessages((prev) => {
-              let replyToObj = null;
-              if (raw.reply_to) {
-                const orig = prev.find((m) => m.id === raw.reply_to);
-                if (orig) {
-                  const isOrigDeletedByMe = orig.deletedBy
-                    ? orig.deletedBy === userProfile?.role
-                    : orig.sender_role === userProfile?.role;
-                  replyToObj = {
-                    id: orig.id,
-                    text: orig.deleted
-                      ? isOrigDeletedByMe
-                        ? 'You deleted this message'
-                        : 'This message was deleted'
-                      : orig.text,
-                    sender_role: orig.sender_role,
-                  };
-                } else {
-                  replyToObj = {
-                    id: raw.reply_to,
-                    text: raw.reply_text || 'Original message',
-                    sender_role:
-                      raw.reply_sender_role ||
-                      (raw.sender_role === 'owner' ? 'partner' : 'owner'),
-                  };
+            const rawIncoming = payload.new;
+            if (!rawIncoming || !rawIncoming.id) return;
+
+            decryptRawMessage(rawIncoming).then((raw) => {
+              if (isCancelled) return;
+              setMessages((prev) => {
+                let replyToObj = null;
+                if (raw.reply_to) {
+                  const orig = prev.find((m) => m.id === raw.reply_to);
+                  if (orig) {
+                    const isOrigDeletedByMe = orig.deletedBy
+                      ? orig.deletedBy === userProfile?.role
+                      : orig.sender_role === userProfile?.role;
+                    replyToObj = {
+                      id: orig.id,
+                      text: orig.deleted
+                        ? isOrigDeletedByMe
+                          ? 'You deleted this message'
+                          : 'This message was deleted'
+                        : orig.text,
+                      sender_role: orig.sender_role,
+                    };
+                  } else {
+                    replyToObj = {
+                      id: raw.reply_to,
+                      text: raw.reply_text || 'Original message',
+                      sender_role:
+                        raw.reply_sender_role ||
+                        (raw.sender_role === 'owner' ? 'partner' : 'owner'),
+                    };
+                  }
                 }
-              }
 
-              const hydrated = raw.deleted
-                ? undefined
-                : hydrateMessageMedia(raw);
-              const msg: Message = {
-                ...raw,
-                media: hydrated,
-                mediaList: hydrated?.mediaList,
-                timestamp:
-                  raw.created_at || raw.timestamp || new Date().toISOString(),
-                replyTo: replyToObj,
-              };
+                const hydrated = raw.deleted
+                  ? undefined
+                  : hydrateMessageMedia(raw);
+                const msg: Message = {
+                  ...raw,
+                  media: hydrated,
+                  mediaList: hydrated?.mediaList,
+                  timestamp:
+                    raw.created_at || raw.timestamp || new Date().toISOString(),
+                  replyTo: replyToObj,
+                };
 
-              return prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m));
+                return prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m));
+              });
             });
           } else if (payload.eventType === 'DELETE') {
             const deletedId = payload.old?.id;
@@ -389,6 +421,7 @@ export function useMessageSync({
 
     return () => {
       isCancelled = true;
+      unsubE2EE();
       if (retryTimer) clearTimeout(retryTimer);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);

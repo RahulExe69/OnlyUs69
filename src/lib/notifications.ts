@@ -14,6 +14,7 @@ export interface OnlyUsNotificationPlugin {
     avatarUrl?: string;
   }): Promise<void>;
   cachePartnerAvatar(options: { avatarUrl: string }): Promise<void>;
+  cacheSharedSecret(options: { sharedKeyBase64: string }): Promise<void>;
   cancelChatNotification(options?: { notificationId?: number }): Promise<void>;
   getFcmToken(): Promise<{ token: string }>;
   addListener(eventName: 'fcmTokenRefresh', listenerFunc: (data: { token: string }) => void): Promise<any>;
@@ -89,6 +90,9 @@ export async function triggerPushNotification(options: {
   text?: string;
   avatarUrl?: string;
   messageId?: string;
+  ciphertext?: string;
+  iv?: string;
+  is_encrypted?: boolean;
 }) {
   try {
     const edgeUrl = 'https://vrstmtjfqlbfyxtsothf.supabase.co/functions/v1/send-push';
