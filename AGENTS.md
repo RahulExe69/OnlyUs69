@@ -6,6 +6,7 @@
 3. **Database & RLS Integrity**: Maintain permissive RLS policies and realtime publications on `messages`, `users`, and `app_config` in Supabase so neither account encounters permission or missing message errors.
 4. **Resilient Message Hydration**: Ensure message subscriptions and historical fetches execute immediately upon user authentication without being blocked by asynchronous profile resolution.
 5. **Question Mode Tags**: Whenever the user includes `#ask`, `#ans`, `#qna`, or `#answer` in their prompt, treat the request purely as an informational question: provide a detailed answer and make NO code changes or tool modifications unless explicitly asked.
+6. **Incremental & Part-by-Part Edits**: To prevent context window and token quota exhaustion, always inspect and edit files in small, targeted chunks (part-by-part) instead of viewing or editing massive multi-hundred line blocks at once.
 
 ---
 
