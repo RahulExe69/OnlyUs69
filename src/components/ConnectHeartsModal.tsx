@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { UserRole, UserProfile, Message, InGameChatMessage } from '../types';
+import { is3DTheme } from '../lib/themes';
+import { QuantumAuraBackground } from './QuantumAuraBackground';
 import { PartnerMainChatBubble } from './PartnerMainChatBubble';
 import { InGameChatDrawer } from './InGameChatDrawer';
 
@@ -539,6 +541,21 @@ export default function ConnectHearts({
 
   return (
     <div className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col justify-between overflow-hidden select-none">
+      {/* Theme Background Decoration & 3D Aura Engine */}
+      <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
+      {(is3DTheme(userProfile?.theme) ||
+        (typeof document !== 'undefined' &&
+          is3DTheme(document.documentElement.dataset.chatTheme))) && (
+        <QuantumAuraBackground
+          theme={
+            userProfile?.theme ||
+            (typeof document !== 'undefined'
+              ? document.documentElement.dataset.chatTheme
+              : undefined)
+          }
+        />
+      )}
+
       {/* Floating Main Chat Bubble from Partner */}
       <PartnerMainChatBubble
         latestPartnerMessage={latestPartnerMessage}
@@ -652,7 +669,7 @@ export default function ConnectHearts({
       </AnimatePresence>
 
       {/* Center Content (Scoreboard & Interactive Connect Hearts Board) */}
-      <div className="flex-1 flex flex-col items-center justify-center px-3 pt-12 pb-4 max-w-lg mx-auto w-full overflow-y-auto">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-3 pt-12 pb-4 max-w-lg mx-auto w-full overflow-y-auto">
         {/* Sleek Compact Player Status Bar (Rahul vs Nusrat) */}
         <div className="w-full max-w-[340px] mb-2 px-3 py-1.5 rounded-2xl bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
           {/* Left: Rahul (Owner - Sky Blue) */}

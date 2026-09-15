@@ -393,7 +393,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   };
 
   return (
-    <div className="mt-4 lg:mt-6 pt-4 lg:pt-6 border-t border-[var(--theme-border)] bg-[var(--theme-bg)]/80 backdrop-blur-md">
+    <div className="relative bg-transparent">
       <AnimatePresence>
         {micPermissionNotice && (
           <motion.div
@@ -480,7 +480,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             initial={{ opacity: 0, y: 10, height: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: 10, height: 0 }}
-            className="px-4 py-2.5 bg-[var(--theme-surface)]/95 backdrop-blur-md border-t border-[var(--theme-border)] flex items-center gap-2 overflow-x-auto custom-scrollbar select-none"
+            className="px-4 py-2 bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)]/50 rounded-2xl mx-3 mb-1 shadow-md flex items-center gap-2 overflow-x-auto custom-scrollbar select-none"
             onPointerDown={(e) => e.preventDefault()}
           >
             {POPULAR_EMOJIS.map((emoji) => (
@@ -509,7 +509,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
               }
             }}
             onClick={onOpenAttachmentMenu}
-            className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)] border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/10 transition-all active:scale-95 shadow-sm cursor-pointer"
+            className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/15 transition-all active:scale-95 shadow-md cursor-pointer"
             aria-label="Open attachments menu"
           >
             <Plus className="w-5 h-5" />
@@ -621,7 +621,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           /* --------------------------------------------------------- */
           /* Standard WhatsApp-style Input Container                  */
           /* --------------------------------------------------------- */
-          <div className="relative flex-1 flex items-end bg-[var(--theme-input-bg)] border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden">
+          <div className="relative flex-1 flex items-end bg-[var(--theme-input-bg)]/85 backdrop-blur-md border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden">
             {/* WhatsApp emoji toggle button */}
             <button
               type="button"

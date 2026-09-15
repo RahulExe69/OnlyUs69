@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { AnimatePresence } from 'motion/react';
-import { ArrowLeft, Check, Sparkles } from 'lucide-react';
-import { THEMES, ThemeName } from '../lib/themes';
+import { AnimatePresence, motion } from 'motion/react';
+import { 
+  ArrowLeft, 
+  Check, 
+  Sparkles, 
+  CheckCheck,
+  Send
+} from 'lucide-react';
+import { 
+  THEMES, 
+  ThemeName, 
+  BASE_THEMES, 
+  toBaseThemeKey, 
+  getThemeVariantKey, 
+  is3DTheme 
+} from '../lib/themes';
+import { ThreeDThemeBackground } from './ThreeDThemeBackground';
+import { UserProfile } from '../types';
 
 export interface ThemeCustomizePageProps {
   isOpen: boolean;
@@ -9,6 +24,8 @@ export interface ThemeCustomizePageProps {
   currentTheme: ThemeName;
   onThemeSelect: (theme: ThemeName) => Promise<void> | void;
   isThemeSaving?: boolean;
+  partnerProfile?: UserProfile | null;
+  userProfile?: UserProfile | null;
 }
 
 export const ThemeCustomizePage: React.FC<ThemeCustomizePageProps> = ({
@@ -17,196 +34,317 @@ export const ThemeCustomizePage: React.FC<ThemeCustomizePageProps> = ({
   currentTheme,
   onThemeSelect,
   isThemeSaving = false,
+  partnerProfile,
+  userProfile
 }) => {
-  const [pendingTheme, setPendingTheme] = useState<ThemeName>(currentTheme);
+  // 3D toggle state (toggle between normal and 3d)
+  const [is3DMode, setIs3DMode] = useState<boolean>(() => is3DTheme(currentTheme));
+  // Selected base theme key (e.g. 'romantic', 'dark', 'light', etc.)
+  const [selectedBaseKey, setSelectedBaseKey] = useState<string>(() => toBaseThemeKey(currentTheme));
 
   useEffect(() => {
     if (isOpen) {
-      setPendingTheme(currentTheme);
+      setIs3DMode(is3DTheme(currentTheme));
+      setSelectedBaseKey(toBaseThemeKey(currentTheme));
     }
   }, [isOpen, currentTheme]);
 
-  const applySelectedTheme = async () => {
-    if (pendingTheme === currentTheme || isThemeSaving) return;
-    await onThemeSelect(pendingTheme);
+  const pendingTheme = getThemeVariantKey(selectedBaseKey, is3DMode);
+  const isApplied = currentTheme === pendingTheme;
+  const selectedThemeObj = THEMES[pendingTheme] || THEMES.romantic;
+
+  const applySelectedTheme = async (themeToApply?: ThemeName) => {
+    const target = themeToApply || pendingTheme;
+    if (target === currentTheme || isThemeSaving) return;
+    await onThemeSelect(target);
     onClose();
   };
+
+  const partnerName = partnerProfile?.display_name || partnerProfile?.username || (userProfile?.role === 'owner' ? 'Nusrat' : 'Rahul');
+  const partnerAvatar = partnerProfile?.photo_url;
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div
-          className="theme-customize-page fixed inset-0 z-[140] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden font-sans animate-in fade-in duration-100"
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 15 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="fixed inset-0 z-[140] flex flex-col bg-[var(--theme-surface)] text-[var(--theme-text)] overflow-hidden font-sans select-none"
         >
-          {/* Header Bar */}
-          <header className="h-16 sm:h-20 px-4 sm:px-6 flex items-center justify-between border-b border-[var(--theme-border)] bg-[var(--theme-surface)]/90 backdrop-blur-md flex-shrink-0 z-20">
-            <div className="flex items-center gap-3">
+          {/* Top Navigation Bar */}
+          <header className="h-14 sm:h-16 px-3.5 sm:px-6 flex items-center justify-between border-b border-[var(--theme-border)] bg-[var(--theme-surface)]/95 backdrop-blur-md flex-shrink-0 z-30">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 -ml-2 text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                className="w-9 h-9 sm:w-10 sm:h-10 -ml-1 text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/15 rounded-full flex items-center justify-center transition-colors active:scale-95 cursor-pointer flex-shrink-0"
                 aria-label="Back to chat"
               >
-                <ArrowLeft className="w-6 h-6" />
+                <ArrowLeft className="w-5 h-5" />
               </button>
-              <div>
-                <h2 className="text-[18px] sm:text-[20px] font-bold text-[var(--theme-text)] tracking-tight">Customise Theme</h2>
-                <p className="text-[11px] sm:text-[12px] text-[var(--theme-text)]/60 font-medium">Personalize colors, wallpaper & fonts</p>
-              </div>
-            </div>
-            {pendingTheme !== currentTheme && (
-              <button
-                onClick={applySelectedTheme}
-                disabled={isThemeSaving}
-                className="px-4 py-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
-              >
-                {isThemeSaving ? 'Saving...' : 'Apply'}
-              </button>
-            )}
-          </header>
-
-          {/* Body Content */}
-          <div className="flex-1 custom-scrollbar overflow-y-auto px-4 sm:px-8 py-5 pb-28 max-w-4xl mx-auto w-full">
-            {/* Info Banner */}
-            <div className="mb-6 p-4 rounded-2xl bg-[var(--theme-bg)] border border-[var(--theme-border)] flex items-start gap-3.5 shadow-sm">
-              <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0 font-bold">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-[var(--theme-text)]">Chat Atmosphere</h3>
-                <p className="text-xs text-[var(--theme-text)]/65 leading-relaxed mt-0.5">
-                  Each theme changes the room's mood with custom wallpaper textures, bubble colors, ambient lighting, and typography.
+              <div className="min-w-0">
+                <h2 className="text-[16px] sm:text-[18px] font-bold text-[var(--theme-text)] tracking-tight leading-tight truncate">
+                  Customize Theme
+                </h2>
+                <p className="text-[10px] sm:text-[11px] text-[var(--theme-text)]/60 font-medium leading-none mt-0.5">
+                  Tap to preview • {BASE_THEMES.length} themes available
                 </p>
               </div>
             </div>
 
-            {/* Grid of themes */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-5">
-              {(Object.keys(THEMES) as ThemeName[]).map((themeName) => {
-                const theme = THEMES[themeName];
-                const isSelected = pendingTheme === themeName;
-                const isApplied = currentTheme === themeName;
+            {!isApplied && (
+              <button
+                type="button"
+                onClick={() => applySelectedTheme()}
+                disabled={isThemeSaving}
+                className="px-3.5 py-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs font-bold shadow-md shadow-[var(--theme-accent)]/20 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer flex-shrink-0"
+              >
+                {isThemeSaving ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                )}
+                <span>Apply</span>
+              </button>
+            )}
+          </header>
+
+          {/* Clean Sub-header with 3D Mode Toggle */}
+          <div className="px-3.5 sm:px-6 py-2.5 bg-[var(--theme-surface)]/90 backdrop-blur-xs flex-shrink-0 border-b border-[var(--theme-border)]/50 z-20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-[13px] font-semibold text-[var(--theme-text)]">
+                {is3DMode ? '3D Live Themes' : 'Normal Themes'}
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[var(--theme-text)]/60">
+                {BASE_THEMES.length}
+              </span>
+            </div>
+
+            {/* Interactive 3D Mode Toggle Switch */}
+            <div 
+              onClick={() => setIs3DMode(prev => !prev)}
+              className="flex items-center gap-2 cursor-pointer select-none group"
+              role="button"
+              tabIndex={0}
+              aria-label="Toggle 3D mode"
+            >
+              <div className={`flex items-center gap-1 text-xs font-bold transition-colors ${
+                is3DMode 
+                  ? 'text-purple-500 dark:text-purple-400 font-extrabold' 
+                  : 'text-[var(--theme-text)]/60 group-hover:text-[var(--theme-text)]'
+              }`}>
+                <Sparkles className={`w-3.5 h-3.5 ${is3DMode ? 'animate-pulse' : ''}`} />
+                <span>3D Mode</span>
+              </div>
+
+              <div className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors duration-200 ${
+                is3DMode ? 'bg-purple-600' : 'bg-black/15 dark:bg-white/20'
+              }`}>
+                <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 flex items-center justify-center ${
+                  is3DMode ? 'translate-x-5' : 'translate-x-0'
+                }`}>
+                  {is3DMode && (
+                    <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Theme Grid: EXACT 3-COLUMN GRID AS REQUESTED */}
+          <div className="flex-1 custom-scrollbar overflow-y-auto px-2.5 sm:px-6 py-3.5 pb-28 max-w-5xl mx-auto w-full">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3.5">
+              {BASE_THEMES.map((item) => {
+                const cardThemeKey = getThemeVariantKey(item.key, is3DMode);
+                const theme = THEMES[cardThemeKey] || THEMES.romantic;
+                const isSelected = selectedBaseKey === item.key;
+                const isCardApplied = currentTheme === cardThemeKey;
+
                 return (
-                  <button
-                    key={themeName}
-                    type="button"
-                    onClick={() => setPendingTheme(themeName)}
-                    disabled={isThemeSaving}
-                    className={`group relative flex flex-col p-3 rounded-2xl sm:rounded-3xl border transition-all text-left overflow-hidden cursor-pointer ${
+                  <div
+                    key={item.key}
+                    onClick={() => setSelectedBaseKey(item.key)}
+                    className={`group relative flex flex-col rounded-xl sm:rounded-2xl border transition-all text-left overflow-hidden cursor-pointer shadow-2xs ${
                       isSelected
-                        ? 'border-[var(--theme-accent)] bg-[var(--theme-surface)] ring-4 ring-[var(--theme-accent)]/20 shadow-lg scale-[1.01]'
-                        : 'border-[var(--theme-border)] bg-[var(--theme-surface)] hover:border-[var(--theme-accent)]/40 hover:shadow-md'
-                    } ${isThemeSaving ? 'opacity-70 cursor-wait' : ''}`}
+                        ? 'border-[var(--theme-accent)] ring-2 sm:ring-3 ring-[var(--theme-accent)]/35 shadow-md scale-[1.015]'
+                        : 'border-[var(--theme-border)]/80 bg-[var(--theme-surface)] hover:border-[var(--theme-accent)]/50 hover:shadow-xs'
+                    }`}
                   >
-                    {/* Preview box */}
+                    {/* Realistic Live Chat Preview Viewport inside each card in 3-grid */}
                     <div
-                      className="relative w-full h-28 sm:h-36 rounded-xl sm:rounded-2xl overflow-hidden border border-black/5 p-2.5 flex flex-col justify-between shadow-inner transition-transform group-hover:scale-[1.01]"
-                      style={{ background: theme.decoration, backgroundColor: theme.bg }}
+                      className="relative w-full h-44 sm:h-52 p-2 sm:p-2.5 flex flex-col justify-between overflow-hidden select-none"
+                      style={{ 
+                        backgroundColor: theme.bg,
+                        backgroundImage: !is3DMode ? theme.decoration : undefined,
+                        fontFamily: theme.font
+                      }}
                     >
-                      {/* Mini top bar */}
+                      {/* Live 3D Canvas running ONLY on the clicked/selected card when 3D Mode is active */}
+                      {is3DMode && isSelected && (
+                        <ThreeDThemeBackground 
+                          theme={cardThemeKey} 
+                          className="absolute inset-0 pointer-events-none z-0" 
+                        />
+                      )}
+
+                      {/* Mini Live Top Chat Header */}
                       <div 
-                        className="w-full h-3 sm:h-3.5 rounded-full shadow-xs flex items-center px-1.5 justify-between"
-                        style={{ background: theme.header }}
+                        className="relative z-10 w-full px-1.5 sm:px-2 py-1 rounded-lg border shadow-2xs flex items-center justify-between backdrop-blur-md transition-all"
+                        style={{ 
+                          backgroundColor: theme.header,
+                          borderColor: theme.border,
+                          color: theme.text
+                        }}
                       >
-                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: theme.accent }} />
-                        <div className="w-8 h-1 rounded-full opacity-30" style={{ background: theme.text }} />
-                      </div>
-
-                      {/* Mini bubbles */}
-                      <div className="space-y-1.5 my-auto px-0.5">
-                        <div
-                          className="max-w-[78%] px-2.5 py-1 rounded-xl text-[9px] font-semibold shadow-xs"
-                          style={{
-                            background: theme.partner,
-                            color: theme.partnerText,
-                            borderRadius: '12px 12px 12px 3px'
-                          }}
-                        >
-                          Hi there ❤️
-                        </div>
-                        <div
-                          className="max-w-[78%] ml-auto px-2.5 py-1 rounded-xl text-[9px] font-semibold text-right shadow-xs"
-                          style={{
-                            background: theme.owner,
-                            color: theme.ownerText,
-                            borderRadius: '12px 12px 3px 12px'
-                          }}
-                        >
-                          Love you ✨
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="relative flex-shrink-0">
+                            {partnerAvatar ? (
+                              <img 
+                                src={partnerAvatar} 
+                                alt={partnerName} 
+                                className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover border"
+                                style={{ borderColor: theme.accent }}
+                              />
+                            ) : (
+                              <div 
+                                className="w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center font-bold text-white text-[8px] sm:text-[9px]"
+                                style={{ backgroundColor: theme.accent }}
+                              >
+                                {partnerName.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-black" />
+                          </div>
+                          <div className="text-[9px] sm:text-[11px] font-bold truncate leading-tight">
+                            {partnerName}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Selected check badge */}
-                      {(isSelected || isApplied) && (
-                        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-md">
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      {/* Mini Live Chat Bubbles */}
+                      <div className="relative z-10 my-auto space-y-1.5 px-0.5">
+                        {/* 1. Incoming Partner Bubble */}
+                        <div className="flex items-end gap-1 max-w-[92%]">
+                          <div
+                            className="p-1.5 sm:p-2 rounded-xl rounded-bl-xs text-[9px] sm:text-[10.5px] font-medium shadow-2xs border transition-all leading-tight"
+                            style={{
+                              backgroundColor: theme.partner,
+                              color: theme.partnerText,
+                              borderColor: theme.border
+                            }}
+                          >
+                            <p>Hey ❤️</p>
+                          </div>
                         </div>
-                      )}
 
-                      {/* Special 3D Aura Farm Badge */}
-                      {themeName === '3d-aura' && (
-                        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[8px] font-black tracking-wider uppercase shadow-md flex items-center gap-0.5">
-                          <Sparkles className="w-2.5 h-2.5" />
-                          <span>3D Live</span>
+                        {/* 2. Outgoing Owner Bubble */}
+                        <div className="ml-auto max-w-[92%]">
+                          <div
+                            className="p-1.5 sm:p-2 rounded-xl rounded-br-xs text-[9px] sm:text-[10.5px] font-semibold shadow-2xs transition-all leading-tight ml-auto"
+                            style={{
+                              backgroundColor: theme.owner,
+                              color: theme.ownerText
+                            }}
+                          >
+                            <p>Love this! ✨</p>
+                            <div className="flex items-center justify-end gap-0.5 text-[7px] sm:text-[8px] opacity-80 mt-0.5 font-mono leading-none">
+                              <CheckCheck className="w-2.5 h-2.5" style={{ color: theme.accent }} />
+                            </div>
+                          </div>
                         </div>
-                      )}
+                      </div>
+
+                      {/* Mini Live Bottom Chat Input Bar */}
+                      <div 
+                        className="relative z-10 w-full p-1 rounded-lg border shadow-2xs flex items-center gap-1 backdrop-blur-md"
+                        style={{
+                          backgroundColor: theme.input,
+                          borderColor: theme.border,
+                          color: theme.text
+                        }}
+                      >
+                        <div className="flex-1 text-[8px] sm:text-[9.5px] opacity-50 px-1 font-medium truncate">
+                          Message...
+                        </div>
+                        <div 
+                          className="w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center text-white shadow-2xs flex-shrink-0"
+                          style={{ backgroundColor: theme.accent }}
+                        >
+                          <Send className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
+                        </div>
+                      </div>
+
+                      {/* Top Badges (Active / Selected / 3D) */}
+                      <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-1">
+                        {is3DMode && isSelected && (
+                          <div className="px-1.5 py-0.5 rounded-full bg-purple-600 text-white text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider shadow-xs flex items-center gap-0.5">
+                            <Sparkles className="w-2 h-2" />
+                            <span>3D</span>
+                          </div>
+                        )}
+
+                        {isCardApplied && (
+                          <div className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider shadow-xs flex items-center gap-0.5">
+                            <Check className="w-2 h-2 stroke-[3]" />
+                            <span className="hidden sm:inline">Active</span>
+                          </div>
+                        )}
+
+                        {isSelected && !isCardApplied && !is3DMode && (
+                          <div className="w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Theme Details */}
-                    <div className="mt-3 px-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <h4 className="text-[13px] sm:text-[15px] font-bold text-[var(--theme-text)] leading-tight truncate">
-                          {theme.name}
-                        </h4>
-                        {themeName === '3d-aura' && !isApplied && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-500/20 text-purple-400 border border-purple-500/30 flex-shrink-0">
-                            3D
-                          </span>
-                        )}
-                        {isApplied && (
-                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex-shrink-0">
-                            Active
-                          </span>
-                        )}
+                    {/* CLEAN CARD FOOTER: Strictly provides ONLY the theme's name as requested */}
+                    <div className="py-2 px-1.5 sm:px-2 text-center border-t border-[var(--theme-border)]/50 bg-[var(--theme-surface)]">
+                      <div className="text-[11px] sm:text-[13px] font-bold text-[var(--theme-text)] truncate tracking-tight leading-tight">
+                        {item.name}
                       </div>
-                      <p className="text-[11px] text-[var(--theme-text)]/60 mt-1 line-clamp-2 leading-snug">
-                        {theme.note}
-                      </p>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Bottom Action Footer */}
-          <div className="fixed bottom-0 left-0 right-0 bg-[var(--theme-surface)]/95 backdrop-blur-md border-t border-[var(--theme-border)] p-4 z-30">
-            <div className="max-w-md mx-auto">
+          {/* Fixed Floating Bottom Action Bar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-[var(--theme-surface)]/95 backdrop-blur-md border-t border-[var(--theme-border)] p-3 sm:p-4 z-40">
+            <div className="max-w-md mx-auto flex items-center gap-3">
               <button
                 type="button"
-                onClick={applySelectedTheme}
-                disabled={isThemeSaving || pendingTheme === currentTheme}
-                className="w-full h-13 rounded-2xl bg-[var(--theme-accent)] text-white text-[15px] sm:text-[16px] font-bold tracking-wide shadow-xl shadow-[var(--theme-accent)]/20 active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                onClick={() => applySelectedTheme()}
+                disabled={isThemeSaving || isApplied}
+                className={`flex-1 h-11 sm:h-12 rounded-2xl text-[13px] sm:text-[15px] font-bold tracking-wide shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  isApplied
+                    ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 cursor-default'
+                    : 'bg-[var(--theme-accent)] text-white shadow-[var(--theme-accent)]/25 hover:opacity-95'
+                }`}
               >
                 {isThemeSaving ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     <span>Applying Theme...</span>
                   </>
-                ) : pendingTheme === currentTheme ? (
+                ) : isApplied ? (
                   <>
-                    <Check className="w-5 h-5" />
-                    <span>Theme Active</span>
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    <span>{selectedThemeObj.name} {is3DMode ? '(3D)' : ''} is Active</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>Apply {THEMES[pendingTheme]?.name || 'Theme'}</span>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Apply {selectedThemeObj.name} {is3DMode ? '(3D)' : ''}</span>
                   </>
                 )}
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

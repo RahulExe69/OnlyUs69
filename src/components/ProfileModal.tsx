@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, Shield, EyeOff, BookOpen, Smartphone } from 'lucide-react';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig } from '../types';

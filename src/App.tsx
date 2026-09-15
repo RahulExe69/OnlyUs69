@@ -57,7 +57,7 @@ import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/medi
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
-import { THEMES, ThemeName, applyTheme } from './lib/themes';
+import { THEMES, ThemeName, applyTheme, is3DTheme } from './lib/themes';
 import { QuantumAuraBackground } from './components/QuantumAuraBackground';
 import { getMillis, parseDate, hydrateMessageMedia } from './lib/dateUtils';
 import { initializeE2EE, isE2EEReady, encryptChatMessage, resetE2EECache, onE2EEStatusChange, exportSharedSecretBase64 } from './lib/e2ee';
@@ -1795,6 +1795,7 @@ export default function App() {
           onSelectTab={(tab) => handleHubTabChange(tab)}
           onOpenSettings={() => setShowProfileModal(true)}
           onOpenProfile={() => setShowProfileModal(true)}
+          onOpenPartnerInfo={() => setShowPartnerInfo(true)}
           onLogout={handleLogout}
         />
       ) : activeHubTab === 'instagram' || activeHubTab === 'whatsapp' ? (
@@ -1855,10 +1856,10 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
+                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-3 sm:px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
                 >
-                  <div className="flex items-center flex-1 min-w-0 pr-4 h-full">
-                    {/* Back to Multi-Hub button */}
+                  <div className="flex items-center flex-1 min-w-0 pr-2 h-full">
+                    {/* Back to Multi-Hub button - Clean, no background container */}
                     <button
                       onClick={() => {
                         if (typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
@@ -1866,38 +1867,51 @@ export default function App() {
                         }
                         handleHubTabChange('dashboard');
                       }}
-                      className="theme-accent-button p-2 -ml-1 mr-2 rounded-2xl transition-all flex items-center gap-1 active:scale-95 shrink-0 shadow-sm"
+                      className="p-1.5 -ml-1 mr-1 text-[var(--theme-text)] hover:opacity-75 active:scale-90 transition-transform flex items-center justify-center shrink-0 cursor-pointer"
                       title="Back to OnlyUs Hub"
                     >
-                      <ArrowLeft className="w-5 h-5 lg:hidden" />
-                      <LayoutGrid className="w-4 h-4 hidden lg:block" />
+                      <ArrowLeft className="w-6 h-6 lg:hidden stroke-[2.2]" />
+                      <LayoutGrid className="w-5 h-5 hidden lg:block" />
                     </button>
 
-                    <div className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0" onClick={() => setShowPartnerInfo(true)}>
-                      <div className="relative" onClick={(e) => { e.stopPropagation(); if(partnerProfile?.photo_url) setShowFullImage(partnerProfile.photo_url); }}>
-                        {partnerProfile?.photo_url ? (
-                          <img 
-                            src={partnerProfile.photo_url} 
-                            alt="Partner" 
-                            referrerPolicy="no-referrer"
-                            className="w-10 h-10 lg:w-11 lg:h-11 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 text-[var(--theme-accent)] font-bold text-lg">
-                            {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
-                          </div>
-                        )}
+                    {/* Profile Header Item */}
+                    <div 
+                      className="flex items-center gap-2.5 cursor-pointer group flex-1 min-w-0" 
+                      onClick={() => setShowPartnerInfo(true)}
+                    >
+                      {/* Avatar strictly circular, never distorted */}
+                      <div 
+                        className="relative shrink-0 w-10 h-10 lg:w-11 lg:h-11 aspect-square select-none" 
+                        onClick={(e) => { e.stopPropagation(); if(partnerProfile?.photo_url) setShowFullImage(partnerProfile.photo_url); }}
+                      >
+                        <div className="w-10 h-10 lg:w-11 lg:h-11 shrink-0 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 shadow-sm bg-[var(--theme-surface)]">
+                          {partnerProfile?.photo_url ? (
+                            <img 
+                              src={partnerProfile.photo_url} 
+                              alt="Partner" 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover rounded-full aspect-square block"
+                            />
+                          ) : (
+                            <div className="w-full h-full rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)] font-bold text-lg">
+                              {partnerProfile?.display_name?.[0] || (isOwner ? 'N' : 'R')}
+                            </div>
+                          )}
+                        </div>
                         {formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'In Game Room 🎮' ? (
-                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse"></div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10"></div>
                         ) : formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online' ? (
-                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full"></div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full z-10"></div>
                         ) : null}
                       </div>
                       
-                      <div className="min-w-0">
-                        <h2 className="text-[15px] lg:text-[16px] font-bold text-[var(--theme-text)] truncate leading-tight">
-                          {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
-                        </h2>
+                      {/* Name & Status */}
+                      <div className="min-w-0 flex-1 flex flex-col justify-center">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h2 className="text-[15px] lg:text-[16px] font-bold text-[var(--theme-text)] truncate leading-tight">
+                            {userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
+                          </h2>
+                        </div>
                         <p className={`text-[10px] lg:text-[11px] font-bold leading-none mt-0.5 ${
                           formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'In Game Room 🎮'
                             ? 'text-purple-500'
@@ -1911,7 +1925,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 lg:gap-2">
+                  <div className="flex items-center gap-1 lg:gap-1.5 shrink-0">
                     {/* Voice Call Button */}
                     <button
                       onClick={() => startCall('voice')}
@@ -1928,15 +1942,6 @@ export default function App() {
                       title="Start Video Call"
                     >
                       <Video className="w-5 h-5" />
-                    </button>
-
-                    <button
-                      onClick={() => setShowE2EEModal(true)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-xs"
-                      title="End-to-End Encrypted (AES-256-GCM) - Click to verify"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">E2EE</span>
                     </button>
 
                     <div className="relative">
@@ -1989,19 +1994,11 @@ export default function App() {
                               </button>
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
-                                onClick={() => { setShowE2EEModal(true); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
-                              >
-                                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                                Encryption & Keys
-                              </button>
-                              <button 
-                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowGamesMenu(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
                                 <Gamepad2 className="w-4 h-4 text-[var(--theme-accent)]" />
-                                Play Games
+                                Play Together
                               </button>
                             </motion.div>
                           </>
@@ -2017,8 +2014,8 @@ export default function App() {
 
         <div className="flex-1 overflow-hidden relative">
             <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
-            {(userProfile?.theme === '3d-aura' || document.documentElement.dataset.chatTheme === '3d-aura') && (
-              <QuantumAuraBackground />
+            {(is3DTheme(userProfile?.theme) || (typeof document !== 'undefined' && is3DTheme(document.documentElement.dataset.chatTheme))) && (
+              <QuantumAuraBackground theme={userProfile?.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined)} />
             )}
             <div className="relative z-10 h-full flex flex-col">
               <ChatView 
@@ -2126,6 +2123,8 @@ export default function App() {
           currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
           onThemeSelect={selectTheme}
           isThemeSaving={isThemeSaving}
+          partnerProfile={partnerProfile}
+          userProfile={userProfile}
         />
       </Suspense>
       <DeleteChoicesModal
@@ -3050,7 +3049,7 @@ const ChatView = React.memo(function ChatView({
           ref={scrollRef}
           id="message-container" 
           style={{ touchAction: 'pan-y' }}
-          className="flex-1 overflow-y-auto space-y-4 pb-6 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
+          className="flex-1 overflow-y-auto space-y-4 pb-2 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
         >
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
@@ -3146,7 +3145,7 @@ const ChatView = React.memo(function ChatView({
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 5 }}
-            className="px-6 lg:px-10 py-1 flex items-center gap-2.5 text-[var(--theme-accent)] bg-gradient-to-t from-[var(--theme-bg)]/80 to-transparent"
+            className="px-6 lg:px-10 py-1 flex items-center gap-2.5 text-[var(--theme-accent)]"
           >
             <div className="flex gap-2 items-center bg-[var(--theme-surface)]/90 backdrop-blur-md px-4 py-2 rounded-2xl shadow-md border border-[var(--theme-border)] scale-95 origin-left">
               <motion.span animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0 }} className="w-2 h-2 bg-[var(--theme-accent)] rounded-full" />
@@ -3209,9 +3208,9 @@ const ChatView = React.memo(function ChatView({
         onClose={() => onSetShowAttachmentMenu(false)}
         title="Share with Love"
       >
-        <div className="grid grid-cols-4 gap-4 p-4 lg:p-6">
+        <div className="grid grid-cols-5 gap-2 sm:gap-4 p-4 lg:p-6">
           <AttachmentOption 
-            icon={<Camera className="w-6 h-6" />} 
+            icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6" />} 
             label="Camera" 
             color="bg-[var(--theme-accent)] text-white" 
             onClick={() => {
@@ -3220,8 +3219,8 @@ const ChatView = React.memo(function ChatView({
             }} 
           />
           <AttachmentOption 
-            icon={<ImageIcon className="w-6 h-6" />} 
-            label="Photos & Videos" 
+            icon={<ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />} 
+            label="Photos" 
             color="bg-[var(--theme-bubble-partner)] text-[var(--theme-bubble-partner-text)]" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
@@ -3229,7 +3228,7 @@ const ChatView = React.memo(function ChatView({
             }} 
           />
           <AttachmentOption 
-            icon={<Instagram className="w-6 h-6" />} 
+            icon={<Instagram className="w-5 h-5 sm:w-6 sm:h-6" />} 
             label="Reel" 
             color="bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white" 
             onClick={() => {
@@ -3238,12 +3237,21 @@ const ChatView = React.memo(function ChatView({
             }} 
           />
           <AttachmentOption 
-            icon={<Headphones className="w-6 h-6" />} 
+            icon={<Headphones className="w-5 h-5 sm:w-6 sm:h-6" />} 
             label="Audio" 
             color="bg-orange-500 text-white" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
               audioInputRef.current?.click();
+            }} 
+          />
+          <AttachmentOption 
+            icon={<Gamepad2 className="w-5 h-5 sm:w-6 sm:h-6" />} 
+            label="Games" 
+            color="bg-gradient-to-tr from-pink-500 to-violet-600 text-white" 
+            onClick={() => {
+              onSetShowAttachmentMenu(false);
+              onSetShowGamesMenu(true);
             }} 
           />
         </div>

@@ -360,12 +360,22 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
         /* ==================== INSTAGRAM PARTNER PROFILE VIEW ==================== */
         <div className="flex-1 flex flex-col h-full overflow-hidden">
           {/* Instagram Top Bar */}
-          <div className="h-14 flex-shrink-0 flex items-center px-4">
+          <div className="h-14 flex-shrink-0 flex items-center justify-between px-4">
             <button 
               onClick={onClose} 
               className="p-1 -ml-1 text-[#111111] hover:opacity-70 transition-opacity active:scale-95"
             >
               <ArrowLeft className="w-6 h-6 stroke-[2]" />
+            </button>
+
+            {/* E2EE icon in partner profile header */}
+            <button
+              type="button"
+              onClick={() => setShowE2EESheet(true)}
+              className="p-2 text-emerald-600 hover:text-emerald-700 active:scale-90 transition-transform flex items-center justify-center"
+              title="End-to-End Encrypted (Tap to verify)"
+            >
+              <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
             </button>
           </div>
 
@@ -445,21 +455,6 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-semibold text-[#111111] leading-tight">Nicknames</p>
                 </div>
-              </button>
-
-              <button 
-                type="button"
-                onClick={() => setShowE2EESheet(true)}
-                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
-              >
-                <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 flex-shrink-0">
-                  <ShieldCheck className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Encryption & Security</p>
-                  <p className="text-[12px] text-emerald-600 mt-0.5 leading-tight">End-to-end encrypted · Tap to verify</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-neutral-400" />
               </button>
             </div>
 
@@ -775,6 +770,8 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
           await onThemeSelect(theme);
         }}
         isThemeSaving={isThemeSaving}
+        partnerProfile={partner}
+        userProfile={myProfile}
       />
 
       <AnimatePresence>

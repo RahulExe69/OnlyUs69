@@ -62,14 +62,14 @@ export function AttachmentOption({
       type="button"
       onClick={onClick}
       style={{ touchAction: 'manipulation' }}
-      className="flex flex-col items-center gap-2 group cursor-pointer"
+      className="flex flex-col items-center gap-1.5 group cursor-pointer w-full min-w-0"
     >
       <div
-        className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform`}
+        className={`w-12 h-12 sm:w-14 sm:h-14 ${color} rounded-2xl flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform shrink-0`}
       >
         {icon}
       </div>
-      <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-75 group-hover:opacity-100 transition-opacity">
+      <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-80 group-hover:opacity-100 transition-opacity truncate max-w-full text-center">
         {label}
       </span>
     </button>

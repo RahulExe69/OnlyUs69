@@ -4,13 +4,16 @@ import {
   Gamepad2,
   ArrowLeft,
   Sparkles,
-  Swords,
   Play,
-  Grid3X3,
-  Layers,
-  CircleDot,
+  Heart,
+  Zap,
+  Users,
+  Swords,
+  CheckCircle2,
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
+import { is3DTheme } from '../lib/themes';
+import { QuantumAuraBackground } from './QuantumAuraBackground';
 import dotsAndHeartsImg from '../assets/images/dots_and_hearts_1788838671096.jpg';
 import connectHeartsImg from '../assets/images/connect_hearts_game_1788838687286.jpg';
 import ticTacToeImg from '../assets/images/tic_tac_toe_1788838702128.jpg';
@@ -23,6 +26,17 @@ interface PlayTogetherHubProps {
   userProfile: UserProfile | null;
   partnerProfile: UserProfile | null;
   isPartnerOnline: boolean;
+}
+
+interface GameItem {
+  id: 'dotsandboxes' | 'connecthearts' | 'tictactoe';
+  title: string;
+  badge: string;
+  category: string;
+  description: string;
+  image: string;
+  accentColor: string;
+  players: string;
 }
 
 export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
@@ -38,290 +52,262 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
 
   const partnerName =
     partnerProfile?.display_name || (role === 'owner' ? 'Nusrat' : 'Rahul');
+  const myName =
+    userProfile?.display_name || (role === 'owner' ? 'Rahul' : 'Nusrat');
+  const partnerPhoto = partnerProfile?.photo_url;
+  const myPhoto = userProfile?.photo_url;
+
+  const games: GameItem[] = [
+    {
+      id: 'dotsandboxes',
+      title: 'Dots & Hearts',
+      badge: '💕 Strategy',
+      category: '4x4 Grid · Turn-based',
+      description: 'Connect dots to complete boxes. Every completed square claims a heart and earns you a bonus turn!',
+      image: dotsAndHeartsImg,
+      accentColor: 'from-pink-500 to-rose-500',
+      players: '2 Players',
+    },
+    {
+      id: 'connecthearts',
+      title: 'Connect Hearts',
+      badge: '💖 4-in-a-Row',
+      category: '7x6 Rack · Tactical',
+      description: 'Drop romantic discs down the columns. Align 4 hearts horizontally, vertically, or diagonally to win!',
+      image: connectHeartsImg,
+      accentColor: 'from-purple-500 to-pink-500',
+      players: '2 Players',
+    },
+    {
+      id: 'tictactoe',
+      title: 'Tic Tac Toe',
+      badge: '⚡ Fast Duel',
+      category: '3x3 Board · Classic',
+      description: 'The timeless duel of strategy and speed. Make swift moves, banter live, and trigger instant rematches.',
+      image: ticTacToeImg,
+      accentColor: 'from-sky-500 to-indigo-500',
+      players: '2 Players',
+    },
+  ];
 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 15 }}
-        transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col overflow-y-auto custom-scrollbar select-none"
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={{ duration: 0.18 }}
+        className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col overflow-hidden select-none"
       >
-        {/* Floating Back Button - No Top Bar */}
-        <button
-          onClick={onClose}
-          className="fixed top-4 left-4 z-50 p-2.5 rounded-full bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-text)] hover:border-[var(--theme-accent)] active:scale-95 transition-all shadow-md flex items-center justify-center cursor-pointer"
-          title="Back to Chat"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        {/* Active Theme Background Decoration & 3D Aura Engine */}
+        <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
+        {(is3DTheme(userProfile?.theme) ||
+          (typeof document !== 'undefined' &&
+            is3DTheme(document.documentElement.dataset.chatTheme))) && (
+          <QuantumAuraBackground
+            theme={
+              userProfile?.theme ||
+              (typeof document !== 'undefined'
+                ? document.documentElement.dataset.chatTheme
+                : undefined)
+            }
+          />
+        )}
 
-        {/* Lounge Content Container */}
-        <div className="flex-1 max-w-2xl w-full mx-auto px-3.5 sm:px-6 pt-16 pb-12 space-y-6">
-          {/* 1. Play Together Lounge Hero Banner */}
-          <div className="relative pt-2 pb-1 text-center">
-            {/* Ambient Background Glow */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-24 bg-gradient-to-r from-sky-500/15 via-pink-500/15 to-violet-500/15 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gradient-to-r from-sky-500/10 via-pink-500/10 to-violet-500/10 border border-[var(--theme-border)] mb-3 shadow-xs">
-              <Gamepad2 className="w-4 h-4 text-pink-500 animate-bounce" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-[var(--theme-text)]/80">
-                OnlyUs Arcade Arena
-              </span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[var(--theme-text)]">
-              Play Together 💕
-            </h1>
-            <p className="text-xs sm:text-sm text-[var(--theme-text)]/65 font-medium mt-1">
-              Zero-latency 1-on-1 couple games & live banter
-            </p>
-
-            {/* Couple Rivalry Status Pill */}
-            <div className="mt-4 inline-flex items-center gap-3 px-4 py-2 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)] shadow-sm">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-                <span className="text-xs font-bold text-sky-500">Rahul 💙</span>
+        {/* Clean Header Bar */}
+        <header className="relative z-20 h-14 px-3 sm:px-5 flex items-center justify-between flex-shrink-0 bg-[var(--theme-surface)]/80 backdrop-blur-md border-b border-[var(--theme-border)] shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-[var(--theme-accent)]/15 active:scale-95 transition-all text-[var(--theme-text)] cursor-pointer"
+              title="Back to Chat"
+              aria-label="Back to Chat"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent)]/15 border border-[var(--theme-accent)]/30 flex items-center justify-center text-[var(--theme-accent)]">
+                <Gamepad2 className="w-4 h-4" />
               </div>
-              <div className="flex items-center gap-1 text-[10px] font-black text-[var(--theme-text)]/40 uppercase tracking-widest">
-                <Swords className="w-3.5 h-3.5 text-amber-400" />
-                <span>VS</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />
-                <span className="text-xs font-bold text-pink-500">Nusrat 💖</span>
-              </div>
-              <div className="h-3 w-px bg-[var(--theme-border)] mx-1" />
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--theme-text)]/70">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isPartnerOnline ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-400'
-                  }`}
-                />
-                <span>{isPartnerOnline ? `${partnerName} Online` : partnerName}</span>
+              <div>
+                <h1 className="text-sm sm:text-base font-bold text-[var(--theme-text)] leading-tight">
+                  Play Together
+                </h1>
+                <p className="text-[10px] text-[var(--theme-text)]/60 font-medium">
+                  Real-time couple games
+                </p>
               </div>
             </div>
           </div>
 
-          {/* 2. Visual Game Showcase - 2-Column Grid */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <h2 className="text-xs font-black uppercase tracking-widest text-[var(--theme-text)]/70">
-                  Select Game
-                </h2>
+          {/* Partner Status Pill */}
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--theme-surface)] border border-[var(--theme-border)] text-xs shadow-xs">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isPartnerOnline ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'
+              }`}
+            />
+            <span className="font-medium text-[11px] text-[var(--theme-text)]/80 truncate max-w-[120px]">
+              {isPartnerOnline ? `${partnerName} Online` : partnerName}
+            </span>
+          </div>
+        </header>
+
+        {/* Scrollable Content */}
+        <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-3.5 sm:px-6 py-5 max-w-xl mx-auto w-full space-y-4">
+          {/* Couple Lounge Card */}
+          <div className="p-4 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
+            {/* Player 1 (You) */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative">
+                {myPhoto ? (
+                  <img
+                    src={myPhoto}
+                    alt={myName}
+                    referrerPolicy="no-referrer"
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-[var(--theme-accent)]"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[var(--theme-accent)]/20 text-[var(--theme-accent)] flex items-center justify-center font-bold text-sm ring-2 ring-[var(--theme-accent)]">
+                    {myName[0]?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-[var(--theme-surface)]" />
               </div>
-              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-pink-500/15 text-pink-500 uppercase tracking-wider">
-                3 Games Available
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[var(--theme-text)] truncate">
+                  {myName}
+                </p>
+                <span className="text-[10px] text-[var(--theme-text)]/50 font-medium">
+                  {role === 'owner' ? 'Host' : 'Partner'}
+                </span>
+              </div>
+            </div>
+
+            {/* Duel Heart Badge */}
+            <div className="flex flex-col items-center px-3">
+              <div className="w-8 h-8 rounded-full bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-500">
+                <Heart className="w-4 h-4 fill-pink-500/30" />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wider text-[var(--theme-text)]/50 mt-0.5">
+                VS
               </span>
             </div>
 
-            {/* 2-Column Grid of Games */}
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              {/* GAME 1: Dots & Hearts */}
-              <div
-                onClick={() => onLaunchGame('dotsandboxes')}
-                className="relative rounded-3xl bg-[var(--theme-surface)] border border-[var(--theme-border)] hover:border-pink-400/80 p-3 sm:p-4 shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col justify-between cursor-pointer overflow-hidden"
-              >
-                <div className="absolute -top-10 -right-10 w-28 h-28 bg-pink-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-pink-500/20 transition-all" />
-
-                <div>
-                  {/* Generated Cover Image */}
-                  <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-black/5 shadow-inner">
-                    <img
-                      src={dotsAndHeartsImg}
-                      alt="Dots & Hearts"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    {/* Floating Badges */}
-                    <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[9px] font-black uppercase tracking-wider text-emerald-400 shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>New</span>
-                    </div>
-                    <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[9px] font-bold text-white/90">
-                      4x4 Dots
-                    </div>
+            {/* Player 2 (Partner) */}
+            <div className="flex items-center gap-2.5 min-w-0 flex-row-reverse text-right">
+              <div className="relative">
+                {partnerPhoto ? (
+                  <img
+                    src={partnerPhoto}
+                    alt={partnerName}
+                    referrerPolicy="no-referrer"
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-pink-400"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-pink-500/20 text-pink-500 flex items-center justify-center font-bold text-sm ring-2 ring-pink-400">
+                    {partnerName[0]?.toUpperCase() || 'P'}
                   </div>
-
-                  {/* Title & Description */}
-                  <h3 className="text-sm sm:text-base font-black text-[var(--theme-text)] tracking-tight mt-2.5 truncate">
-                    Dots & Hearts 💕
-                  </h3>
-                  <p className="text-[11px] text-[var(--theme-text)]/70 font-medium leading-snug line-clamp-2 mt-0.5">
-                    Connect lines between dots to complete boxes & score bonus turns!
-                  </p>
-
-                  {/* Badges */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                      Rahul 💙
-                    </span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                      Nusrat 💖
-                    </span>
-                  </div>
-                </div>
-
-                {/* Play Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLaunchGame('dotsandboxes');
-                  }}
-                  className="mt-3 w-full py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-pink-500 text-white font-black text-[11px] sm:text-xs uppercase tracking-wider hover:opacity-95 active:scale-95 transition-all shadow-md shadow-pink-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>Play Now</span>
-                </button>
+                )}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--theme-surface)] ${
+                    isPartnerOnline ? 'bg-emerald-500' : 'bg-neutral-400'
+                  }`}
+                />
               </div>
-
-              {/* GAME 2: Connect Hearts */}
-              <div
-                onClick={() => onLaunchGame('connecthearts')}
-                className="relative rounded-3xl bg-[var(--theme-surface)] border border-[var(--theme-border)] hover:border-pink-400/80 p-3 sm:p-4 shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col justify-between cursor-pointer overflow-hidden"
-              >
-                <div className="absolute -top-10 -right-10 w-28 h-28 bg-pink-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-pink-500/20 transition-all" />
-
-                <div>
-                  {/* Generated Cover Image */}
-                  <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-black/5 shadow-inner">
-                    <img
-                      src={connectHeartsImg}
-                      alt="Connect Hearts"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    {/* Floating Badges */}
-                    <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[9px] font-black uppercase tracking-wider text-pink-300 shadow-sm">
-                      <span>🔥 Popular</span>
-                    </div>
-                    <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[9px] font-bold text-white/90">
-                      7x6 Rack
-                    </div>
-                  </div>
-
-                  {/* Title & Description */}
-                  <h3 className="text-sm sm:text-base font-black text-[var(--theme-text)] tracking-tight mt-2.5 truncate">
-                    Connect Hearts 💖
-                  </h3>
-                  <p className="text-[11px] text-[var(--theme-text)]/70 font-medium leading-snug line-clamp-2 mt-0.5">
-                    Drop discs down the rack to connect 4 hearts in a row!
-                  </p>
-
-                  {/* Badges */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                      Rahul 💙
-                    </span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                      Nusrat 💖
-                    </span>
-                  </div>
-                </div>
-
-                {/* Play Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLaunchGame('connecthearts');
-                  }}
-                  className="mt-3 w-full py-2 sm:py-2.5 rounded-xl bg-pink-500 text-white font-black text-[11px] sm:text-xs uppercase tracking-wider hover:opacity-95 active:scale-95 transition-all shadow-md shadow-pink-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>Play Now</span>
-                </button>
-              </div>
-
-              {/* GAME 3: Tic Tac Toe */}
-              <div
-                onClick={() => onLaunchGame('tictactoe')}
-                className="relative rounded-3xl bg-[var(--theme-surface)] border border-[var(--theme-border)] hover:border-violet-400/80 p-3 sm:p-4 shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col justify-between cursor-pointer overflow-hidden"
-              >
-                <div className="absolute -top-10 -right-10 w-28 h-28 bg-violet-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-violet-500/20 transition-all" />
-
-                <div>
-                  {/* Generated Cover Image */}
-                  <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-black/5 shadow-inner">
-                    <img
-                      src={ticTacToeImg}
-                      alt="Tic Tac Toe"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    {/* Floating Badges */}
-                    <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[9px] font-black uppercase tracking-wider text-violet-300 shadow-sm">
-                      <span>⚡ Fast Duel</span>
-                    </div>
-                    <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[9px] font-bold text-white/90">
-                      3x3 Grid
-                    </div>
-                  </div>
-
-                  {/* Title & Description */}
-                  <h3 className="text-sm sm:text-base font-black text-[var(--theme-text)] tracking-tight mt-2.5 truncate">
-                    Tic Tac Toe ⚡
-                  </h3>
-                  <p className="text-[11px] text-[var(--theme-text)]/70 font-medium leading-snug line-clamp-2 mt-0.5">
-                    Classic 3-in-a-row showdown with instant revenge rematches!
-                  </p>
-
-                  {/* Badges */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                      Rahul ✕
-                    </span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                      Nusrat ◯
-                    </span>
-                  </div>
-                </div>
-
-                {/* Play Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLaunchGame('tictactoe');
-                  }}
-                  className="mt-3 w-full py-2 sm:py-2.5 rounded-xl bg-violet-600 text-white font-black text-[11px] sm:text-xs uppercase tracking-wider hover:opacity-95 active:scale-95 transition-all shadow-md shadow-violet-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>Play Now</span>
-                </button>
-              </div>
-
-              {/* CARD 4: Coming Soon Slot to balance 2x2 Grid */}
-              <div className="relative rounded-3xl bg-[var(--theme-surface)]/60 border-2 border-dashed border-[var(--theme-border)] p-3 sm:p-4 flex flex-col justify-between overflow-hidden">
-                <div>
-                  <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-gradient-to-br from-pink-500/10 via-purple-500/10 to-sky-500/10 flex flex-col items-center justify-center p-3">
-                    <div className="w-10 h-10 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)] flex items-center justify-center shadow-xs">
-                      <Gamepad2 className="w-5 h-5 text-pink-500 animate-pulse" />
-                    </div>
-                    <span className="text-[9px] font-black uppercase tracking-wider text-[var(--theme-text)]/60 mt-1.5">
-                      In Development 🧪
-                    </span>
-                  </div>
-
-                  <h3 className="text-sm sm:text-base font-black text-[var(--theme-text)]/80 tracking-tight mt-2.5 truncate">
-                    More Games Soon 💕
-                  </h3>
-                  <p className="text-[11px] text-[var(--theme-text)]/50 font-medium leading-snug line-clamp-2 mt-0.5">
-                    More romantic 1-on-1 couple duels in the works!
-                  </p>
-                </div>
-
-                <div className="mt-3 w-full py-2 sm:py-2.5 rounded-xl bg-[var(--theme-border)]/40 text-[var(--theme-text)]/60 font-bold text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  <span>Stay Tuned</span>
-                </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[var(--theme-text)] truncate">
+                  {partnerName}
+                </p>
+                <span className="text-[10px] text-[var(--theme-text)]/50 font-medium">
+                  {isPartnerOnline ? 'Ready to play' : 'Offline'}
+                </span>
               </div>
             </div>
+          </div>
+
+          {/* Section Header */}
+          <div className="flex items-center justify-between pt-1 px-1">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-[var(--theme-text)]/70">
+                Available Games
+              </h2>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)]">
+              3 Modes
+            </span>
+          </div>
+
+          {/* Game Cards List */}
+          <div className="space-y-3">
+            {games.map((game) => (
+              <div
+                key={game.id}
+                onClick={() => onLaunchGame(game.id)}
+                className="group relative rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] hover:border-[var(--theme-accent)] p-3.5 sm:p-4 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5"
+              >
+                {/* Game Thumbnail */}
+                <div className="relative w-full sm:w-28 h-32 sm:h-28 rounded-xl overflow-hidden bg-black/10 flex-shrink-0">
+                  <img
+                    src={game.image}
+                    alt={game.title}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[9px] font-bold text-white">
+                    {game.badge}
+                  </div>
+                </div>
+
+                {/* Game Details */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm sm:text-base font-bold text-[var(--theme-text)] truncate">
+                        {game.title}
+                      </h3>
+                      <span className="text-[10px] text-[var(--theme-text)]/50 font-medium shrink-0">
+                        {game.category}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--theme-text)]/70 leading-relaxed mt-1 line-clamp-2 sm:line-clamp-2">
+                      {game.description}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 sm:mt-2.5 flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-medium text-[var(--theme-text)]/50 flex items-center gap-1">
+                      <Users className="w-3 h-3" />
+                      {game.players} · Realtime
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onLaunchGame(game.id);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-[var(--theme-accent)] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm group-hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Play className="w-3 h-3 fill-current" />
+                      <span>Play</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Clean Realtime Guarantee Info */}
+          <div className="pt-2 pb-6 text-center">
+            <p className="text-[11px] text-[var(--theme-text)]/50 flex items-center justify-center gap-1.5 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Live zero-latency synchronization with in-game reactions & audio notes.
+            </p>
           </div>
         </div>
       </motion.div>
     </AnimatePresence>
   );
 };
-

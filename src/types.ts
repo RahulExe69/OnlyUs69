@@ -19,7 +19,7 @@ export interface UserProfile {
   last_seen?: any;
   partnerNicknames?: { [uid: string]: string };
   last_read_at?: any;
-  theme?: 'light' | 'dark' | 'romantic' | 'lavender' | 'ocean' | 'sunset' | 'doodle' | 'noir' | 'forest' | 'cyber' | 'aurora' | '3d-aura';
+  theme?: string;
   public_key?: string;
   encrypted_private_key?: string;
   key_salt?: string;
