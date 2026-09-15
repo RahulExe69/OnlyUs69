@@ -329,12 +329,15 @@ function MessageItemComponent({
   const isAudioMedia = Boolean(msg.media?.type === 'audio');
   const isMediaOnly = hasMedia && !isAudioMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
   const isDeletedByMe = Boolean((msg.deletedBy && msg.deletedBy === role) || (!msg.deletedBy && msg.sender_role === role));
+  const hasReactions = Boolean(msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0);
 
   return (
     <div
       ref={itemRef}
       id={`msg-${msg.id}`}
-      className={`chat-message-row relative w-full flex transition-all duration-200 select-none py-1.5 cursor-default rounded-2xl ${
+      className={`chat-message-row relative w-full flex transition-all duration-200 select-none pt-1.5 ${
+        hasReactions ? 'pb-3.5' : 'pb-1.5'
+      } cursor-default rounded-2xl ${
         isSelected ? 'is-active-row bg-[var(--theme-accent)]/20 backdrop-blur-[1px]' : 'hover:bg-[var(--theme-accent)]/5'
       } ${showPicker ? 'is-active-row z-[60]' : 'z-auto'} ${isOwn ? 'justify-end' : 'justify-start'}`}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}

@@ -27,7 +27,10 @@ export function useMessageSync({
     const cached = loadCachedMessages();
     return Array.isArray(cached) ? cached : [];
   });
-  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState<boolean>(() => {
+    const cached = loadCachedMessages();
+    return !Array.isArray(cached) || cached.length === 0;
+  });
   const messagesRef = useRef<Message[]>(messages);
   messagesRef.current = messages;
 
@@ -158,7 +161,9 @@ export function useMessageSync({
     if (!user) return;
 
     initMediaSyncListener(supabase, currentRole);
-    setMessagesLoading(true);
+    if (messagesRef.current.length === 0) {
+      setMessagesLoading(true);
+    }
     let isCancelled = false;
     let retryTimer: any = null;
 

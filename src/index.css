@@ -85,9 +85,6 @@ body {
   }
 
   .chat-message-row {
-    content-visibility: auto;
-    contain-intrinsic-size: 72px;
-    contain: layout style paint;
     transform: translateZ(0);
   }
 
