@@ -87,3 +87,27 @@ export interface ActiveGameSession {
   id: string;
   type: 'tictactoe' | 'connecthearts' | 'dotsandboxes';
 }
+
+export type CallType = 'voice' | 'video';
+export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connected' | 'ended';
+
+export interface CallSession {
+  callId: string;
+  type: CallType;
+  callerRole: UserRole;
+  receiverRole: UserRole;
+  status: CallStatus;
+  startedAt?: number;
+  duration?: number;
+}
+
+export interface CallSignalPayload {
+  callId: string;
+  type: CallType;
+  senderRole: UserRole;
+  targetRole: UserRole;
+  action: 'offer' | 'answer' | 'ice-candidate' | 'end' | 'reject' | 'busy';
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+  timestamp: number;
+}

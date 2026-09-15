@@ -46,7 +46,7 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -73,6 +73,8 @@ import { LoginView, UnauthorizedView, QuotaBanner } from './components/AuthModal
 import { DeleteChoicesModal } from './components/DeleteChoicesModal';
 import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
+import { useWebRTCCall } from './hooks/useWebRTCCall';
+import { CallModal } from './components/CallModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
 
 // Dynamic lazy imports for heavy secondary modal dialogs
@@ -263,6 +265,29 @@ export default function App() {
     userProfile,
     partnerProfile,
     isOwner,
+  });
+
+  const {
+    activeCall,
+    localStream,
+    remoteStream,
+    isMicMuted,
+    isCameraOff,
+    callDuration,
+    callErrorMessage,
+    startCall,
+    acceptCall,
+    rejectCall,
+    endCall,
+    toggleMute,
+    toggleCamera,
+    flipCamera,
+  } = useWebRTCCall({
+    currentRole: userProfile?.role || null,
+    partnerRole: isOwner ? 'partner' : 'owner',
+    partnerName: partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul'),
+    partnerPhoto: partnerProfile?.photo_url,
+    isStealthUnlocked,
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -1886,7 +1911,25 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 lg:gap-2">
+                    {/* Voice Call Button */}
+                    <button
+                      onClick={() => startCall('voice')}
+                      className="p-2 lg:p-2.5 rounded-full text-[var(--theme-text)]/70 hover:text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all"
+                      title="Start Voice Call"
+                    >
+                      <Phone className="w-5 h-5" />
+                    </button>
+
+                    {/* Video Call Button */}
+                    <button
+                      onClick={() => startCall('video')}
+                      className="p-2 lg:p-2.5 rounded-full text-[var(--theme-text)]/70 hover:text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all"
+                      title="Start Video Call"
+                    >
+                      <Video className="w-5 h-5" />
+                    </button>
+
                     <button
                       onClick={() => setShowE2EEModal(true)}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-xs"
@@ -2118,6 +2161,24 @@ export default function App() {
         latestPartnerMessage={latestPartnerMessage}
         onSendNudge={sendNudge}
         onSendMainChatMessage={sendMainChatMessageFromGame}
+      />
+
+      {/* Real-time Voice & Video Call Modal */}
+      <CallModal
+        activeCall={activeCall}
+        partnerProfile={partnerProfile}
+        localStream={localStream}
+        remoteStream={remoteStream}
+        isMicMuted={isMicMuted}
+        isCameraOff={isCameraOff}
+        callDuration={callDuration}
+        callErrorMessage={callErrorMessage}
+        onAccept={acceptCall}
+        onReject={rejectCall}
+        onEnd={endCall}
+        onToggleMute={toggleMute}
+        onToggleCamera={toggleCamera}
+        onFlipCamera={flipCamera}
       />
     </div>
   );
