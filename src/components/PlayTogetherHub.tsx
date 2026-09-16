@@ -12,11 +12,9 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
-import { is3DTheme } from '../lib/themes';
-import { QuantumAuraBackground } from './QuantumAuraBackground';
-import dotsAndHeartsImg from '../assets/images/dots_and_hearts_1788838671096.jpg';
-import connectHeartsImg from '../assets/images/connect_hearts_game_1788838687286.jpg';
-import ticTacToeImg from '../assets/images/tic_tac_toe_1788838702128.jpg';
+import dotsAndHeartsImg from '../assets/images/dots_and_hearts.webp';
+import connectHeartsImg from '../assets/images/connect_hearts_game.webp';
+import ticTacToeImg from '../assets/images/tic_tac_toe.webp';
 
 interface PlayTogetherHubProps {
   isOpen: boolean;
@@ -99,23 +97,11 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
         transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[200] bg-[var(--theme-bg)] text-[var(--theme-text)] flex flex-col overflow-hidden select-none"
       >
-        {/* Active Theme Background Decoration & 3D Aura Engine */}
+        {/* Active Theme Background Decoration */}
         <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
-        {(is3DTheme(userProfile?.theme) ||
-          (typeof document !== 'undefined' &&
-            is3DTheme(document.documentElement.dataset.chatTheme))) && (
-          <QuantumAuraBackground
-            theme={
-              userProfile?.theme ||
-              (typeof document !== 'undefined'
-                ? document.documentElement.dataset.chatTheme
-                : undefined)
-            }
-          />
-        )}
 
         {/* Clean Header Bar */}
-        <header className="relative z-20 h-14 px-3 sm:px-5 flex items-center justify-between flex-shrink-0 bg-[var(--theme-surface)]/80 backdrop-blur-md border-b border-[var(--theme-border)] shadow-xs">
+        <header className="relative z-20 h-14 px-3 sm:px-5 flex items-center justify-between flex-shrink-0 bg-[var(--theme-surface)] border-b border-[var(--theme-border)] shadow-xs">
           <div className="flex items-center gap-2.5">
             <button
               onClick={onClose}
@@ -154,9 +140,9 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
         </header>
 
         {/* Scrollable Content */}
-        <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-3.5 sm:px-6 py-5 max-w-xl mx-auto w-full space-y-4">
+        <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-3 sm:px-6 py-5 max-w-2xl mx-auto w-full space-y-4">
           {/* Couple Lounge Card */}
-          <div className="p-4 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)] shadow-sm flex items-center justify-between">
             {/* Player 1 (You) */}
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative">
@@ -165,6 +151,7 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
                     src={myPhoto}
                     alt={myName}
                     referrerPolicy="no-referrer"
+                    decoding="async"
                     className="w-10 h-10 rounded-full object-cover ring-2 ring-[var(--theme-accent)]"
                   />
                 ) : (
@@ -185,7 +172,7 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
             </div>
 
             {/* Duel Heart Badge */}
-            <div className="flex flex-col items-center px-3">
+            <div className="flex flex-col items-center px-2 sm:px-3">
               <div className="w-8 h-8 rounded-full bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-500">
                 <Heart className="w-4 h-4 fill-pink-500/30" />
               </div>
@@ -202,6 +189,7 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
                     src={partnerPhoto}
                     alt={partnerName}
                     referrerPolicy="no-referrer"
+                    decoding="async"
                     className="w-10 h-10 rounded-full object-cover ring-2 ring-pink-400"
                   />
                 ) : (
@@ -239,23 +227,25 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
             </span>
           </div>
 
-          {/* Game Cards List */}
-          <div className="space-y-3">
+          {/* Game Cards: 2-Column Grid */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             {games.map((game) => (
               <div
                 key={game.id}
                 onClick={() => onLaunchGame(game.id)}
-                className="group relative rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] hover:border-[var(--theme-accent)] p-3.5 sm:p-4 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5"
+                className="group relative rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)] hover:border-[var(--theme-accent)] p-2.5 sm:p-3.5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between"
               >
                 {/* Game Thumbnail */}
-                <div className="relative w-full sm:w-28 h-32 sm:h-28 rounded-xl overflow-hidden bg-black/10 flex-shrink-0">
+                <div className="relative w-full h-24 sm:h-32 rounded-xl overflow-hidden bg-black/10 flex-shrink-0 mb-2.5">
                   <img
                     src={game.image}
                     alt={game.title}
                     referrerPolicy="no-referrer"
+                    decoding="async"
+                    loading="eager"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[9px] font-bold text-white">
+                  <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-black/75 text-[9px] font-bold text-white shadow-xs">
                     {game.badge}
                   </div>
                 </div>
@@ -263,23 +253,21 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
                 {/* Game Details */}
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm sm:text-base font-bold text-[var(--theme-text)] truncate">
-                        {game.title}
-                      </h3>
-                      <span className="text-[10px] text-[var(--theme-text)]/50 font-medium shrink-0">
-                        {game.category}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--theme-text)]/70 leading-relaxed mt-1 line-clamp-2 sm:line-clamp-2">
+                    <h3 className="text-xs sm:text-sm font-bold text-[var(--theme-text)] truncate">
+                      {game.title}
+                    </h3>
+                    <p className="text-[10px] text-[var(--theme-text)]/50 font-medium truncate mt-0.5">
+                      {game.category}
+                    </p>
+                    <p className="text-[11px] text-[var(--theme-text)]/70 leading-snug mt-1.5 line-clamp-2">
                       {game.description}
                     </p>
                   </div>
 
-                  <div className="mt-3 sm:mt-2.5 flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-medium text-[var(--theme-text)]/50 flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      {game.players} · Realtime
+                  <div className="mt-3 pt-2 border-t border-[var(--theme-border)]/40 flex items-center justify-between gap-1">
+                    <span className="text-[9px] sm:text-[10px] font-medium text-[var(--theme-text)]/55 flex items-center gap-1 truncate">
+                      <Users className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Realtime</span>
                     </span>
 
                     <button
@@ -288,9 +276,9 @@ export const PlayTogetherHub: React.FC<PlayTogetherHubProps> = ({
                         e.stopPropagation();
                         onLaunchGame(game.id);
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-[var(--theme-accent)] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm group-hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                      className="px-2.5 sm:px-3 py-1 rounded-xl bg-[var(--theme-accent)] text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-sm group-hover:opacity-95 active:scale-95 transition-all cursor-pointer shrink-0"
                     >
-                      <Play className="w-3 h-3 fill-current" />
+                      <Play className="w-2.5 h-2.5 fill-current" />
                       <span>Play</span>
                     </button>
                   </div>

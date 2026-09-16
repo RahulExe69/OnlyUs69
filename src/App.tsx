@@ -1807,14 +1807,15 @@ export default function App() {
         <main className="flex-1 flex flex-col bg-[var(--theme-bg)] overflow-hidden z-30 transition-colors duration-300 w-full relative">
           {!activeGame && (
             <div className="h-[calc(4.75rem+env(safe-area-inset-top,0px))] lg:h-24 flex-shrink-0 relative w-full z-50 bg-[var(--theme-bg)] shadow-sm border-b border-[var(--theme-border)] transition-colors duration-300">
-              <AnimatePresence mode="wait">
+              <AnimatePresence>
               {selectedMessages.length > 0 ? (
                 <motion.header 
                   key="selection-header"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300"
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
+                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-5 lg:px-8 flex items-center justify-between bg-[var(--theme-accent)] text-[var(--theme-bubble-owner-text)] z-30 transition-colors duration-300 transform-gpu will-change-[opacity]"
                 >
                   <div className="flex items-center gap-6 lg:gap-8">
                     <button onPointerDown={(e) => e.preventDefault()} onClick={clearSelection} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-95">
@@ -1856,7 +1857,8 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-3 sm:px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300"
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
+                  className="absolute top-[env(safe-area-inset-top,0px)] left-0 right-0 bottom-0 px-3 sm:px-4 lg:px-6 flex items-center justify-between bg-[var(--theme-header-bg)] text-[var(--theme-text)] backdrop-blur-md z-20 transition-colors duration-300 transform-gpu will-change-[opacity]"
                 >
                   <div className="flex items-center flex-1 min-w-0 pr-2 h-full">
                     {/* Back to Multi-Hub button - Clean, no background container */}
@@ -1961,10 +1963,12 @@ export default function App() {
                             <motion.div 
                               ref={menuRef}
                               onPointerDown={(e) => e.preventDefault()}
-                              initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                              initial={{ opacity: 0, scale: 0.92, y: -6 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                              className="absolute right-0 mt-2 w-52 bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] border border-[var(--theme-border)] z-50 overflow-hidden py-1 backdrop-blur-md"
+                              exit={{ opacity: 0, scale: 0.92, y: -6 }}
+                              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+                              style={{ willChange: 'transform, opacity', transform: 'translateZ(0)' }}
+                              className="absolute right-0 mt-2 w-52 bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-2xl shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] border border-[var(--theme-border)] z-50 overflow-hidden py-1"
                             >
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
@@ -2015,7 +2019,10 @@ export default function App() {
         <div className="flex-1 overflow-hidden relative">
             <div className="theme-chat-decoration absolute inset-0 z-0 pointer-events-none" />
             {(is3DTheme(userProfile?.theme) || (typeof document !== 'undefined' && is3DTheme(document.documentElement.dataset.chatTheme))) && (
-              <QuantumAuraBackground theme={userProfile?.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined)} />
+              <QuantumAuraBackground 
+                theme={userProfile?.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined)} 
+                paused={Boolean(showProfileModal || showCustomizeModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || showMenu || (!!activeGame && !isGameMinimized))}
+              />
             )}
             <div className="relative z-10 h-full flex flex-col">
               <ChatView 
@@ -2995,16 +3002,20 @@ const ChatView = React.memo(function ChatView({
       reactions[role] = emoji;
     }
 
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reactions } : m));
+
     try {
       await supabase.from('messages').update({ reactions }).eq('id', msgId);
       onClearSelection();
     } catch (err) {
       console.error("Reaction error:", err);
     }
-  }, [messages, role, onClearSelection]);
+  }, [messages, role, onClearSelection, setMessages]);
 
   const selectedMessagesCountRef = useRef(selectedMessages.length);
   selectedMessagesCountRef.current = selectedMessages.length;
+  const isSelectionActiveRef = useRef(selectedMessages.length > 0);
+  isSelectionActiveRef.current = selectedMessages.length > 0;
 
   const handleFocusInput = useCallback(() => {
     chatInputRef.current?.focusInput();
@@ -3049,7 +3060,7 @@ const ChatView = React.memo(function ChatView({
           ref={scrollRef}
           id="message-container" 
           style={{ touchAction: 'pan-y' }}
-          className="flex-1 overflow-y-auto space-y-4 pb-2 custom-scrollbar scroll-smooth px-3 lg:px-6 relative"
+          className="flex-1 overflow-y-auto pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
         >
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
@@ -3078,31 +3089,53 @@ const ChatView = React.memo(function ChatView({
               <p className="font-bold uppercase tracking-widest text-xs italic">A clean slate for our story</p>
             </div>
           ) : (
-            displayedMessages.map((msg) => (
-              <MessageItem 
-                key={msg.id} 
-                msg={msg} 
-                role={role} 
-                replyToMessage={msg.replyTo?.id ? messagesMap.get(msg.replyTo.id) : undefined}
-                onReact={toggleReaction} 
-                isSelected={selectedMessageIds.has(msg.id)}
-                onToggleSelect={onToggleSelect}
-                selectionActive={selectedMessages.length > 0}
-                onReply={onSetReplyingTo}
-                onFocusInput={handleFocusInput}
-                userProfile={userProfile}
-                partnerProfile={partnerProfile}
-                onViewImage={handleViewImage}
-                onViewMedia={handleViewMedia}
-                isInteractionPoint={msg.id === interactionId}
-                showSeenText={msg.id === interactionId && showIndicatorSeenText}
-                partnerLastReadAt={partnerLastReadMillis}
-                isPartnerOnline={isPartnerOnline}
-                onJoinGame={handleJoinGame}
-                onTriggerNudge={onSendNudge}
-                onOpenReel={setActiveReel}
-              />
-            ))
+            displayedMessages.map((msg, index) => {
+              const prevMsg = index > 0 ? displayedMessages[index - 1] : null;
+              const nextMsg = index < displayedMessages.length - 1 ? displayedMessages[index + 1] : null;
+
+              const prevTime = prevMsg ? getMillis(prevMsg.timestamp || prevMsg.created_at) : 0;
+              const currTime = getMillis(msg.timestamp || msg.created_at);
+              const timeDiffPrev = prevMsg && prevTime > 0 && currTime > 0 ? Math.abs(currTime - prevTime) : 0;
+              const isFirstInGroup = !prevMsg || prevMsg.sender_role !== msg.sender_role || timeDiffPrev > 15 * 60 * 1000;
+
+              const nextTime = nextMsg ? getMillis(nextMsg.timestamp || nextMsg.created_at) : 0;
+              const timeDiffNext = nextMsg && nextTime > 0 && currTime > 0 ? Math.abs(nextTime - currTime) : 0;
+              const isLastInGroup = !nextMsg || nextMsg.sender_role !== msg.sender_role || timeDiffNext > 15 * 60 * 1000;
+
+              // Partner avatar is only shown on the first message of an incoming run until sender changes
+              const showAvatar = isFirstInGroup && msg.sender_role !== role;
+
+              return (
+                <MessageItem 
+                  key={msg.id} 
+                  msg={msg} 
+                  role={role} 
+                  showAvatar={showAvatar}
+                  isFirstInGroup={isFirstInGroup}
+                  isLastInGroup={isLastInGroup}
+                  allMessages={displayedMessages}
+                  replyToMessage={msg.replyTo?.id ? messagesMap.get(msg.replyTo.id) : undefined}
+                  onReact={toggleReaction} 
+                  isSelected={selectedMessageIds.has(msg.id)}
+                  onToggleSelect={onToggleSelect}
+                  selectionActive={selectedMessages.length > 0}
+                  isSelectionActiveRef={isSelectionActiveRef}
+                  onReply={onSetReplyingTo}
+                  onFocusInput={handleFocusInput}
+                  userProfile={userProfile}
+                  partnerProfile={partnerProfile}
+                  onViewImage={handleViewImage}
+                  onViewMedia={handleViewMedia}
+                  isInteractionPoint={msg.id === interactionId}
+                  showSeenText={msg.id === interactionId && showIndicatorSeenText}
+                  partnerLastReadAt={partnerLastReadMillis}
+                  isPartnerOnline={isPartnerOnline}
+                  onJoinGame={handleJoinGame}
+                  onTriggerNudge={onSendNudge}
+                  onOpenReel={setActiveReel}
+                />
+              );
+            })
           )}
         </div>
 

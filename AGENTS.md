@@ -6,6 +6,10 @@
 3. **Database & RLS Integrity**: Maintain permissive RLS policies and realtime publications on `messages`, `users`, and `app_config` in Supabase so neither account encounters permission or missing message errors.
 4. **Resilient Message Hydration**: Ensure message subscriptions and historical fetches execute immediately upon user authentication without being blocked by asynchronous profile resolution.
 5. **Question Mode Tags**: Whenever the user includes `#ask`, `#ans`, `#qna`, or `#answer` in their prompt, treat the request purely as an informational question: provide a detailed answer and make NO code changes or tool modifications unless explicitly asked.
+6. **Living Project Context & Agent Handoff**: Treat `AGENTS.md` as a continuously maintained handoff document and living source of project context for all AI agents:
+   - **Mandatory Documentation Threshold**: Whenever an AI agent makes an important change, discovers a significant issue, introduces a new architectural decision, changes an important configuration, modifies a critical workflow, fixes a non-obvious bug, or encounters anything else that another AI agent needs to know in order to work safely and correctly, the agent **MUST** document it in `AGENTS.md`. Agents must update `AGENTS.md` directly rather than relying on conversation history or assuming future agents will know about it.
+   - **Concise, Relevant & Actionable**: Documented entries must be kept concise, relevant, and actionable—recording only information critical for future agents to understand current project state, avoid repeating mistakes, preserve architectural decisions, and continue development correctly.
+   - **Mandatory Pre-Work Review**: Before starting new work, every AI agent **MUST** review the relevant sections of `AGENTS.md` and follow the accumulated project context.
 
 ---
 
@@ -74,4 +78,133 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
 - **Client Sync**:
   - `syncFcmTokenToSupabase` in `/src/lib/notifications.ts` registers and updates the device's FCM token in the `public.fcm_tokens` table on initial login.
   - Direct invoke `triggerPushNotification` runs client-side on send for immediate delivery alongside the database trigger.
+
+---
+
+## 🎨 Theme System & Viewport Resilience Architecture
+
+### 1. Zero-Flash Pre-Render Theme Hydration
+- **Problem**: When reloading the page, a flash of default theme occurred before React mounted and applied the user's stored theme.
+- **Solution**:
+  - `/index.html` includes an inline blocking pre-render script before React bundles execute. It reads `onlyus_chat_theme` from `localStorage`, normalizes 3D/legacy theme keys, and immediately applies CSS variables to `document.documentElement` alongside `data-chat-theme`.
+  - `/src/lib/themes.ts` executes an immediate module-load hydration pass so themes are available synchronously before React renders.
+
+### 2. Mobile Keyboard & Viewport Height Decoupling (`ThreeDThemeBackground.tsx`)
+- **Problem**: Opening the software keyboard triggers `visualViewport` height shrinkage, causing 3D animations and particles to squash, jump, or cut off mid-screen.
+- **Solution**:
+  - Anchors vertical coordinate calculations (`offsetY`, particle wrapping bounds, 3D meshes) to a stable `sceneHeight` derived from `window.screen.availHeight` and initial container dimensions.
+  - Height shrinkage due to keyboards updates only the canvas drawing buffer (`canvas.height`) while preserving continuous scene coordinates. Particles and 3D shapes naturally remain in their visual positions without jumping or wrapping in the middle of the screen.
+  - Uses `ResizeObserver` and `window.visualViewport` listeners to update canvas buffer dimensions synchronously.
+
+### 3. Play Together Hub 2-Column Responsive Grid (`PlayTogetherHub.tsx`)
+- Updated the game cards container from a 1-column vertical list to a responsive 2-column grid (`grid grid-cols-2 gap-3 sm:gap-4`) with vertical card cards and realtime status badges for arcade-style navigation.
+
+### 4. Chat Input Bar Placeholder Ticker & Row Constraint (`ChatInputBar.tsx`)
+- **Problem**: In certain themes or font configurations, the dynamic placeholder `"Whisper to Rahul..."` / `"Whisper to Nusrat..."` caused the `<textarea>` to expand into 2 vertical rows before any message was typed.
+- **Solution**:
+  - Replaced the native browser textarea placeholder with a dedicated single-line overlay container (`text-[12px] sm:text-[13px] font-sans font-normal tracking-tight text-[var(--theme-text)]/40 whitespace-nowrap`).
+  - Implemented dynamic text overflow detection with `ResizeObserver`. If the placeholder text width exceeds container width, a smooth marquee ticker animation (`whisperTicker`) crawls back and forth (`Whisper to Rah...` -> `...to Rahul...` -> returns) without expanding the input box or shifting height.
+  - The underlying `<textarea>` maintains an exact 1-row compact baseline (44px) until user text input necessitates multi-line growth.
+
+### 5. Detailed Anime & Pokemon Themes (`themes.ts`, `ThreeDThemeBackground.tsx`, `index.css`, `index.html`)
+- **Anime Dream (`anime` & `3d-anime`)**:
+  - Aesthetic: Authentic hand-drawn manga artboard with cel-shaded silhouette styling (similar to Doodle Day's interface customizations).
+  - Palette: Warm manga paper `#FFFDF2`, ink black `#181829`, bold manga red `#FF4757`, and energetic comic cyan `#00D2D3`.
+  - Bubble & UI Styling: Inked comic contours (`border: 2.5px solid #181829`), bold 4px block drop-shadows (`box-shadow: 4px 4px 0 #181829`), cel-shaded slight rotation offsets (`rotate(-0.4deg)` / `rotate(0.4deg)`), and comic button styling.
+  - 3D Engine: Subtle manga screentone dot grid, animated floating Japanese onomatopoeia sound effects (`ドキドキ`, `ゴゴゴ`, `キラキラ`, `ニコニコ`, `ワクワク`), wobbling comic sweatdrops (💧), pulsing 4-lobed anger cross veins (💢), 4-point comic sparkles (✨), and tumbling sakura petals.
+- **Pocket Monsters (`pokemon` & `3d-pokemon`)**:
+  - Palette: Deep trainer slate `#0F141C`, Pokeball scarlet crimson `#EE3B3B`, and iconic Pikachu electric yellow `#FFCB05`.
+  - Bubble & UI Styling: Retro Game Boy battle dialogue frame with double borders (`border: 3px double #FFCB05`), retro dark drop-shadows, and bright electric yellow action buttons.
+  - 3D Engine:
+    - **Animated Pikachu**: Canvas vector character on the lower-left featuring chubby yellow body, pointy ears with black tips and reactive wiggle animation, red electric cheek patches with occasional lightning spark bursts, anime catchlight eyes, cute smile, and animated zig-zag tail with brown base.
+    - **Ghostly Gengar**: Mischievous shadowy purple ghost floating on the upper-right with spiky ears/head tufts, glowing red slanted eyes, wide signature toothy grin, and translucent shadow ghost mist.
+    - **3D Floating Pokeballs & Great Balls**: Spherical shaded balls with metallic reflections and glowing buttons.
+    - **Evolution Stars & Lightning Arcs**: Rising 5-point golden stars and branching high-voltage electric discharges.
+- **Akatsuki (`akatsuki` & `3d-akatsuki`)**:
+  - Aesthetic: Naruto's rogue ninja syndicate with dark Amegakure (Hidden Rain Village) storm mood.
+  - Palette: Dark chakra pitch `#08080D`, Akatsuki cloak black `#11121C`, blood-red crimson `#B91C1C`, and glowing red accent `#EF4444`.
+  - Bubble & UI Styling: Akatsuki cloak black bubbles with glowing blood-red neon borders (`border: 2px solid #DC2626; box-shadow: 0 4px 24px -2px rgba(220, 38, 38, 0.38)`), Amegakure storm slate partner bubbles, and crimson chakra gradient action buttons.
+  - 3D Engine:
+    - **Akatsuki Crimson Clouds**: Stylized clouds with 4 lobes and iconic curled spiral tail, deep crimson fill, and crisp white outer border.
+    - **Amegakure Downpour**: Fast slanted rain streaks falling with expanding water puddle ripples on the ground.
+    - **Itachi's Shadow Crows & Feathers**: Flapping silhouette crows flying across the storm sky and tumbling black feathers with glowing red tips.
+    - **Spinning Sharingan**: Faint crimson glowing chakra eye with 3 spinning tomoe marks in the distant mist.
+  - Zero-Flash Hydration: Fully registered across `THEMES`, `BASE_THEMES`, `index.html` inline `THEME_MAP`, and `index.css`.
+
+### 6. Conversational Message Grouping & WhatsApp-Style Spacing (`MessageItem.tsx`, `App.tsx`)
+- **Avatar Clustering**:
+  - The partner's profile avatar is now rendered only on the first message of an incoming run (`isFirstInGroup && msg.sender_role !== role`).
+  - Consecutive texts from the same sender omit the avatar icon while retaining a zero-width-shifting 32px layout spacer to maintain flush message alignment.
+  - Senders switching turns or time gaps exceeding 15 minutes automatically start a new conversational cluster and restore the avatar badge on the next incoming message.
+  - Both `MessageItem` and its memoized equality check (`areMessagePropsEqual`) track `showAvatar`, `isFirstInGroup`, and `isLastInGroup` to guarantee zero visual latency or stale grouping when new messages arrive.
+- **WhatsApp Minimal Gap Cadence**:
+  - Removed container-level `space-y-4` in `#message-container`.
+  - Consecutive messages from the same sender use a tight, minimal 2px–3px margin (`mt-[2px] sm:mt-[3px]`) and compact 1px padding, replicating WhatsApp's cohesive bubble grouping.
+  - Turn switches between different senders apply a distinct 8px–10px top margin (`mt-2 sm:mt-2.5`) to establish clear conversational pacing.
+
+### 7. High-Performance 120Hz Interaction & Instant Selection Architecture
+- **Root-Cause Analysis of Selection & Menu Stutter**:
+  - **O(N) Re-render Cascade**: Previously, `selectionActive: boolean` was compared inside `areMessagePropsEqual`. Entering or exiting selection mode forced all messages in the chat room to re-render simultaneously.
+  - **Overhead Collision**: During long-press, the floating reaction menu was rendering with a heavy multi-pass `backdrop-blur` filter, `layoutId="reaction-bg"` (triggering bounding-box layout recalculations), while the 3D canvas background was computing hundreds of 3D math transformations per second on the main thread.
+- **Zero-Latency Refactoring**:
+  - **O(1) Surgical Message Selection**: Swapped direct `selectionActive` prop equality checks with a stable mutable ref (`isSelectionActiveRef`) and `checkSelectionActive()`. In `areMessagePropsEqual`, `selectionActive` is excluded from the re-render equality check. As a result, toggling selection mode re-renders **only the single message being selected or deselected**, reducing render overhead from O(N) to O(1) (< 2ms per action).
+  - **3D Canvas Dynamic Suspension & Continuous Selection Animation**: `QuantumAuraBackground` and `ThreeDThemeBackground` listen to a lightweight `paused` prop for heavy full-screen modals and overlays (`showProfileModal`, `showCustomizeModal`, etc.). Message selection (`selectedMessages.length > 0`) does NOT pause the canvas, ensuring 3D backgrounds (petals, stars, clouds, neon grids) animate smoothly while selecting messages.
+  - **Hardware-Accelerated Floating Menus & Streamlined Reaction Bar**:
+    - Floating reaction bar and top 3-dot dropdown leverage GPU compositor promotion (`transform-gpu will-change-transform translateZ(0)`) and responsive cubic-bezier easing `[0.16, 1, 0.3, 1]`.
+    - Reaction selector dimensions are compact and lightweight (`p-1 sm:p-1.5`, `w-7 h-7 sm:w-8 sm:h-8` buttons, `text-base sm:text-lg` emojis), keeping it proportional to the chat bubbles.
+    - Removed redundant in-picker reply arrow and divider so the reaction picker functions purely as an emoji palette.
+    - Removed expensive `backdrop-blur-xl` and Framer Motion `layoutId` from reaction items in favor of solid surface styling with soft drop shadows.
+    - Removed `mode="wait"` blocking delay on the top selection action bar, enabling instantaneous cross-fades without blocking navigation.
+
+### 8. APK Optimization & Low-End Android Performance Architecture
+- **Root Cause of APK Size Increase**:
+  - Three raw uncompressed 1200x896 JPEGs (`dots_and_hearts`, `connect_hearts_game`, `tic_tac_toe`) were added to `src/assets/images`, bloating web assets by 2.6 MB and inflating `android/app/src/main/assets/public/assets` to 4.0 MB.
+  - Converted all game assets to compressed WebP (600px width, quality 80), reducing raw asset size from 2,600 KB down to 156 KB (a >94% asset reduction).
+  - Synced assets with `npx cap sync android`, dropping the Android asset bundle from 4.0 MB down to 1.3 MB (immediate ~2.7 MB APK size reduction).
+  - Documented that Firebase Cloud Messaging (FCM v1 BoM + Google Play Services dependencies) also added compiled DEX classes.
+- **Root Cause of APK-Specific & Menu Stutter (Customize Theme & Play Together)**:
+  - **WebView Skia Backdrop-Blur Bottleneck**: Mobile Android WebViews perform expensive offscreen texture passes for every element with `backdrop-filter: blur(...)`. In `ThemeCustomizePage`, 15 theme preview cards each had 2 mini blurred elements (30 simultaneous blurs) plus page headers. In `PlayTogetherHub`, game cards and headers also stacked blurs on top of an unpaused background 3D canvas!
+  - **Surgical Solutions**:
+    - **Solid GPU Surfaces**: Replaced all `backdrop-blur` filters across `ThemeCustomizePage` and `PlayTogetherHub` with solid surface styling (`bg-[var(--theme-surface)] border border-[var(--theme-border)]`).
+    - **Theme Card Memoization**: Extracted theme cards into `React.memo(ThemeCard)` so tapping a theme re-renders only 2 items (old & new selected) instead of all 15 cards.
+    - **Dual-Canvas Elimination**: Removed redundant second `QuantumAuraBackground` canvas loop from `PlayTogetherHub`.
+    - **App.tsx Modal Background Suspension**: Added `showCustomizeModal` to the background canvas `paused` prop in `App.tsx`.
+    - **Native WebView Hardware Acceleration**: In `MainActivity.java` `onStart()`, set `webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)`, enabled DOM storage, database, and image loading optimizations.
+    - **Large Heap Allocation for Budget Devices**: Added `android:largeHeap="true"` to `<application>` in `AndroidManifest.xml` to avoid Garbage Collection (GC) pauses on lower-end Android phones.
+
+### 9. WhatsApp-Style Attached Reaction Badge & Zero-Collision Layout Architecture
+- **WhatsApp Attached Badge Positioning (`MessageItem.tsx`)**:
+  - **Root-Cause Analysis**: A floating pill with fixed or fragile negative offsets placed too high inside the bubble collided directly with the timestamp and blue double ticks (`✓✓`). In WhatsApp, the reaction is visually attached to the bottom rim of the bubble—overlapping the bottom border by only ~4-5px while hanging ~18px below the bubble.
+  - **Surgical Geometry & Overlap Bounds**:
+    - Anchored reaction container to `absolute top-[calc(100%-5px)]` within the bubble's shrink-wrapped relative wrapper.
+    - Outgoing messages anchor to `right-4 justify-end` (inset 16px from the tail corner); incoming messages anchor to `left-4 justify-start`.
+    - Added reactive bottom padding to the bubble (`hasReactions ? 'pb-2.5 lg:pb-3' : 'pb-2'`). The timestamp and blue ticks sit comfortably 10px–12px from the bottom edge, leaving a 5px–7px clean buffer above the reaction pill's top rim.
+  - **Overhang Space Reservation & "Seen at..." Isolation**:
+    - When `hasReactions` is active, the bubble wrapper applies `mb-[18px]`, reserving the exact physical overhang height of the reaction badge in the flex document flow.
+    - As a result, the read receipt / "Seen at..." element naturally renders below the reaction pill with its own `mt-1.5` margin, with zero possibility of overlap or vertical displacement.
+- **WhatsApp-Style Reaction Capsule & Cutout Border**:
+  - Replaced oversized multi-button clusters with a single unified, compact capsule (`h-[22px] sm:h-[24px] px-1.5 sm:px-2 rounded-full border-2 shadow-[0_2px_6px_rgba(0,0,0,0.18)]`).
+  - Uses `backgroundColor: 'var(--theme-surface)'` and `borderColor: 'var(--theme-bg)'`, which dynamically produces the authentic WhatsApp cutout effect where the badge cuts across the bottom rim of the bubble.
+  - Future-proof: Groups multiple reactions and counts neatly side-by-side (`❤️ 😂 2`) inside the unified badge.
+- **Double-Tap ❤️ Reaction Gesture (`MessageItem.tsx`, `App.tsx`)**:
+  - Pointer-tracking refs (`lastTapTimeRef`, `lastTapPosRef`, `lastDoubleTapTimeRef`) detecting two consecutive taps within a 30ms–330ms window and within a 32px radius.
+  - Cancels active long-press timers and suppresses single-click handlers within 380ms of a double-tap.
+  - Automatically bypassed if multi-message selection mode is active.
+  - Optimistic client-side cache updates in `App.tsx` (`setMessages`) delivering immediate visual feedback alongside an Instagram-style heart pop (`showHeartBurst`) and haptic feedback.
+
+### 10. Partner Profile Clean & User-Friendly Redesign Architecture (`PartnerInfoModal.tsx`)
+- **Root-Cause Analysis of Previous Visual Clutter**:
+  - Cluttered edge-to-edge list styling with mismatched hardcoded colors (`#111111`, `#737373`, `#0095F6`, harsh gradients), breaking visual consistency in dark and customized themes.
+  - Media tabs used unlabeled mystery icons (`LayoutGrid`, `Repeat`, `Link2`) with zero indication of item counts, leading to unclear navigation.
+  - Raw square media thumbnails had sharp borders without theme background support (causing white flash on lazy-load in dark themes).
+  - Empty top bar lacked title framing, and hero card lacked clear online presence indicators.
+- **Surgical Redesign Principles**:
+  - **Structured Top Bar**: Clean header with subtle "Partner Profile" title, circular back button, and direct E2EE security verification badge.
+  - **Refined Hero Card**: Ring-bordered avatar with quick camera action button for updating the partner's photo, online status badge with pulsing emerald indicator, and role/handle subtitle.
+  - **Unified Settings Group**: Replaced harsh borders with a modern rounded card container (`bg-[var(--theme-bg)]/60 border border-[var(--theme-border)] rounded-2xl divide-y divide-[var(--theme-border)]/50`) consolidating Chat Theme (showing current theme name), Nicknames, and End-to-End Encryption with uniform icons and trailing chevrons.
+  - **User-Friendly Segmented Media Control**: Replaced icon-only tabs with labeled, count-aware segmented pills: "Photos (N)", "Videos (N)", and "Links (N)".
+  - **Modern Media Grid & Empty States**: `rounded-xl` media thumbnails with smooth hover zoom, centered video play button overlays, theme-adaptive placeholders, and clean, minimal empty states for photos, videos, and links.
+  - **Full Theme Variable Integration**: Entire profile modal, sub-views, and edit sheets use semantic CSS tokens (`var(--theme-surface)`, `var(--theme-text)`, `var(--theme-bg)`, `var(--theme-border)`, `var(--theme-accent)`) for seamless consistency across all 14 themes.
+
+
 

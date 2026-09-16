@@ -103,11 +103,23 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     @Override
     public void onStart() {
         super.onStart();
-        if (getPackageName().contains("notes")) {
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                String currentUa = getBridge().getWebView().getSettings().getUserAgentString();
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            android.webkit.WebView webView = getBridge().getWebView();
+            android.webkit.WebSettings settings = webView.getSettings();
+
+            // Enable hardware layer acceleration
+            webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+
+            // Performance & storage tuning
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+            settings.setLoadsImagesAutomatically(true);
+
+            if (getPackageName().contains("notes")) {
+                String currentUa = settings.getUserAgentString();
                 if (!currentUa.contains("OnlyUsFlavor/Notes")) {
-                    getBridge().getWebView().getSettings().setUserAgentString(currentUa + " OnlyUsFlavor/Notes");
+                    settings.setUserAgentString(currentUa + " OnlyUsFlavor/Notes");
                 }
             }
         }

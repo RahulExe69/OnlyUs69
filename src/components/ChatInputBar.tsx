@@ -55,6 +55,37 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
+  const placeholderContainerRef = useRef<HTMLDivElement>(null);
+  const placeholderTextRef = useRef<HTMLSpanElement>(null);
+  const [placeholderOverflow, setPlaceholderOverflow] = useState<number>(0);
+
+  const placeholderText = editingMessage 
+    ? 'Edit message...' 
+    : `Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`;
+
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (placeholderContainerRef.current && placeholderTextRef.current) {
+        const containerWidth = placeholderContainerRef.current.clientWidth;
+        const textWidth = placeholderTextRef.current.scrollWidth;
+        const diff = textWidth - containerWidth;
+        setPlaceholderOverflow(diff > 2 ? diff + 12 : 0);
+      }
+    };
+    checkOverflow();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && placeholderContainerRef.current) {
+      ro = new ResizeObserver(() => checkOverflow());
+      ro.observe(placeholderContainerRef.current);
+    }
+    window.addEventListener('resize', checkOverflow);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', checkOverflow);
+    };
+  }, [placeholderText, role]);
+
   // Audio Recording States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -635,45 +666,69 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
               <Smile className="w-5 h-5" />
             </button>
 
-            {/* Auto-expanding textarea */}
-            <textarea
-              id="chat-message-input"
-              ref={(node) => {
-                localInputRef.current = node;
-                if (inputRef && 'current' in inputRef) {
-                  (inputRef as any).current = node;
-                }
-              }}
-              rows={1}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => {
-                if (typeof window !== 'undefined') {
-                  (window as any).__isChatInputFocused = true;
-                }
-                setShowEmojiPicker(false);
-              }}
-              onBlur={() => {
-                if (typeof window !== 'undefined') {
-                  (window as any).__isChatInputFocused = false;
-                }
-              }}
-              inputMode="text"
-              enterKeyHint="send"
-              autoCapitalize="sentences"
-              autoComplete="on"
-              autoCorrect="on"
-              spellCheck={true}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              placeholder={editingMessage ? 'Edit message...' : `Whisper to ${role === 'owner' ? 'Nusrat' : 'Rahul'}...`}
-              className="w-full py-2.5 px-1 bg-transparent text-[var(--theme-text)] text-[16px] md:text-sm focus:outline-none placeholder-[var(--theme-text)]/40 resize-none custom-scrollbar leading-relaxed"
-              style={{ minHeight: '44px', maxHeight: '144px', boxSizing: 'border-box' }}
-            />
+            {/* Auto-expanding textarea wrapped with compact single-line placeholder */}
+            <div className="relative flex-1 min-w-0 flex items-center self-center my-auto">
+              {!inputText && (
+                <div
+                  ref={placeholderContainerRef}
+                  className="absolute inset-y-0 left-1 right-1 pointer-events-none select-none flex items-center overflow-hidden z-10"
+                >
+                  <span
+                    ref={placeholderTextRef}
+                    className="text-[12px] sm:text-[13px] font-sans font-normal tracking-tight text-[var(--theme-text)]/40 whitespace-nowrap will-change-transform leading-none"
+                    style={
+                      placeholderOverflow > 0
+                        ? ({
+                            animation: 'whisperTicker 6.5s ease-in-out infinite',
+                            '--marquee-shift': `-${placeholderOverflow}px`,
+                          } as React.CSSProperties)
+                        : undefined
+                    }
+                  >
+                    {placeholderText}
+                  </span>
+                </div>
+              )}
+
+              <textarea
+                id="chat-message-input"
+                ref={(node) => {
+                  localInputRef.current = node;
+                  if (inputRef && 'current' in inputRef) {
+                    (inputRef as any).current = node;
+                  }
+                }}
+                rows={1}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onFocus={() => {
+                  if (typeof window !== 'undefined') {
+                    (window as any).__isChatInputFocused = true;
+                  }
+                  setShowEmojiPicker(false);
+                }}
+                onBlur={() => {
+                  if (typeof window !== 'undefined') {
+                    (window as any).__isChatInputFocused = false;
+                  }
+                }}
+                inputMode="text"
+                enterKeyHint="send"
+                autoCapitalize="sentences"
+                autoComplete="on"
+                autoCorrect="on"
+                spellCheck={true}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+                placeholder={editingMessage ? 'Edit message...' : ''}
+                className="w-full py-2.5 px-1 bg-transparent text-[var(--theme-text)] text-[15px] md:text-sm focus:outline-none resize-none custom-scrollbar leading-relaxed"
+                style={{ minHeight: '44px', maxHeight: '144px', boxSizing: 'border-box' }}
+              />
+            </div>
 
             {/* Feelings / Nudge Heart button inside container */}
             <div className="pr-2 mb-1.5 shrink-0">

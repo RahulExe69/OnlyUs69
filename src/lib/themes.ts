@@ -32,8 +32,17 @@ export const THEMES = {
   aurora: {
     name: 'Aurora Drift', note: 'A luminous northern-sky wash with soft glass.', bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif'
   },
+  anime: {
+    name: 'Anime Dream', note: 'Authentic hand-drawn manga artboard with halftone screentones, cel-shading, and anime stickers.', bg: '#FFFDF2', text: '#181829', header: 'rgba(255, 253, 242, .94)', owner: '#FF4757', ownerText: '#FFFFFF', partner: '#FFFFFF', partnerText: '#181829', input: '#FFFFFF', surface: '#FFF9EB', accent: '#00D2D3', border: 'rgba(24, 24, 41, .35)', decoration: 'radial-gradient(circle at 10% 12%, rgba(0,210,211,.25), transparent 28%), radial-gradient(circle at 90% 88%, rgba(255,71,87,.2), transparent 32%), radial-gradient(#181829 1.2px, transparent 1.2px)', font: '"Comic Sans MS", "Bangers", "Impact", cursive, sans-serif'
+  },
+  pokemon: {
+    name: 'Pocket Monsters', note: 'Iconic trainer battle vibes with animated Pikachu, Gengar, and retro battle box styling.', bg: '#0F141C', text: '#FBFDFF', header: 'rgba(22, 28, 40, .9)', owner: '#EE3B3B', ownerText: '#FFFFFF', partner: '#222B3D', partnerText: '#F6F9FF', input: '#1B2232', surface: '#141A26', accent: '#FFCB05', border: 'rgba(255, 203, 5, .35)', decoration: 'radial-gradient(circle at 18% 12%, rgba(238,59,59,.25), transparent 32%), radial-gradient(circle at 82% 82%, rgba(255,203,5,.2), transparent 35%)', font: '"Trebuchet MS", "Inter", sans-serif'
+  },
+  akatsuki: {
+    name: 'Akatsuki', note: 'The legendary rogue ninja syndicate. Blood-red clouds, Amegakure rainstorm, and dark chakra.', bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif'
+  },
   // ==========================================
-  // 3D VERSIONS OF ALL 11 THEMES (IDENTICAL PALETTES & STYLES)
+  // 3D VERSIONS OF ALL THEMES (IDENTICAL PALETTES & STYLES)
   // ==========================================
   '3d-romantic': {
     name: 'Only Us', note: 'Soft rose curves made for your shared space with 3D fluttering petals.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
@@ -68,6 +77,15 @@ export const THEMES = {
   '3d-aurora': {
     name: 'Aurora Drift', note: 'A luminous northern-sky wash with 3D shifting aurora borealis ribbons.', bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif'
   },
+  '3d-anime': {
+    name: 'Anime Dream', note: 'Authentic hand-drawn manga artboard with 3D animated anime stickers, sweatdrops, anger veins & manga SFX.', bg: '#FFFDF2', text: '#181829', header: 'rgba(255, 253, 242, .94)', owner: '#FF4757', ownerText: '#FFFFFF', partner: '#FFFFFF', partnerText: '#181829', input: '#FFFFFF', surface: '#FFF9EB', accent: '#00D2D3', border: 'rgba(24, 24, 41, .35)', decoration: 'radial-gradient(circle at 10% 12%, rgba(0,210,211,.25), transparent 28%), radial-gradient(circle at 90% 88%, rgba(255,71,87,.2), transparent 32%), radial-gradient(#181829 1.2px, transparent 1.2px)', font: '"Comic Sans MS", "Bangers", "Impact", cursive, sans-serif'
+  },
+  '3d-pokemon': {
+    name: 'Pocket Monsters', note: 'Iconic trainer battle vibes with animated Pikachu, mischievous Gengar, and 3D Pokeballs.', bg: '#0F141C', text: '#FBFDFF', header: 'rgba(22, 28, 40, .9)', owner: '#EE3B3B', ownerText: '#FFFFFF', partner: '#222B3D', partnerText: '#F6F9FF', input: '#1B2232', surface: '#141A26', accent: '#FFCB05', border: 'rgba(255, 203, 5, .35)', decoration: 'radial-gradient(circle at 18% 12%, rgba(238,59,59,.25), transparent 32%), radial-gradient(circle at 82% 82%, rgba(255,203,5,.2), transparent 35%)', font: '"Trebuchet MS", "Inter", sans-serif'
+  },
+  '3d-akatsuki': {
+    name: 'Akatsuki', note: 'The legendary rogue ninja syndicate with 3D drifting crimson clouds, Amegakure rainstorm, and shadow crows.', bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif'
+  },
   // Backwards compatibility aliases for existing saved themes
   '3d-aura': {
     name: 'Lavender Haze', note: 'Fluid 3D volumetric glowing orbs & stardust field.', bg: '#080811', text: '#F5F3FF', header: 'rgba(12, 11, 24, .82)', owner: '#A855F7', ownerText: '#FFFFFF', partner: '#1E1B38', partnerText: '#E0E7FF', input: '#121124', surface: '#0F0E20', accent: '#C084FC', border: 'rgba(168, 85, 247, .3)', decoration: 'radial-gradient(circle at 50% 20%, rgba(168,85,247,.22), transparent 45%)', font: '"Inter", system-ui, sans-serif'
@@ -95,6 +113,9 @@ export const BASE_THEMES: BaseThemeItem[] = [
   { key: 'romantic', name: 'Only Us' },
   { key: 'light', name: 'Clean Slate' },
   { key: 'dark', name: 'Moonlight' },
+  { key: 'anime', name: 'Anime Dream' },
+  { key: 'pokemon', name: 'Pocket Monsters' },
+  { key: 'akatsuki', name: 'Akatsuki' },
   { key: 'lavender', name: 'Lavender Haze' },
   { key: 'ocean', name: 'Ocean Eyes' },
   { key: 'sunset', name: 'Soft Bloom' },
@@ -133,7 +154,7 @@ export const is3DTheme = (themeName?: string | null): boolean => {
 
 export const getThemeCategory = (themeName: ThemeName): '3d' | 'dark' | 'light' => {
   if (themeName.startsWith('3d-')) return '3d';
-  if (['dark', 'noir', 'cyber', 'forest'].includes(themeName)) return 'dark';
+  if (['dark', 'noir', 'cyber', 'forest', 'pokemon', 'akatsuki'].includes(themeName)) return 'dark';
   return 'light';
 };
 
@@ -177,3 +198,13 @@ export const applyTheme = (themeName: ThemeName) => {
     localStorage.setItem('onlyus_chat_theme', themeName);
   } catch (e) {}
 };
+
+// Immediate pre-render sync on script import to prevent theme flash
+if (typeof window !== 'undefined') {
+  try {
+    const cached = localStorage.getItem('onlyus_chat_theme') as ThemeName;
+    if (cached && isValidTheme(cached)) {
+      applyTheme(cached);
+    }
+  } catch (e) {}
+}

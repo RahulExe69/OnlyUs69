@@ -128,6 +128,18 @@ body {
   .animate-float-heart {
     animation: float-heart 1s ease-out forwards;
   }
+
+  @keyframes whisperTicker {
+    0%, 25% {
+      transform: translateX(0);
+    }
+    60%, 82% {
+      transform: translateX(var(--marquee-shift, -30%));
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
 }
 
 /* A theme is a complete chat experience: surface, typography, decoration, and controls. */
@@ -347,6 +359,90 @@ body {
 :root[data-chat-theme="3d-cherry"] .theme-accent-button {
   box-shadow: 0 4px 16px -2px rgba(251, 113, 133, 0.4);
   border: 1px solid rgba(251, 113, 133, 0.35);
+}
+
+/* Anime Dream Theme (Authentic Cel-Shaded Manga Artboard) */
+:root[data-chat-theme="anime"] .chat-theme,
+:root[data-chat-theme="3d-anime"] .chat-theme,
+:root[data-chat-theme="anime"] .theme-settings,
+:root[data-chat-theme="3d-anime"] .theme-settings {
+  letter-spacing: 0.02em;
+}
+:root[data-chat-theme="anime"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="3d-anime"] .chat-theme .chat-bubble-owner {
+  border: 2.5px solid #181829;
+  border-radius: 20px 24px 6px 22px;
+  background: #FF4757;
+  color: #FFFFFF;
+  box-shadow: 4px 4px 0 #181829;
+  transform: rotate(-0.4deg);
+}
+:root[data-chat-theme="anime"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="3d-anime"] .chat-theme .chat-bubble-partner {
+  border: 2.5px solid #181829;
+  border-radius: 24px 20px 22px 6px;
+  background: #FFFFFF;
+  color: #181829;
+  box-shadow: -4px 4px 0 #181829;
+  transform: rotate(0.4deg);
+}
+:root[data-chat-theme="anime"] .theme-accent-button,
+:root[data-chat-theme="3d-anime"] .theme-accent-button,
+:root[data-chat-theme="anime"] .theme-icon-button,
+:root[data-chat-theme="3d-anime"] .theme-icon-button {
+  border: 2.5px solid #181829;
+  border-radius: 14px;
+  box-shadow: 3px 3px 0 #181829;
+  font-weight: 700;
+}
+
+/* Pokemon Theme (Game Boy Battle Dialogue & Retro Box) */
+:root[data-chat-theme="pokemon"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="3d-pokemon"] .chat-theme .chat-bubble-owner {
+  border-radius: 16px 16px 4px 16px;
+  background: linear-gradient(135deg, #EE3B3B, #B91C1C);
+  border: 3px double #FFCB05;
+  box-shadow: 4px 4px 0 #090D14, 0 0 16px rgba(255, 203, 5, 0.22);
+}
+:root[data-chat-theme="pokemon"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="3d-pokemon"] .chat-theme .chat-bubble-partner {
+  border-radius: 16px 16px 16px 4px;
+  background: #1B2232;
+  border: 3px double #60A5FA;
+  box-shadow: -4px 4px 0 #090D14;
+}
+:root[data-chat-theme="pokemon"] .theme-accent-button,
+:root[data-chat-theme="3d-pokemon"] .theme-accent-button {
+  background: #FFCB05 !important;
+  color: #0F141C !important;
+  font-weight: 800;
+  border: 2px solid #0F141C;
+  box-shadow: 3px 3px 0 #0F141C;
+}
+
+/* Akatsuki Theme (Naruto Rogue Ninja Syndicate) */
+:root[data-chat-theme="akatsuki"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="3d-akatsuki"] .chat-theme .chat-bubble-owner {
+  border-radius: 20px 20px 4px 20px;
+  background: linear-gradient(145deg, #11121C 0%, #0A0A10 100%);
+  border: 2px solid #DC2626;
+  box-shadow: 0 4px 24px -2px rgba(220, 38, 38, 0.38), inset 0 1px 2px rgba(255, 60, 60, 0.25);
+  color: #FFFFFF;
+}
+:root[data-chat-theme="akatsuki"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="3d-akatsuki"] .chat-theme .chat-bubble-partner {
+  border-radius: 20px 20px 20px 4px;
+  background: #151624;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  color: #ECECF4;
+}
+:root[data-chat-theme="akatsuki"] .theme-accent-button,
+:root[data-chat-theme="3d-akatsuki"] .theme-accent-button {
+  background: linear-gradient(135deg, #DC2626, #991B1B) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 18px rgba(220, 38, 38, 0.55), 0 0 10px rgba(239, 68, 68, 0.3);
+  border: 1px solid rgba(255, 100, 100, 0.4);
 }
 
 .theme-settings { background: var(--theme-surface); color: var(--theme-text); }

@@ -1,10 +1,10 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Camera, Heart, UserCheck, LayoutGrid, Repeat, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, Message } from '../types';
-import { ThemeName } from '../lib/themes';
+import { ThemeName, THEMES } from '../lib/themes';
 import { useOverlayBack } from '../lib/overlayManager';
 import { getLocalMedia } from '../lib/mediaStore';
 import { hydrateMessageMedia } from '../lib/dateUtils';
@@ -50,11 +50,11 @@ export const ProfileMediaThumbnail: React.FC<{
       onClick={() => {
         if (resolvedUrl) onClick();
       }}
-      className="aspect-square bg-neutral-100 overflow-hidden cursor-pointer hover:opacity-90 active:scale-95 transition-all relative flex items-center justify-center group"
+      className="aspect-square bg-[var(--theme-bg)] rounded-xl overflow-hidden cursor-pointer hover:opacity-95 active:scale-[0.97] transition-all relative flex items-center justify-center border border-[var(--theme-border)]/40 group shadow-2xs"
     >
       {resolvedUrl ? (
         item.type === 'video' ? (
-          <div className="w-full h-full relative bg-black flex items-center justify-center">
+          <div className="w-full h-full relative bg-black/90 flex items-center justify-center">
             <video 
               src={resolvedUrl} 
               className="w-full h-full object-cover" 
@@ -62,8 +62,8 @@ export const ProfileMediaThumbnail: React.FC<{
               playsInline 
               preload="metadata"
             />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-              <div className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center shadow">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-xs text-white flex items-center justify-center shadow-md">
                 <Play className="w-4 h-4 fill-white ml-0.5" />
               </div>
             </div>
@@ -72,14 +72,14 @@ export const ProfileMediaThumbnail: React.FC<{
           <img 
             src={resolvedUrl} 
             alt="" 
-            className="w-full h-full object-cover" 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
             referrerPolicy="no-referrer" 
             loading="lazy"
             onError={() => setHasError(true)}
           />
         )
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-300">
+        <div className="w-full h-full flex items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)]/30">
           <ImageIcon className="w-6 h-6 opacity-40" />
         </div>
       )}
@@ -357,22 +357,26 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
       </AnimatePresence>
 
       {view === 'main' ? (
-        /* ==================== INSTAGRAM PARTNER PROFILE VIEW ==================== */
+        /* ==================== CLEAN PARTNER PROFILE VIEW ==================== */
         <div className="flex-1 flex flex-col h-full overflow-hidden">
-          {/* Instagram Top Bar */}
-          <div className="h-14 flex-shrink-0 flex items-center justify-between px-4">
+          {/* Top Bar */}
+          <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-[var(--theme-border)]/40 bg-[var(--theme-surface)]">
             <button 
               onClick={onClose} 
-              className="p-1 -ml-1 text-[#111111] hover:opacity-70 transition-opacity active:scale-95"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer"
+              title="Back to chat"
             >
-              <ArrowLeft className="w-6 h-6 stroke-[2]" />
+              <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
             </button>
 
-            {/* E2EE icon in partner profile header */}
+            <h1 className="text-[16px] font-bold text-[var(--theme-text)] tracking-tight">
+              Partner Profile
+            </h1>
+
             <button
               type="button"
               onClick={() => setShowE2EESheet(true)}
-              className="p-2 text-emerald-600 hover:text-emerald-700 active:scale-90 transition-transform flex items-center justify-center"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-emerald-600 hover:bg-emerald-500/10 active:scale-95 transition-all -mr-1 cursor-pointer"
               title="End-to-End Encrypted (Tap to verify)"
             >
               <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
@@ -381,11 +385,12 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {/* Centered Avatar and Name */}
-            <div className="flex flex-col items-center pt-2 pb-6 px-4">
+            <div className="flex flex-col items-center pt-5 pb-5 px-4">
               <div className="relative group">
                 <div 
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/30 shadow-sm ring-4 ring-[var(--theme-accent)]/15 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)]"
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/30 shadow-md ring-4 ring-[var(--theme-accent)]/15 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)]"
                   onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
+                  title="View full photo"
                 >
                   {partner.photo_url ? (
                     <img 
@@ -408,8 +413,8 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     e.stopPropagation();
                     photoInputRef.current?.click();
                   }}
-                  title="Change partner's photo"
-                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform"
+                  title="Change photo"
+                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform cursor-pointer"
                 >
                   <Camera className="w-4 h-4" />
                 </button>
@@ -423,78 +428,150 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
               </div>
 
               {/* Display Name directly below avatar */}
-              <h2 className="text-[20px] sm:text-[22px] font-bold text-[#111111] mt-3.5 text-center px-4 tracking-tight leading-snug break-words">
+              <h2 className="text-[20px] sm:text-[22px] font-bold text-[var(--theme-text)] mt-3 text-center px-4 tracking-tight leading-snug break-words">
                 {currentPartnerNickname}
               </h2>
+
+              {/* Status / Role Row */}
+              <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)]">
+                  Partner
+                </span>
+                {isPartnerOnline ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Online
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-[var(--theme-text)]/50">
+                    @{partnerHandle}
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Instagram Options List */}
-            <div className="border-t border-b border-neutral-100 py-1">
-              <button 
-                type="button"
-                onClick={() => setShowCustomiseModal(true)}
-                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
-              >
-                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white shadow-sm flex-shrink-0">
-                  <Heart className="w-4 h-4 fill-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Customise</p>
-                  <p className="text-[12px] text-[#737373] mt-0.5 leading-tight">Theme</p>
-                </div>
-              </button>
+            {/* Settings Group */}
+            <div className="px-4 mb-5">
+              <div className="rounded-2xl bg-[var(--theme-bg)]/60 border border-[var(--theme-border)] overflow-hidden divide-y divide-[var(--theme-border)]/50 shadow-xs">
+                {/* Theme Customization */}
+                <button 
+                  type="button"
+                  onClick={() => setShowCustomiseModal(true)}
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0">
+                      <Heart className="w-5 h-5 fill-[var(--theme-accent)]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Chat Theme</p>
+                      <p className="text-[12px] text-[var(--theme-text)]/60 mt-0.5 leading-tight truncate">
+                        {THEMES[currentTheme || 'romantic']?.name || 'Theme'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
+                </button>
 
-              <button 
-                type="button"
-                onClick={() => setView('nicknames')}
-                className="w-full px-5 py-3.5 flex items-center gap-3.5 hover:bg-neutral-50 active:bg-neutral-100 transition-colors text-left"
-              >
-                <div className="w-9 h-9 rounded-full bg-neutral-100 flex items-center justify-center text-[#111111] flex-shrink-0">
-                  <UserCheck className="w-4 h-4 stroke-[2]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-semibold text-[#111111] leading-tight">Nicknames</p>
-                </div>
-              </button>
+                {/* Nicknames */}
+                <button 
+                  type="button"
+                  onClick={() => setView('nicknames')}
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-[var(--theme-text)]/10 text-[var(--theme-text)] flex items-center justify-center flex-shrink-0">
+                      <UserCheck className="w-5 h-5 stroke-[2]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Nicknames</p>
+                      <p className="text-[12px] text-[var(--theme-text)]/60 mt-0.5 leading-tight">
+                        Custom name for this chat
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
+                </button>
+
+                {/* End-to-End Encryption */}
+                <button 
+                  type="button"
+                  onClick={() => setShowE2EESheet(true)}
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                      <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Encryption & Security</p>
+                      <p className="text-[12px] text-emerald-600/80 mt-0.5 leading-tight font-medium">
+                        End-to-end encrypted (tap to verify)
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
+                </button>
+              </div>
             </div>
 
-            {/* Media Tabs Section */}
-            <div className="mt-2">
-              <div className="grid grid-cols-3 border-b border-neutral-200 text-neutral-400">
+            {/* Shared Media Section */}
+            <div className="px-4 pb-8">
+              {/* Section Header */}
+              <div className="flex items-center justify-between mb-2.5 px-1">
+                <h3 className="text-[14px] font-bold tracking-tight text-[var(--theme-text)]">
+                  Shared Content
+                </h3>
+                <span className="text-[11px] font-medium text-[var(--theme-text)]/50">
+                  {sharedPhotos.length + sharedVideos.length + sharedLinks.length} items
+                </span>
+              </div>
+
+              {/* Segmented Tab Bar */}
+              <div className="p-1 rounded-xl bg-[var(--theme-bg)]/80 border border-[var(--theme-border)] flex gap-1 mb-3">
                 <button 
                   onClick={() => setActiveMediaTab('media')}
-                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'media' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                  className={`flex-1 py-2 rounded-lg text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    activeMediaTab === 'media'
+                      ? 'bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-xs'
+                      : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
+                  }`}
                 >
-                  <LayoutGrid className="w-5 h-5 stroke-[1.75]" />
-                  {activeMediaTab === 'media' && (
-                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
-                  )}
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Photos</span>
+                  <span className="text-[10px] opacity-60">({sharedPhotos.length})</span>
                 </button>
                 <button 
                   onClick={() => setActiveMediaTab('reels')}
-                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'reels' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                  className={`flex-1 py-2 rounded-lg text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    activeMediaTab === 'reels'
+                      ? 'bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-xs'
+                      : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
+                  }`}
                 >
-                  <Repeat className="w-5 h-5 stroke-[1.75]" />
-                  {activeMediaTab === 'reels' && (
-                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
-                  )}
+                  <Film className="w-3.5 h-3.5" />
+                  <span>Videos</span>
+                  <span className="text-[10px] opacity-60">({sharedVideos.length})</span>
                 </button>
                 <button 
                   onClick={() => setActiveMediaTab('links')}
-                  className={`py-3 flex items-center justify-center transition-colors relative ${activeMediaTab === 'links' ? 'text-[#111111]' : 'hover:text-neutral-600'}`}
+                  className={`flex-1 py-2 rounded-lg text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    activeMediaTab === 'links'
+                      ? 'bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-xs'
+                      : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
+                  }`}
                 >
-                  <Link2 className="w-5 h-5 stroke-[1.75]" />
-                  {activeMediaTab === 'links' && (
-                    <motion.div layoutId="igTabIndicator" className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[#111111]" />
-                  )}
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Links</span>
+                  <span className="text-[10px] opacity-60">({sharedLinks.length})</span>
                 </button>
               </div>
 
-              {/* Media Grid Tab Content */}
+              {/* Photos Tab Content */}
               {activeMediaTab === 'media' && (
-                <div className="p-1">
+                <div>
                   {sharedPhotos.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-1">
+                    <div className="grid grid-cols-3 gap-2">
                       {sharedPhotos.map((photoItem, idx) => (
                         <ProfileMediaThumbnail 
                           key={photoItem.id || idx}
@@ -504,21 +581,22 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <div className="py-16 text-center text-neutral-400">
-                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                        <Camera className="w-5 h-5 stroke-[1.5]" />
+                    <div className="py-12 px-4 text-center rounded-2xl bg-[var(--theme-bg)]/40 border border-dashed border-[var(--theme-border)]/60">
+                      <div className="w-10 h-10 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] flex items-center justify-center mx-auto mb-2.5">
+                        <ImageIcon className="w-5 h-5 stroke-[1.8]" />
                       </div>
-                      <p className="text-[14px] font-semibold text-neutral-700">No photos shared yet</p>
-                      <p className="text-[12px] text-neutral-400 mt-1">Photos you share in this chat will appear here.</p>
+                      <p className="text-[13px] font-semibold text-[var(--theme-text)]">No shared photos</p>
+                      <p className="text-[11px] text-[var(--theme-text)]/50 mt-0.5">Photos sent in this chat will appear here.</p>
                     </div>
                   )}
                 </div>
               )}
 
+              {/* Videos Tab Content */}
               {activeMediaTab === 'reels' && (
-                <div className="p-1">
+                <div>
                   {sharedVideos.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-1">
+                    <div className="grid grid-cols-3 gap-2">
                       {sharedVideos.map((videoItem, idx) => (
                         <ProfileMediaThumbnail 
                           key={videoItem.id || idx}
@@ -528,19 +606,20 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <div className="py-16 text-center text-neutral-400">
-                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                        <Film className="w-5 h-5 stroke-[1.5]" />
+                    <div className="py-12 px-4 text-center rounded-2xl bg-[var(--theme-bg)]/40 border border-dashed border-[var(--theme-border)]/60">
+                      <div className="w-10 h-10 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] flex items-center justify-center mx-auto mb-2.5">
+                        <Film className="w-5 h-5 stroke-[1.8]" />
                       </div>
-                      <p className="text-[14px] font-semibold text-neutral-700">No videos shared yet</p>
-                      <p className="text-[12px] text-neutral-400 mt-1">Videos you share in this chat will appear here.</p>
+                      <p className="text-[13px] font-semibold text-[var(--theme-text)]">No shared videos</p>
+                      <p className="text-[11px] text-[var(--theme-text)]/50 mt-0.5">Videos sent in this chat will appear here.</p>
                     </div>
                   )}
                 </div>
               )}
 
+              {/* Links Tab Content */}
               {activeMediaTab === 'links' && (
-                <div className="p-3">
+                <div>
                   {sharedLinks.length > 0 ? (
                     <div className="space-y-2">
                       {sharedLinks.map((linkItem, idx) => (
@@ -549,29 +628,30 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                           href={linkItem.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 border border-neutral-200/60 transition-colors text-left group"
+                          className="flex items-center gap-3 p-3 rounded-xl bg-[var(--theme-bg)]/60 hover:bg-[var(--theme-accent)]/5 border border-[var(--theme-border)]/60 transition-colors text-left group"
                         >
                           <div className="w-9 h-9 rounded-lg bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0">
                             <Link2 className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold text-blue-600 truncate group-hover:underline">
+                            <p className="text-[13px] font-semibold text-[var(--theme-accent)] truncate group-hover:underline">
                               {linkItem.url}
                             </p>
-                            <p className="text-[11px] text-neutral-500 truncate mt-0.5">
+                            <p className="text-[11px] text-[var(--theme-text)]/60 truncate mt-0.5">
                               {linkItem.text}
                             </p>
                           </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-[var(--theme-text)]/30 group-hover:text-[var(--theme-text)]/70 flex-shrink-0" />
                         </a>
                       ))}
                     </div>
                   ) : (
-                    <div className="py-16 text-center text-neutral-400">
-                      <div className="w-12 h-12 rounded-full border border-neutral-300 flex items-center justify-center mx-auto mb-3 text-neutral-400">
-                        <Link2 className="w-5 h-5 stroke-[1.5]" />
+                    <div className="py-12 px-4 text-center rounded-2xl bg-[var(--theme-bg)]/40 border border-dashed border-[var(--theme-border)]/60">
+                      <div className="w-10 h-10 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] flex items-center justify-center mx-auto mb-2.5">
+                        <Link2 className="w-5 h-5 stroke-[1.8]" />
                       </div>
-                      <p className="text-[14px] font-semibold text-neutral-700">No links shared</p>
-                      <p className="text-[12px] text-neutral-400 mt-1">Shared web links in your chat will appear here.</p>
+                      <p className="text-[13px] font-semibold text-[var(--theme-text)]">No links shared</p>
+                      <p className="text-[11px] text-[var(--theme-text)]/50 mt-0.5">Shared web links in your chat will appear here.</p>
                     </div>
                   )}
                 </div>
@@ -581,43 +661,44 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
         </div>
       ) : (
         /* ==================== NICKNAMES SUB-VIEW ==================== */
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--theme-surface)] text-[var(--theme-text)]">
           {/* Top Bar with Title */}
-          <div className="h-14 flex-shrink-0 flex items-center px-4 border-b border-neutral-100">
+          <div className="h-14 flex-shrink-0 flex items-center px-4 border-b border-[var(--theme-border)]/40 bg-[var(--theme-surface)]">
             <button 
               onClick={() => setView('main')} 
-              className="p-1 -ml-1 text-[#111111] hover:opacity-70 transition-opacity active:scale-95"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer"
+              title="Back"
             >
-              <ArrowLeft className="w-6 h-6 stroke-[2]" />
+              <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
             </button>
-            <h1 className="text-[18px] font-bold text-[#111111] ml-4">
+            <h1 className="text-[16px] font-bold text-[var(--theme-text)] ml-3 tracking-tight">
               Nicknames
             </h1>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-3">
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
             <div className="py-2 text-center">
-              <p className="text-[13px] text-[#737373]">
-                Nicknames are only displayed in this chat.
+              <p className="text-[12px] text-[var(--theme-text)]/60">
+                Nicknames are displayed only in your private chat.
               </p>
               <button 
                 type="button"
                 onClick={() => setShowWhoCanEditModal(true)}
-                className="text-[13px] text-[#0095F6] font-semibold mt-1 hover:underline active:opacity-70 transition-opacity"
+                className="text-[12px] text-[var(--theme-accent)] font-semibold mt-1 hover:underline active:opacity-70 transition-opacity cursor-pointer"
               >
-                Change who can edit your nickname
+                Change who can edit nicknames
               </button>
             </div>
 
-            <div className="mt-4 space-y-1">
+            <div className="mt-4 rounded-2xl bg-[var(--theme-bg)]/60 border border-[var(--theme-border)] overflow-hidden divide-y divide-[var(--theme-border)]/50 shadow-xs">
               {/* Member 1: Rahul / Owner / Me */}
               <button 
                 type="button"
                 onClick={() => openEditNickname('me')}
-                className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
+                className="w-full p-4 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-13 h-13 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
                     {myProfile?.photo_url ? (
                       <img 
                         src={myProfile.photo_url} 
@@ -632,25 +713,25 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[15px] font-semibold text-[#111111] leading-snug truncate">
+                    <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-snug truncate">
                       {currentMyNickname || "Rahul"}
                     </p>
-                    <p className="text-[13px] text-[#737373] leading-tight truncate">
-                      {myHandle}
+                    <p className="text-[12px] text-[var(--theme-text)]/60 leading-tight truncate mt-0.5">
+                      @{myHandle}
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-neutral-400 flex-shrink-0" />
+                <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
               </button>
 
               {/* Member 2: Partner / Nusrat */}
               <button 
                 type="button"
                 onClick={() => openEditNickname('partner')}
-                className="w-full py-3.5 flex items-center justify-between hover:bg-neutral-50 active:bg-neutral-100 rounded-xl px-2 transition-colors text-left"
+                className="w-full p-4 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative w-13 h-13 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
                     {partner.photo_url ? (
                       <img 
                         src={partner.photo_url} 
@@ -664,19 +745,19 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                       </div>
                     )}
                     {isPartnerOnline && (
-                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#4ade80] border-2 border-[var(--theme-surface)] rounded-full" />
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[15px] font-semibold text-[#111111] leading-snug truncate">
+                    <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-snug truncate">
                       {currentPartnerNickname || "Nusrat"}
                     </p>
-                    <p className="text-[13px] text-[#737373] leading-tight truncate">
-                      {partnerHandle}
+                    <p className="text-[12px] text-[var(--theme-text)]/60 leading-tight truncate mt-0.5">
+                      @{partnerHandle}
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-neutral-400 flex-shrink-0" />
+                <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
               </button>
             </div>
           </div>
@@ -692,24 +773,24 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setEditingTarget(null)}
-              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+              className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs"
             />
             <motion.div 
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-5 pb-8 max-w-md mx-auto shadow-2xl"
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-t-3xl p-5 pb-8 max-w-md mx-auto shadow-2xl border-t border-[var(--theme-border)]"
             >
-              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
+              <div className="w-10 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto mb-4" />
               
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-[#111111]">
+                <h3 className="text-base font-bold text-[var(--theme-text)]">
                   Edit Nickname for {editingTarget === 'partner' ? 'Partner' : 'You'}
                 </h3>
                 <button 
                   onClick={() => setEditingTarget(null)}
-                  className="p-1 text-neutral-400 hover:text-neutral-700"
+                  className="p-1 text-[var(--theme-text)]/40 hover:text-[var(--theme-text)] transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -722,13 +803,13 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   onChange={(e) => setNicknameInput(e.target.value)}
                   placeholder="Enter nickname..."
                   autoFocus
-                  className="w-full bg-neutral-100 border border-neutral-200 rounded-xl px-4 py-3 text-[15px] font-medium text-[#111111] focus:outline-none focus:border-[#0095F6] pr-10"
+                  className="w-full bg-[var(--theme-bg)] border border-[var(--theme-border)] rounded-xl px-4 py-3 text-[15px] font-medium text-[var(--theme-text)] focus:outline-none focus:border-[var(--theme-accent)] pr-10"
                 />
                 {nicknameInput && (
                   <button 
                     type="button"
                     onClick={() => setNicknameInput("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-neutral-300 text-white flex items-center justify-center hover:bg-neutral-400"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[var(--theme-text)]/20 text-[var(--theme-text)] flex items-center justify-center hover:bg-[var(--theme-text)]/30 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -741,7 +822,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     key={emoji}
                     type="button"
                     onClick={() => setNicknameInput(prev => prev + emoji)}
-                    className="w-9 h-9 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-lg active:scale-95 transition-transform flex-shrink-0"
+                    className="w-9 h-9 rounded-full bg-[var(--theme-bg)] hover:bg-[var(--theme-accent)]/15 border border-[var(--theme-border)]/50 flex items-center justify-center text-lg active:scale-95 transition-transform flex-shrink-0 cursor-pointer"
                   >
                     {emoji}
                   </button>
@@ -752,7 +833,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                 type="button"
                 onClick={saveNickname}
                 disabled={isSaving}
-                className="w-full h-12 bg-[#0095F6] hover:bg-[#1877F2] text-white font-bold rounded-xl text-[15px] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center shadow-md shadow-[#0095F6]/20"
+                className="w-full h-12 bg-[var(--theme-accent)] hover:opacity-90 text-white font-bold rounded-xl text-[15px] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center shadow-md cursor-pointer"
               >
                 {isSaving ? "Saving..." : "Save"}
               </button>
@@ -782,29 +863,29 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowWhoCanEditModal(false)}
-              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs"
+              className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs"
             />
             <motion.div 
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-[130] bg-white rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl"
+              className="fixed bottom-0 left-0 right-0 z-[130] bg-[var(--theme-surface)] text-[var(--theme-text)] rounded-t-3xl p-6 pb-8 max-w-md mx-auto shadow-2xl border-t border-[var(--theme-border)]"
             >
-              <div className="w-10 h-1 bg-neutral-300 rounded-full mx-auto mb-4" />
-              <h3 className="text-base font-bold text-[#111111] mb-2">
+              <div className="w-10 h-1 bg-[var(--theme-text)]/20 rounded-full mx-auto mb-4" />
+              <h3 className="text-base font-bold text-[var(--theme-text)] mb-2">
                 Who can edit nicknames
               </h3>
-              <p className="text-[13px] text-neutral-500 mb-4">
+              <p className="text-[13px] text-[var(--theme-text)]/60 mb-4">
                 In OnlyUs, both Rahul and Nusrat have equal permissions to edit nicknames anytime.
               </p>
-              <div className="p-4 bg-neutral-50 rounded-2xl flex items-center justify-between border border-neutral-200">
-                <span className="text-[14px] font-semibold text-neutral-800">Everyone in this chat</span>
-                <Check className="w-5 h-5 text-[#0095F6]" />
+              <div className="p-4 bg-[var(--theme-bg)]/80 rounded-2xl flex items-center justify-between border border-[var(--theme-border)]">
+                <span className="text-[14px] font-semibold text-[var(--theme-text)]">Everyone in this chat</span>
+                <Check className="w-5 h-5 text-[var(--theme-accent)]" />
               </div>
               <button 
                 onClick={() => setShowWhoCanEditModal(false)}
-                className="mt-5 w-full h-11 bg-[#0095F6] text-white font-bold rounded-xl text-sm active:scale-95 transition-all"
+                className="mt-5 w-full h-11 bg-[var(--theme-accent)] hover:opacity-90 text-white font-bold rounded-xl text-sm active:scale-95 transition-all cursor-pointer"
               >
                 Done
               </button>

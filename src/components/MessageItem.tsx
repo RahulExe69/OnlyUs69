@@ -17,7 +17,8 @@ interface MessageItemProps {
   isSelected: boolean;
   selectionCount?: number;
   onToggleSelect: (msg: Message) => void;
-  selectionActive: boolean;
+  selectionActive?: boolean;
+  isSelectionActiveRef?: React.RefObject<boolean>;
   onReply: (msg: Message) => void;
   userProfile: UserProfile | null;
   partnerProfile: UserProfile | null;
@@ -31,6 +32,9 @@ interface MessageItemProps {
   onTriggerNudge?: (type: string) => void;
   onFocusInput?: () => void;
   onOpenReel?: (reel: InstagramReelInfo) => void;
+  showAvatar?: boolean;
+  isFirstInGroup?: boolean;
+  isLastInGroup?: boolean;
 }
 
 function MessageItemComponent({
@@ -42,7 +46,8 @@ function MessageItemComponent({
   isSelected,
   selectionCount,
   onToggleSelect,
-  selectionActive,
+  selectionActive = false,
+  isSelectionActiveRef,
   onReply,
   userProfile,
   partnerProfile,
@@ -56,6 +61,9 @@ function MessageItemComponent({
   onTriggerNudge,
   onFocusInput,
   onOpenReel,
+  showAvatar,
+  isFirstInGroup = true,
+  isLastInGroup = true,
 }: MessageItemProps) {
   const isOwn = msg.sender_role === role;
   const itemRef = useRef<HTMLDivElement>(null);
@@ -63,6 +71,20 @@ function MessageItemComponent({
   const longPressTriggeredTimeRef = useRef<number>(0);
   const lastHapticTimeRef = useRef<number>(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0);
+  const lastTapPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastDoubleTapTimeRef = useRef<number>(0);
+  const [showHeartBurst, setShowHeartBurst] = useState(false);
+  const heartBurstTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const checkSelectionActive = () => Boolean(isSelectionActiveRef?.current ?? selectionActive);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+    };
+  }, []);
 
   const emojis = ['❤️', '😂', '😮', '😢', '😡', '👍'];
   const [showPicker, setShowPicker] = useState(false);
@@ -182,10 +204,41 @@ function MessageItemComponent({
         } catch (_) {}
       }
     }
+
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapTimeRef.current;
+    const isClosePos =
+      lastTapPosRef.current &&
+      Math.abs(e.clientX - lastTapPosRef.current.x) < 32 &&
+      Math.abs(e.clientY - lastTapPosRef.current.y) < 32;
+
+    // Double-tap ❤️ detection
+    if (timeSinceLastTap > 30 && timeSinceLastTap < 330 && isClosePos && !checkSelectionActive()) {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+      lastTapTimeRef.current = 0;
+      lastTapPosRef.current = null;
+      touchStartPos.current = null;
+      lastDoubleTapTimeRef.current = now;
+
+      if (!msg.deleted) {
+        triggerHaptic(30, 100);
+        setShowHeartBurst(true);
+        if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+        heartBurstTimerRef.current = setTimeout(() => setShowHeartBurst(false), 700);
+        onReact(msg.id, '❤️');
+      }
+      return;
+    }
+
+    lastTapTimeRef.current = now;
+    lastTapPosRef.current = { x: e.clientX, y: e.clientY };
     touchStartPos.current = { x: e.clientX, y: e.clientY };
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
 
-    if (selectionActive) return;
+    if (checkSelectionActive()) return;
 
     longPressTimer.current = setTimeout(() => {
       triggerLongPress();
@@ -201,6 +254,8 @@ function MessageItemComponent({
         clearTimeout(longPressTimer.current);
         longPressTimer.current = null;
       }
+      lastTapTimeRef.current = 0;
+      lastTapPosRef.current = null;
     }
   };
 
@@ -218,13 +273,18 @@ function MessageItemComponent({
       return;
     }
 
+    // Ignore click event if triggered as part of double-tap
+    if (now - lastDoubleTapTimeRef.current < 380) {
+      return;
+    }
+
     if (isSwiping) return;
 
     if (showPicker) {
       setShowPicker(false);
     }
 
-    if (selectionActive || isSelected) {
+    if (checkSelectionActive() || isSelected) {
       onToggleSelect(msg);
     }
   };
@@ -330,14 +390,16 @@ function MessageItemComponent({
   const isMediaOnly = hasMedia && !isAudioMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
   const isDeletedByMe = Boolean((msg.deletedBy && msg.deletedBy === role) || (!msg.deletedBy && msg.sender_role === role));
   const hasReactions = Boolean(msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0);
+  const isFirst = isFirstInGroup;
+  const shouldShowAvatar = showAvatar ?? (!isOwn && isFirst);
+  const rowMarginTop = isFirst ? 'mt-2 sm:mt-2.5' : 'mt-[2px] sm:mt-[3px]';
+  const rowPadding = hasReactions ? 'pt-[1px] pb-1' : 'py-[1px]';
 
   return (
     <div
       ref={itemRef}
       id={`msg-${msg.id}`}
-      className={`chat-message-row relative w-full flex transition-all duration-200 select-none pt-1.5 ${
-        hasReactions ? 'pb-3.5' : 'pb-1.5'
-      } cursor-default rounded-2xl ${
+      className={`chat-message-row relative w-full flex transition-all duration-200 select-none ${rowMarginTop} ${rowPadding} cursor-default rounded-2xl ${
         isSelected ? 'is-active-row bg-[var(--theme-accent)]/20 backdrop-blur-[1px]' : 'hover:bg-[var(--theme-accent)]/5'
       } ${showPicker ? 'is-active-row z-[60]' : 'z-auto'} ${isOwn ? 'justify-end' : 'justify-start'}`}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
@@ -347,6 +409,20 @@ function MessageItemComponent({
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onClick={handleClick}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (!msg.deleted && !checkSelectionActive()) {
+          const now = Date.now();
+          if (now - lastDoubleTapTimeRef.current > 400) {
+            lastDoubleTapTimeRef.current = now;
+            triggerHaptic(30, 100);
+            setShowHeartBurst(true);
+            if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+            heartBurstTimerRef.current = setTimeout(() => setShowHeartBurst(false), 700);
+            onReact(msg.id, '❤️');
+          }
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -447,52 +523,58 @@ function MessageItemComponent({
           }
           hasTriggeredReplyThreshold.current = false;
         }}
-        className="relative w-full flex items-end px-2 lg:px-4 select-none"
+        className="relative w-full flex items-start px-2 lg:px-4 select-none"
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
         }}
       >
         {!isOwn && (
-          <div
-            className="flex-shrink-0 mr-2 self-end mb-1 cursor-pointer active:scale-95 transition-transform"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (selectionActive || isSelected) {
-                onToggleSelect(msg);
-                return;
-              }
-              partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url);
-            }}
-          >
-            {partnerProfile?.photo_url ? (
-              <img
-                src={partnerProfile.photo_url}
-                alt="P"
-                className="w-8 h-8 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20 shadow-sm"
-                referrerPolicy="no-referrer"
-                onContextMenu={(e) => e.preventDefault()}
-                style={{ WebkitTouchCallout: 'none' }}
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)] font-bold text-xs border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20">
-                {partnerProfile?.display_name?.[0] || 'P'}
-              </div>
-            )}
-          </div>
+          shouldShowAvatar ? (
+            <div
+              className="flex-shrink-0 w-8 mr-2 self-start mt-0.5 cursor-pointer active:scale-95 transition-transform"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (checkSelectionActive() || isSelected) {
+                  onToggleSelect(msg);
+                  return;
+                }
+                partnerProfile?.photo_url && onViewImage(partnerProfile.photo_url);
+              }}
+            >
+              {partnerProfile?.photo_url ? (
+                <img
+                  src={partnerProfile.photo_url}
+                  alt="P"
+                  className="w-8 h-8 rounded-full object-cover border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20 shadow-sm"
+                  referrerPolicy="no-referrer"
+                  onContextMenu={(e) => e.preventDefault()}
+                  style={{ WebkitTouchCallout: 'none' }}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)] font-bold text-xs border-2 border-[var(--theme-accent)]/30 ring-1 ring-[var(--theme-accent)]/20">
+                  {partnerProfile?.display_name?.[0] || 'P'}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-shrink-0 w-8 mr-2 pointer-events-none" aria-hidden="true" />
+          )
         )}
 
         <div className={`flex flex-col max-w-[85%] sm:max-w-[75%] min-w-0 ${isOwn ? 'items-end' : 'items-start'} z-10`}>
-          <div className="relative group max-w-full min-w-0">
+          <div className={`relative group max-w-full min-w-0 ${hasReactions ? 'mb-[18px]' : ''}`}>
             <AnimatePresence>
               {showPicker && !isSwiping && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.8, y: pickerPosition === 'bottom' ? -10 : 10 }}
+                  initial={{ opacity: 0, scale: 0.85, y: pickerPosition === 'bottom' ? -6 : 6 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.8, y: pickerPosition === 'bottom' ? -10 : 10 }}
+                  exit={{ opacity: 0, scale: 0.85, y: pickerPosition === 'bottom' ? -6 : 6 }}
+                  transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ willChange: 'transform, opacity', transform: 'translateZ(0)' }}
                   className={`absolute ${
-                    pickerPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
-                  } z-50 bg-[var(--theme-surface)]/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-[var(--theme-border)] p-1.5 rounded-full flex gap-1 w-max ${
+                    pickerPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+                  } z-50 bg-[var(--theme-surface)] shadow-[0_4px_20px_rgba(0,0,0,0.16)] border border-[var(--theme-border)] p-1 sm:p-1.5 rounded-full flex items-center gap-0.5 sm:gap-1 w-max ${
                     isOwn ? 'right-0' : 'left-0'
                   }`}
                   onClick={(e) => e.stopPropagation()}
@@ -502,53 +584,32 @@ function MessageItemComponent({
                     return (
                       <motion.button
                         key={e}
-                        whileTap={{ scale: 0.8 }}
+                        whileTap={{ scale: 0.85 }}
                         onPointerDown={(eDown) => eDown.preventDefault()}
                         onClick={(eClick) => {
                           eClick.stopPropagation();
                           onReact(msg.id, e);
                           setShowPicker(false);
                         }}
-                        className={`w-10 h-10 flex items-center justify-center text-xl rounded-full transition-all relative ${
+                        className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-base sm:text-lg rounded-full transition-all relative ${
                           isActive ? 'bg-[var(--theme-accent)]/20 scale-110' : 'hover:bg-[var(--theme-accent)]/10'
                         }`}
                       >
                         {e}
-                        {isActive && (
-                          <motion.div
-                            layoutId="reaction-bg"
-                            className="absolute inset-0 bg-[var(--theme-accent)]/15 rounded-full -z-10"
-                          />
-                        )}
                       </motion.button>
                     );
                   })}
-                  <div className="w-[1px] h-6 bg-[var(--theme-border)] self-center mx-0.5" />
-                  <motion.button
-                    whileTap={{ scale: 0.85 }}
-                    onPointerDown={(eDown) => eDown.preventDefault()}
-                    onClick={(eClick) => {
-                      eClick.stopPropagation();
-                      setShowPicker(false);
-                      onReply(msg);
-                      triggerHaptic(24, 120);
-                      const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-                      inputEl?.focus({ preventScroll: true });
-                      onFocusInput?.();
-                    }}
-                    className="h-10 px-2.5 flex items-center gap-1.5 rounded-full text-xs font-semibold text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:bg-[var(--theme-accent)]/20 transition-all cursor-pointer"
-                    title="Reply to message"
-                  >
-                    <CornerUpLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline">Reply</span>
-                  </motion.button>
                 </motion.div>
               )}
             </AnimatePresence>
 
             <div
               className={`leading-relaxed shadow-sm relative transition-all select-none max-w-full min-w-0 break-words ${
-                isMediaOnly ? 'p-[3px] rounded-[18px]' : 'px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px]'
+                isMediaOnly
+                  ? 'p-[3px] rounded-[18px]'
+                  : hasReactions
+                  ? 'px-3 pt-2 pb-2.5 lg:px-4 lg:pt-2.5 lg:pb-3 text-[15px] lg:text-[16px]'
+                  : 'px-3 py-2 lg:px-4 lg:py-2.5 text-[15px] lg:text-[16px]'
               } ${isOwn ? 'chat-bubble-owner' : 'chat-bubble-partner'}`}
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
               onContextMenu={(e) => {
@@ -588,10 +649,10 @@ function MessageItemComponent({
                     media={msg.media || msg.mediaList![0]}
                     mediaList={msg.mediaList || msg.media?.mediaList}
                     isOwn={isOwn}
-                    selectionActive={selectionActive || isSelected}
+                    selectionActive={checkSelectionActive() || isSelected}
                     onToggleSelect={() => onToggleSelect(msg)}
                     onOpenViewer={(media, fullList, initialIndex) => {
-                      if (selectionActive || isSelected) {
+                      if (checkSelectionActive() || isSelected) {
                         onToggleSelect(msg);
                         return;
                       }
@@ -636,7 +697,7 @@ function MessageItemComponent({
                         reel={detectedReel}
                         isOwn={isOwn}
                         onWatch={() => onOpenReel?.(detectedReel)}
-                        selectionActive={selectionActive || isSelected}
+                        selectionActive={checkSelectionActive() || isSelected}
                       />
                     </div>
                   ) : msg.text ? (
@@ -687,7 +748,7 @@ function MessageItemComponent({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (selectionActive || isSelected) {
+                      if (checkSelectionActive() || isSelected) {
                         onToggleSelect(msg);
                         return;
                       }
@@ -709,71 +770,107 @@ function MessageItemComponent({
                   </button>
                 </div>
               )}
+              {/* Instagram-style floating heart pop on double tap */}
+              <AnimatePresence>
+                {showHeartBurst && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.35, 1], opacity: [0, 1, 0] }}
+                    exit={{ scale: 1.5, opacity: 0 }}
+                    transition={{ duration: 0.65, ease: 'easeOut' }}
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
+                  >
+                    <span className="text-4xl sm:text-5xl select-none drop-shadow-lg">❤️</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Reactions display - Instagram Style */}
-            {msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0 && (
-              <div className={`absolute -bottom-3 flex -space-x-1.5 ${isOwn ? 'right-2' : 'left-5'} z-20`}>
-                {Object.entries(
-                  Object.values(msg.reactions).reduce((acc: Record<string, number>, emoji: any) => {
-                    const key = String(emoji);
-                    acc[key] = (acc[key] || 0) + 1;
-                    return acc;
-                  }, {})
-                ).map(([emoji, count]: [string, any]) => {
-                  const userReacted = msg.reactions?.[role] === emoji;
-                  return (
-                    <motion.div
-                      layout
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      key={emoji}
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReact(msg.id, emoji);
-                      }}
-                      className={`flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-[var(--theme-surface)] border shadow-[0_2px_8px_rgba(0,0,0,0.12)] hover:scale-110 transition-transform cursor-pointer text-[13px] ${
-                        userReacted
-                          ? 'border-[var(--theme-accent)]/70 ring-1 ring-[var(--theme-accent)]/40 z-10'
-                          : 'border-[var(--theme-border)] z-0'
-                      }`}
-                    >
-                      <span>{emoji}</span>
-                      {count > 1 && <span className="ml-1 text-[10px] font-bold text-[var(--theme-text)]/70">{count}</span>}
-                    </motion.div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Read Receipt Area - Dynamic interaction point */}
-            {isInteractionPoint && (
-              <motion.div
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`mt-1.5 flex items-center gap-1.5 opacity-50 select-none ${
-                  isOwn ? 'justify-end' : 'justify-start'
+            {/* Reactions display - WhatsApp-style attached badge */}
+            {hasReactions && (
+              <div
+                className={`absolute top-[calc(100%-5px)] flex items-center z-20 pointer-events-auto select-none ${
+                  isOwn ? 'right-4 justify-end' : 'left-4 justify-start'
                 }`}
               >
-                {partnerProfile?.photo_url ? (
-                  <img
-                    src={partnerProfile.photo_url}
-                    alt="S"
-                    className="w-3.5 h-3.5 rounded-full object-cover grayscale opacity-60 grayscale-[0.5]"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-3 h-3 rounded-full bg-gray-200" />
-                )}
-                {showSeenText && (
-                  <span className="text-[10px] font-bold tracking-tight text-[#6E6E6E]">
-                    {partnerProfile?.last_read_at ? formatSeenTime(partnerProfile.last_read_at) : 'Seen'}
-                  </span>
-                )}
-              </motion.div>
+                <motion.div
+                  layout
+                  initial={{ scale: 0.75, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className={`flex items-center gap-1 h-[22px] sm:h-[24px] px-1.5 sm:px-2 rounded-full border-2 shadow-[0_2px_6px_rgba(0,0,0,0.18)] transition-all ${
+                    msg.reactions?.[role]
+                      ? 'ring-1 ring-[var(--theme-accent)]/35'
+                      : ''
+                  }`}
+                  style={{
+                    backgroundColor: 'var(--theme-surface)',
+                    borderColor: 'var(--theme-bg)',
+                    color: 'var(--theme-text)',
+                  }}
+                >
+                  {Object.entries(
+                    Object.values(msg.reactions!).reduce((acc: Record<string, number>, emoji: any) => {
+                      const key = String(emoji);
+                      acc[key] = (acc[key] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([emoji, count]: [string, any]) => {
+                    const userReactedThis = msg.reactions?.[role] === emoji;
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReact(msg.id, emoji);
+                        }}
+                        className="flex items-center gap-0.5 cursor-pointer hover:scale-110 active:scale-90 transition-transform select-none"
+                        title={userReactedThis ? `Remove ${emoji} reaction` : `React with ${emoji}`}
+                      >
+                        <span className="text-[12px] sm:text-[13px] leading-none select-none">
+                          {emoji}
+                        </span>
+                        {count > 1 && (
+                          <span className="text-[10px] font-bold leading-none select-none text-[var(--theme-text)]/75">
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              </div>
             )}
           </div>
+
+          {/* Read Receipt Area - Dynamic interaction point, cleanly separated below the bubble and reaction */}
+          {isInteractionPoint && (
+            <motion.div
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex items-center gap-1.5 opacity-65 select-none mt-1.5 ${
+                isOwn ? 'justify-end pr-1' : 'justify-start pl-1'
+              }`}
+            >
+              {partnerProfile?.photo_url ? (
+                <img
+                  src={partnerProfile.photo_url}
+                  alt="S"
+                  className="w-3.5 h-3.5 rounded-full object-cover grayscale opacity-70"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-3 h-3 rounded-full bg-gray-300" />
+              )}
+              {showSeenText && (
+                <span className="text-[10px] font-medium tracking-tight text-[var(--theme-text)]/65">
+                  {partnerProfile?.last_read_at ? formatSeenTime(partnerProfile.last_read_at) : 'Seen'}
+                </span>
+              )}
+            </motion.div>
+          )}
         </div>
       </motion.div>
     </div>
@@ -803,9 +900,13 @@ function areMessagePropsEqual(prev: MessageItemProps, next: MessageItemProps): b
     }
   }
 
-  // 2. Selection states
+  // 2. Selection states & grouping
   if (prev.isSelected !== next.isSelected) return false;
-  if (prev.selectionActive !== next.selectionActive) return false;
+  // Note: selectionActive / isSelectionActiveRef is intentionally excluded from the equality check
+  // to avoid O(N) re-rendering of all messages when selection mode starts/ends.
+  if (prev.showAvatar !== next.showAvatar) return false;
+  if (prev.isFirstInGroup !== next.isFirstInGroup) return false;
+  if (prev.isLastInGroup !== next.isLastInGroup) return false;
 
   // 3. Interaction frontier & read status
   if (prev.isInteractionPoint !== next.isInteractionPoint) return false;
