@@ -6,7 +6,7 @@ export const THEMES = {
     name: 'Moonlight', note: 'A cinematic night chat with glowing edges.', bg: '#11121B', text: '#F6F4FF', header: 'rgba(24, 25, 39, .86)', owner: '#B69CFF', ownerText: '#171322', partner: '#28293A', partnerText: '#F0EDFF', input: '#202130', surface: '#1B1C29', accent: '#B69CFF', border: 'rgba(182, 156, 255, .22)', decoration: 'radial-gradient(circle at 16% 8%, rgba(182,156,255,.2), transparent 28%), radial-gradient(circle at 88% 76%, rgba(84,193,255,.12), transparent 24%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
   },
   romantic: {
-    name: 'Only Us', note: 'Soft rose curves made for your shared space.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
+    name: 'Only Us', note: 'Soft rose curves made for your shared space with 3D fluttering Sakura Blossom petals.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
   },
   lavender: {
     name: 'Lavender Haze', note: 'Velvety violet layers with a handwritten feel.', bg: '#F7F3FF', text: '#332748', header: 'rgba(249, 246, 255, .88)', owner: '#8062C7', ownerText: '#FFFFFF', partner: '#E8DFFF', partnerText: '#51406D', input: '#FEFCFF', surface: '#FCFAFF', accent: '#8062C7', border: 'rgba(128, 98, 199, .18)', decoration: 'radial-gradient(ellipse at 14% 8%, rgba(194,167,255,.38), transparent 30%), radial-gradient(ellipse at 88% 84%, rgba(232,223,255,.9), transparent 32%)', font: '"Georgia", "Times New Roman", serif'
@@ -41,11 +41,14 @@ export const THEMES = {
   akatsuki: {
     name: 'Akatsuki', note: 'The legendary rogue ninja syndicate. Blood-red clouds, Amegakure rainstorm, and dark chakra.', bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif'
   },
+  neural: {
+    name: 'Neural Noise', note: 'Organic procedural neural noise with flowing synaptic currents and bio-glow.', bg: '#0A060A', text: '#FDF2F4', header: 'rgba(15, 9, 16, .88)', owner: '#E63366', ownerText: '#FFFFFF', partner: '#1A101C', partnerText: '#FCE7EB', input: '#150D18', surface: '#120B15', accent: '#E63366', border: 'rgba(230, 51, 102, .35)', decoration: 'radial-gradient(circle at 18% 15%, rgba(230,51,102,.28), transparent 38%), radial-gradient(circle at 82% 80%, rgba(255,102,153,.18), transparent 42%)', font: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+  },
   // ==========================================
   // 3D VERSIONS OF ALL THEMES (IDENTICAL PALETTES & STYLES)
   // ==========================================
   '3d-romantic': {
-    name: 'Only Us', note: 'Soft rose curves made for your shared space with 3D fluttering petals.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
+    name: 'Only Us', note: 'Soft rose curves made for your shared space with 3D tumbling Sakura Blossom shader.', bg: '#FFF7F8', text: '#3A202B', header: 'rgba(255, 250, 251, .86)', owner: '#E45F84', ownerText: '#FFFFFF', partner: '#FFE0E7', partnerText: '#663746', input: '#FFFFFF', surface: '#FFFDFD', accent: '#E45F84', border: 'rgba(228, 95, 132, .18)', decoration: 'radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%)', font: '"Nunito", "Inter", sans-serif'
   },
   '3d-light': {
     name: 'Clean Slate', note: 'Crisp, bright, and quietly minimal with 3D geometric wireframe nodes.', bg: '#F7F9FC', text: '#172033', header: 'rgba(255, 255, 255, .84)', owner: '#4263EB', ownerText: '#FFFFFF', partner: '#E8EDF6', partnerText: '#263247', input: '#FFFFFF', surface: '#FFFFFF', accent: '#4263EB', border: 'rgba(66, 99, 235, .16)', decoration: 'linear-gradient(135deg, rgba(66,99,235,.08), transparent 38%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
@@ -86,6 +89,9 @@ export const THEMES = {
   '3d-akatsuki': {
     name: 'Akatsuki', note: 'The legendary rogue ninja syndicate with 3D drifting crimson clouds, Amegakure rainstorm, and shadow crows.', bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif'
   },
+  '3d-neural': {
+    name: 'Neural Noise', note: 'Living WebGL procedural neural noise shader with flowing synaptic currents, action potential pulses, and bio-glow.', bg: '#0A060A', text: '#FDF2F4', header: 'rgba(15, 9, 16, .88)', owner: '#E63366', ownerText: '#FFFFFF', partner: '#1A101C', partnerText: '#FCE7EB', input: '#150D18', surface: '#120B15', accent: '#E63366', border: 'rgba(230, 51, 102, .35)', decoration: 'radial-gradient(circle at 18% 15%, rgba(230,51,102,.28), transparent 38%), radial-gradient(circle at 82% 80%, rgba(255,102,153,.18), transparent 42%)', font: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+  },
   // Backwards compatibility aliases for existing saved themes
   '3d-aura': {
     name: 'Lavender Haze', note: 'Fluid 3D volumetric glowing orbs & stardust field.', bg: '#080811', text: '#F5F3FF', header: 'rgba(12, 11, 24, .82)', owner: '#A855F7', ownerText: '#FFFFFF', partner: '#1E1B38', partnerText: '#E0E7FF', input: '#121124', surface: '#0F0E20', accent: '#C084FC', border: 'rgba(168, 85, 247, .3)', decoration: 'radial-gradient(circle at 50% 20%, rgba(168,85,247,.22), transparent 45%)', font: '"Inter", system-ui, sans-serif'
@@ -123,7 +129,8 @@ export const BASE_THEMES: BaseThemeItem[] = [
   { key: 'noir', name: 'Film Noir' },
   { key: 'forest', name: 'Enchanted Forest' },
   { key: 'cyber', name: 'Neon Arcade' },
-  { key: 'aurora', name: 'Aurora Drift' }
+  { key: 'aurora', name: 'Aurora Drift' },
+  { key: 'neural', name: 'Neural Noise' }
 ];
 
 export const toBaseThemeKey = (themeName?: string | null): string => {
@@ -146,15 +153,16 @@ export const getThemeVariantKey = (baseKey: string, is3D: boolean): ThemeName =>
 
 export type ThemeName = keyof typeof THEMES;
 
-export const DEFAULT_THEME: ThemeName = 'romantic';
+export const DEFAULT_THEME: ThemeName = '3d-romantic';
 
 export const is3DTheme = (themeName?: string | null): boolean => {
-  return typeof themeName === 'string' && themeName.startsWith('3d-');
+  if (!themeName || typeof themeName !== 'string') return true;
+  return themeName.startsWith('3d-') || themeName === 'romantic' || themeName === 'neural';
 };
 
 export const getThemeCategory = (themeName: ThemeName): '3d' | 'dark' | 'light' => {
   if (themeName.startsWith('3d-')) return '3d';
-  if (['dark', 'noir', 'cyber', 'forest', 'pokemon', 'akatsuki'].includes(themeName)) return 'dark';
+  if (['dark', 'noir', 'cyber', 'forest', 'pokemon', 'akatsuki', 'neural'].includes(themeName)) return 'dark';
   return 'light';
 };
 

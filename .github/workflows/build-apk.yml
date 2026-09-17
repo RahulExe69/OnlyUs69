@@ -3,10 +3,18 @@ name: Build OnlyUs Dual Android APKs
 on:
   workflow_dispatch:
     inputs:
-      version_name:
-        description: 'APK Version Name (e.g. 1.0.1 or 1.1.0)'
+      build_type:
+        description: 'Build Type (release = Signed Production, debug = Development)'
         required: false
-        default: '1.0.1'
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+      version_name:
+        description: 'APK Version Name (e.g. 1.5.0)'
+        required: false
+        default: '1.5.0'
         type: string
       version_code:
         description: 'APK Version Code (integer e.g. 2, 3... Leave empty to auto-use GitHub run number)'
@@ -14,7 +22,7 @@ on:
         default: ''
         type: string
       version_tag:
-        description: 'GitHub Release Tag (e.g. v1.0.1, leave empty to auto-use v<version_name>)'
+        description: 'GitHub Release Tag (e.g. v1.5.0, leave empty to auto-use v<version_name>)'
         required: false
         default: ''
         type: string
@@ -34,9 +42,19 @@ jobs:
       - name: Resolve Versioning Parameters
         id: vars
         run: |
+          BUILD_TYPE="${{ inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="release"
+          fi
+          if [ "$BUILD_TYPE" = "release" ]; then
+            GRADLE_TASK_SUFFIX="Release"
+          else
+            GRADLE_TASK_SUFFIX="Debug"
+          fi
+
           RAW_NAME="${{ inputs.version_name }}"
           if [ -z "$RAW_NAME" ]; then
-            RAW_NAME="1.0.1"
+            RAW_NAME="1.5.0"
           fi
           CLEAN_NAME="${RAW_NAME#v}"
 
@@ -50,10 +68,12 @@ jobs:
             RAW_TAG="v${CLEAN_NAME}"
           fi
 
+          echo "build_type=${BUILD_TYPE}" >> $GITHUB_OUTPUT
+          echo "gradle_task_suffix=${GRADLE_TASK_SUFFIX}" >> $GITHUB_OUTPUT
           echo "version_name=${CLEAN_NAME}" >> $GITHUB_OUTPUT
           echo "version_code=${RAW_CODE}" >> $GITHUB_OUTPUT
           echo "version_tag=${RAW_TAG}" >> $GITHUB_OUTPUT
-          echo "✅ Building with versionName=${CLEAN_NAME}, versionCode=${RAW_CODE}, releaseTag=${RAW_TAG}"
+          echo "✅ Building [${BUILD_TYPE}] with versionName=${CLEAN_NAME}, versionCode=${RAW_CODE}, releaseTag=${RAW_TAG}"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -97,9 +117,15 @@ jobs:
         run: chmod +x ./android/gradlew
 
       - name: Build Dual Android APKs (Nusrat Stealth + Rahul Direct)
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'onlyuspassword' }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS || 'onlyus' }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'onlyuspassword' }}
         run: |
           cd android
-          ./gradlew assembleNusratDebug assembleRahulDebug \
+          TASK_SUFFIX="${{ steps.vars.outputs.gradle_task_suffix }}"
+          echo "Executing Gradle tasks: assembleNusrat${TASK_SUFFIX} assembleRahul${TASK_SUFFIX}"
+          ./gradlew "assembleNusrat${TASK_SUFFIX}" "assembleRahul${TASK_SUFFIX}" \
             -PversionCode=${{ steps.vars.outputs.version_code }} \
             -PversionName=${{ steps.vars.outputs.version_name }} \
             --no-daemon --build-cache --parallel --stacktrace
@@ -107,10 +133,20 @@ jobs:
       - name: Organize APK Artifacts
         run: |
           VER="${{ steps.vars.outputs.version_name }}"
-          NUSRAT_APK=$(find android/app/build/outputs/apk/nusrat -name "*.apk" | head -n 1)
-          RAHUL_APK=$(find android/app/build/outputs/apk/rahul -name "*.apk" | head -n 1)
-          echo "Found Nusrat APK: $NUSRAT_APK"
-          echo "Found Rahul APK: $RAHUL_APK"
+          BTYPE="${{ steps.vars.outputs.build_type }}"
+          
+          NUSRAT_APK=$(find "android/app/build/outputs/apk/nusrat/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -z "$NUSRAT_APK" ]; then
+            NUSRAT_APK=$(find android/app/build/outputs/apk/nusrat -name "*.apk" | head -n 1)
+          fi
+          
+          RAHUL_APK=$(find "android/app/build/outputs/apk/rahul/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -z "$RAHUL_APK" ]; then
+            RAHUL_APK=$(find android/app/build/outputs/apk/rahul -name "*.apk" | head -n 1)
+          fi
+          
+          echo "Selected Nusrat APK (${BTYPE}): $NUSRAT_APK"
+          echo "Selected Rahul APK (${BTYPE}): $RAHUL_APK"
           if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
             cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
             cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
@@ -156,7 +192,8 @@ jobs:
           body: |
             ### 💖 OnlyUs Android Dual Edition Companion Apps (${{ steps.vars.outputs.version_tag }})
 
-            **Version:** `${{ steps.vars.outputs.version_name }}` (Code: `${{ steps.vars.outputs.version_code }}`)
+            - **Version:** `${{ steps.vars.outputs.version_name }}` (Code: `${{ steps.vars.outputs.version_code }}`)
+            - **Build Type:** `${{ steps.vars.outputs.build_type }}` (Signed with `onlyus.keystore` v1 & v2 scheme)
 
             Download the edition that fits your device:
 
@@ -181,6 +218,7 @@ jobs:
         run: |
           echo "### OnlyUs Dual Android APKs Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "Version: **${{ steps.vars.outputs.version_name }}** (Build code: **${{ steps.vars.outputs.version_code }}**)" >> $GITHUB_STEP_SUMMARY
+          echo "Build Type: **${{ steps.vars.outputs.build_type }}** (Signed with keystore)" >> $GITHUB_STEP_SUMMARY
           echo "Release Tag: **${{ steps.vars.outputs.version_tag }}**" >> $GITHUB_STEP_SUMMARY
           echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
           echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
-import { UserProfile, Message } from '../types';
+import { UserProfile, Message, APP_VERSION } from '../types';
 import { ThemeName, THEMES } from '../lib/themes';
 import { useOverlayBack } from '../lib/overlayManager';
 import { getLocalMedia } from '../lib/mediaStore';
@@ -636,6 +636,13 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   )}
                 </div>
               )}
+
+              {/* App Version Info */}
+              <div className="pt-6 pb-2 text-center select-none">
+                <p className="text-[11px] font-mono text-[var(--theme-text)]/40 tracking-wider">
+                  OnlyUs v{APP_VERSION} • Private 1-to-1
+                </p>
+              </div>
             </div>
           </div>
         </div>

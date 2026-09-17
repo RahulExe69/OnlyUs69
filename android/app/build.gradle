@@ -46,9 +46,11 @@ android {
     signingConfigs {
         shared {
             storeFile file('onlyus.keystore')
-            storePassword 'onlyuspassword'
-            keyAlias 'onlyus'
-            keyPassword 'onlyuspassword'
+            storePassword (project.findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD') ?: 'onlyuspassword')
+            keyAlias (project.findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS') ?: 'onlyus')
+            keyPassword (project.findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD') ?: 'onlyuspassword')
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
     }
     buildTypes {

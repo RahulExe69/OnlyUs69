@@ -226,6 +226,69 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
   - **Debounced Safe Storage**: Message caching in `safeStorage.ts` is debounced by 500ms so database hydration does not block the main thread.
   - **Instant Initial Scroll**: `scrollToBottom(false)` is used on initial message mount to prevent hydration scroll stutter.
 
+### 12. Housekeeping, Code Hygiene & In-App Versioning (`package.json`, `App.tsx`, `ProfileModal.tsx`, `PartnerInfoModal.tsx`, `types.ts`)
+- **Package Manifest & Versioning Alignment**:
+  - Replaced template boilerplate `name: "react-example"` and `version: "0.0.0"` in `package.json` with `name: "onlyus"` and `version: "1.5.0"`.
+  - Exported `APP_VERSION = '1.5.0'` in `src/types.ts` as the single authoritative source of truth across the web and mobile UI.
+- **Dead Migration Stubs Cleanup**:
+  - Safely removed legacy Firestore migration stubs (`db`, `doc`, `collection`, `query`, `orderBy`, `limit`, `setDoc`, `updateDoc`, `addDoc`, `onSnapshot`, `serverTimestamp`, `signInWithGoogle`, `auth`) and dead `socketService` mock from `App.tsx` lines 4–43.
+- **In-App Version & Flavor Visibility**:
+  - Added a clean, subtle version badge in `ProfileModal.tsx` (`OnlyUs v1.5.0 • Notes Stealth Edition` / `Direct Edition`) under the session logout action.
+  - Added a matching subtle version indicator in `PartnerInfoModal.tsx` (`OnlyUs v1.5.0 • Private 1-to-1`) below shared media content.
 
+### 13. Signed Release APK Workflow (`.github/workflows/build-apk.yml`, `android/app/build.gradle`)
+- **Dual Build Types (Release vs. Debug)**:
+  - Added a `build_type` dropdown (`release` [default] or `debug`) to the GitHub Actions workflow dispatch parameters.
+  - Dynamically routes Gradle execution to `assembleNusratRelease assembleRahulRelease` or `assembleNusratDebug assembleRahulDebug`.
+- **Keystore Signature & Schemes**:
+  - `signingConfigs.shared` in `android/app/build.gradle` is explicitly configured with `v1SigningEnabled true` and `v2SigningEnabled true` using `onlyus.keystore`.
+  - Supports environment/Gradle property overrides (`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`) while falling back seamlessly to default keystore credentials.
+  - `minifyEnabled false` is maintained for release builds to protect Capacitor reflection plugins and WebSocket listeners from class-stripping regressions.
+- **Automated Artifact & GitHub Release Publishing**:
+  - Workflow accurately resolves and tags output APKs directly from `android/app/build/outputs/apk/{nusrat,rahul}/{release,debug}`.
+  - Publishes both `OnlyUs-Nusrat-Stealth.apk` and `OnlyUs-Rahul-Direct.apk` (and versioned copies) directly to GitHub Releases with signature status and release notes.
+
+### 14. "Neural Noise" 21st.dev WebGL Shader Theme (`/src/components/ui/neural-noise.tsx`, `/components/ui/neural-noise.tsx`, `NeuralNoiseBackground.tsx`, `ThreeDThemeBackground.tsx`)
+- **Authentic 21st.dev Shader & Lag-Free Optimizations**:
+  - Integrated the 21st.dev `NeuralNoise` component into `/src/components/ui/neural-noise.tsx` (and mirrored at `/components/ui/neural-noise.tsx`).
+  - **Removed Pointer Tracking**: Completely removed mouse and touch listeners (`pointermove`, `touchmove`, `click`) and pointer uniform calculations from the CPU and GPU shader, allowing the neural noise waves to flow organically and autonomously across the full viewport.
+  - **Autonomous Drifting Nebulas & Filament Preservation**:
+    - Restored the full 15 harmonic octaves (`j < 15`, `scale *= 1.2`) to bring back the fine filament tendrils, ethereal dust, and glowing cosmic nebula clusters.
+    - Replaced the cursor-dependent focal point with an autonomous Lissajous organic drift (`nebula_center = vec2(0.5 + 0.16 * sin(...), 0.5 + 0.12 * cos(...))`). The nebulas undulate, bloom, and breathe naturally across the viewport with zero mouse/touch interaction.
+  - **60 FPS Hardware Acceleration**:
+    - Precomputed rotation matrix `const mat2 ROT = mat2(0.5403023, 0.8414710, -0.8414710, 0.5403023)` to eliminate runtime trigonometric matrix instantiation in the shader loop.
+    - Capped canvas `devicePixelRatio` at `1.0` (scaled smoothly via CSS layout), eliminating the 4x overdraw penalty on high-DPI and mobile displays.
+    - Throttled frame dispatch to a stable ~60 FPS rate to avoid battery drain and overheating on 90Hz/120Hz mobile devices.
+- **Mobile & Battery Conservation Life Cycle**:
+  - WebGL context initialized with `powerPreference: 'low-power'`, `depth: false`, `stencil: false`, `antialias: false`, and `preserveDrawingBuffer: false`.
+  - Added clean `animationFrameId` cancellation and GPU buffer/shader disposal on unmount.
+  - Pauses execution automatically when the tab/app is hidden (`document.hidden`) or when background canvas is paused.
+  - Zero-flash hydration integrated into `THEMES`, `BASE_THEMES`, `index.html`, and `src/index.css`.
+
+### 15. Opening Intro Screen (`/src/components/OnlyUsIntro.tsx`, `App.tsx`)
+- **Animated SVG Stroke Drawing & Ambient Atmosphere**:
+  - Implemented the branded animated intro sequence in `/src/components/OnlyUsIntro.tsx`.
+  - Dynamically calculates glyph length via `getComputedTextLength()` and drives `strokeDashoffset` across the `OnlyUs` gradient stroke (`var(--ou-main2)` `#c66cff` to `var(--ou-main)` `#ff4f8b`).
+  - **Zero-Restart Execution**: Fixed restarting loop by decoupling parent re-renders and `ready` state transitions using mutable refs (`readyRef`, `onFinishRef`) and clamping animation progress `p` to `[0, 1]` rather than wrapping modulo, ensuring the intro draws smoothly once without stuttering or resetting.
+  - **Bottom Subtitle Anchoring**: Positioned `"MADE WITH ❤️ FOR US"` elegantly at the bottom center of the screen with responsive safe-area insets, letting the central OnlyUs typographic artwork breathe with full vertical symmetry.
+  - Supports dark/light mode preference automatically with ambient radial background glows.
+- **Session Hydration & Stealth Protection**:
+  - Automatically runs when opening the website or app, displaying the smooth stroke drawing while Supabase session, E2EE, and profiles initialize in parallel.
+  - Gracefully fades out after completion (~3.2s minimum cycle or when app ready) or immediately upon user tap/click.
+  - **Zero-Flash Stealth Rule**: Bypassed when locked in Nusrat's stealth mode (`com.onlyus.notes` or stealth preference) so that `StealthNotepadView` remains completely covert with zero flash of OnlyUs branding.
+
+### 16. Authentic Sakura Blossom 3D Engine & Transparent Atmosphere (`ThreeDThemeBackground.tsx`, `themes.ts`, `App.tsx`)
+- **Root-Cause Analysis of "Normal Theme / White Background & No Sakura"**:
+  1. **Unmounted Background in `App.tsx`**: `is3DTheme(theme)` returned `true` only for strings starting with `'3d-'`. If a user's stored theme was `'romantic'`, `is3DTheme('romantic')` evaluated to `false`, causing `<QuantumAuraBackground>` to not mount at all.
+  2. **Opaque White Shader Washout**: An experimental WebGL shader (`DreamyRomanticShaderBackground.tsx`) painted an opaque milky-white/cream baseline wash across the viewport, completely hiding the theme's soft radial pink gradients and chat aesthetics while SDF clipping prevented petals from rendering.
+- **Surgical Sakura Blossom Engine Implementation**:
+  - **Authentic Japanese Sakura Geometry**: Each petal features the classic crown heart notch (V-cleft), curved petal wings, tapered base stem, and delicate central spine vein.
+  - **Full 3D Tumbling & Shaded Undersides**: Petals rotate across X, Y, and Z axes (`rotX`, `rotY`, `rotZ`). When petals flip edge-on, they dynamically reveal shaded underside gradients (`#EB4B78` to `#FFC5DC`) vs sunlit front faces (`#FF4B7D` base to `#FFF5FA` milky rim).
+  - **Multilayer Depth & Spring Breeze Flutter**:
+    - 32 pre-allocated petals with distinct depth planes (foreground prominent petals with rich cherry pinks, midground tumbling petals, and distant dreamy drifting petals).
+    - Natural swaying breeze physics driven by harmonic sine-wave oscillation and gentle touch/mouse response.
+    - 16 floating sakura pollen stardust particles that twinkle gently in the warm spring atmosphere.
+  - **100% Transparent Canvas (Zero White Wash)**: Operates with `ctx.clearRect(0, 0, width, height)` on a transparent canvas, letting Only Us's soft rose radial gradients (`#FFF7F8`) and glassmorphic headers shine through pristinely.
+  - **Guaranteed Mount Lifecycle**: Updated `is3DTheme` in `src/lib/themes.ts` so both `'romantic'` and `'3d-romantic'` immediately mount the 3D sakura canvas with zero flashes.
 
 

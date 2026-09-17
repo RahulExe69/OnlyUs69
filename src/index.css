@@ -445,6 +445,35 @@ body {
   border: 1px solid rgba(255, 100, 100, 0.4);
 }
 
+/* Neural Noise Theme (Living Bio-Cyber Synaptic Network) */
+:root[data-chat-theme="neural"] .chat-theme .chat-bubble-owner,
+:root[data-chat-theme="3d-neural"] .chat-theme .chat-bubble-owner {
+  border-radius: 20px 20px 4px 20px;
+  background: linear-gradient(135deg, rgba(230, 51, 102, 0.95), rgba(180, 20, 70, 0.9));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 100, 140, 0.45);
+  box-shadow: 0 8px 24px -4px rgba(230, 51, 102, 0.42), 0 0 12px rgba(230, 51, 102, 0.25), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+  color: #FFFFFF;
+}
+:root[data-chat-theme="neural"] .chat-theme .chat-bubble-partner,
+:root[data-chat-theme="3d-neural"] .chat-theme .chat-bubble-partner {
+  border-radius: 20px 20px 20px 4px;
+  background: rgba(26, 16, 28, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(230, 51, 102, 0.28);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
+  color: #FCE7EB;
+}
+:root[data-chat-theme="neural"] .theme-accent-button,
+:root[data-chat-theme="3d-neural"] .theme-accent-button {
+  background: linear-gradient(135deg, #E63366, #BD1E4B) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 18px rgba(230, 51, 102, 0.45), 0 0 10px rgba(230, 51, 102, 0.25);
+  border: 1px solid rgba(255, 100, 140, 0.4);
+}
+
 .theme-settings { background: var(--theme-surface); color: var(--theme-text); }
 .theme-settings input { background: var(--theme-input-bg) !important; border-color: var(--theme-border) !important; color: var(--theme-text) !important; }
 .theme-settings .bg-\[\#FFF8F6\],

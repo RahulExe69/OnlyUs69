@@ -1,46 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { supabase } from './lib/supabase';
-
-// Firestore mocks for migration
-const db = {};
-const doc = (d: any, coll: string, id: string) => ({ coll, id });
-const collection = (d: any, coll: string) => coll;
-const query = (...args: any[]) => args;
-const orderBy = (field: string, dir: string) => field;
-const limit = (l: number) => l;
-const setDoc = async (ref: any, data: any) => supabase.from(ref.coll).upsert({ id: ref.id, ...data });
-const updateDoc = async (ref: any, data: any) => supabase.from(ref.coll).update(data).eq('id', ref.id);
-const addDoc = async (coll: string, data: any) => supabase.from(coll).insert(data);
-const onSnapshot = (ref: any, cb: any, err?: any) => { 
-  const channel = supabase.channel(`public_${ref.coll}_${ref.id}`);
-  supabase.from(ref.coll).select('*').eq('id', ref.id).single().then(({data, error}) => {
-    if (data) cb({ exists: () => true, data: () => data });
-    else cb({ exists: () => false, data: () => null });
-  });
-  channel.on('postgres_changes', { event: '*', schema: 'public', table: ref.coll, filter: `id=eq.${ref.id}` }, (payload) => {
-     cb({ exists: () => true, data: () => payload.new });
-  }).subscribe();
-  return () => { supabase.removeChannel(channel); };
-};
-const serverTimestamp = () => new Date().toISOString();
-const signInWithGoogle = async () => supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin }});
-const auth = { currentUser: null };
-// Socket mock
-const socketService = {
-  disconnect: () => {},
-  connect: () => {},
-  joinRoom: () => {},
-  onConnect: () => {},
-  onDisconnect: () => {},
-  onRoomStatus: () => {},
-  offAll: () => {},
-  leaveRoom: () => {},
-  sendMessage: () => {},
-  emitTyping: () => {},
-  onNewMessage: () => {},
-  onMessageUpdated: () => {},
-  onMessageDeleted: () => {}
-};
 import { StealthNotepadView } from './components/StealthNotepadView';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
@@ -76,6 +35,7 @@ import { useMessageSync } from './hooks/useMessageSync';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { CallModal } from './components/CallModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
+import { OnlyUsIntro } from './components/OnlyUsIntro';
 
 // Dynamic lazy imports for heavy secondary modal dialogs
 const ProfileModal = lazy(() => import('./components/ProfileModal').then(m => ({ default: m.ProfileModal })));
@@ -135,6 +95,23 @@ export default function App() {
     }
     return true;
   });
+
+  // Website Opening Intro Screen
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    // If running in locked stealth mode (Nusrat's Notes APK), do not show OnlyUs intro while locked
+    if (navigator.userAgent.includes('OnlyUsFlavor/Notes') || window.location.search.includes('edition=nusrat')) {
+      return false;
+    }
+    if (localStorage.getItem('onlyus_stealth_mode') === 'true' && sessionStorage.getItem('onlyus_vault_unlocked') !== 'true') {
+      return false;
+    }
+    return true;
+  });
+
+  const handleFinishIntro = useCallback(() => {
+    setShowIntro(false);
+  }, []);
 
   // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
@@ -1767,14 +1744,21 @@ export default function App() {
     return <StealthNotepadView onUnlock={handleUnlockVault} />;
   }
 
+  if (showIntro) {
+    return (
+      <OnlyUsIntro
+        ready={!loading}
+        onFinish={handleFinishIntro}
+      />
+    );
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--theme-bg)] text-[var(--theme-text)] flex items-center justify-center transition-colors duration-300">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[var(--theme-accent)] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-sans text-sm text-[var(--theme-accent)] font-medium animate-pulse">Initializing OnlyUs...</p>
-        </div>
-      </div>
+      <OnlyUsIntro
+        ready={false}
+        onFinish={handleFinishIntro}
+      />
     );
   }
 

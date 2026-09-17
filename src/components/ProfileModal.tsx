@@ -3,7 +3,7 @@ import { AnimatePresence } from 'motion/react';
 import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
-import { UserProfile, AppConfig } from '../types';
+import { UserProfile, AppConfig, APP_VERSION } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { ImageCropperModal } from './ImageCropperModal';
 
@@ -363,6 +363,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <LogOut className="w-4 h-4" />
                   Logout Session
                 </button>
+
+                <div className="pt-2 pb-1 text-center select-none">
+                  <p className="text-[11px] font-mono text-[var(--theme-text)]/40 tracking-wider">
+                    OnlyUs v{APP_VERSION} • {isNotesFlavor ? 'Notes Stealth Edition' : 'Direct Edition'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

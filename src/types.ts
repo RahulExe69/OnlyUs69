@@ -1,3 +1,5 @@
+export const APP_VERSION = '1.5.0';
+
 export type UserRole = 'owner' | 'partner';
 
 export interface AppConfig {
