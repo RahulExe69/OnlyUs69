@@ -53,7 +53,13 @@ export const ThreeDThemeBackground: React.FC<ThreeDThemeBackgroundProps> = ({
     let lastWidth = width;
 
     // Current active 3D mode
-    const activeTheme = theme || document.documentElement.dataset.chatTheme || '3d-romantic';
+    const activeTheme = theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined) || '3d-romantic';
+
+    // If not a 3D theme, normal themes rely on ambient CSS styling and do not run the continuous 60fps canvas loop
+    if (!activeTheme.startsWith('3d-')) {
+      ctx.clearRect(0, 0, width, height);
+      return;
+    }
 
     // Interactive Mouse / Touch Parallax
     let mouseX = width / 2;

@@ -492,26 +492,6 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
                 </button>
-
-                {/* End-to-End Encryption */}
-                <button 
-                  type="button"
-                  onClick={() => setShowE2EESheet(true)}
-                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                      <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Encryption & Security</p>
-                      <p className="text-[12px] text-emerald-600/80 mt-0.5 leading-tight font-medium">
-                        End-to-end encrypted (tap to verify)
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
-                </button>
               </div>
             </div>
 

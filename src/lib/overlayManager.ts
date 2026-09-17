@@ -3,25 +3,29 @@ import { useEffect, useRef } from 'react';
 interface OverlayItem {
   id: string;
   close: () => void;
+  closedViaHistory?: boolean;
 }
 
 const overlayStack: OverlayItem[] = [];
-let ignorePopCount = 0;
 let isInitialized = false;
+let pendingPopstateIgnoreId: string | null = null;
 
 function initGlobalPopStateListener() {
   if (typeof window === 'undefined' || isInitialized) return;
   isInitialized = true;
 
   window.addEventListener('popstate', () => {
-    if (ignorePopCount > 0) {
-      ignorePopCount--;
+    // If this popstate was triggered by our own in-app history.back() call, ignore it
+    if (pendingPopstateIgnoreId) {
+      pendingPopstateIgnoreId = null;
       return;
     }
 
+    // Hardware or browser back button was pressed
     if (overlayStack.length > 0) {
       const topOverlay = overlayStack.pop();
       if (topOverlay) {
+        topOverlay.closedViaHistory = true;
         topOverlay.close();
       }
     }
@@ -42,9 +46,12 @@ export function popOverlay(): boolean {
   if (overlayStack.length > 0) {
     const topOverlay = overlayStack.pop();
     if (topOverlay) {
-      ignorePopCount++;
+      topOverlay.closedViaHistory = true;
       try {
-        window.history.back();
+        if (window.history.state && window.history.state.onlyus_overlay === topOverlay.id) {
+          pendingPopstateIgnoreId = topOverlay.id;
+          window.history.back();
+        }
       } catch (e) {
         console.warn('Unable to step history back', e);
       }
@@ -72,7 +79,7 @@ export function useOverlayBack(isOpen: boolean, onClose: () => void, id: string)
       onCloseRef.current();
     };
 
-    const item: OverlayItem = { id: overlayId, close: closeItem };
+    const item: OverlayItem = { id: overlayId, close: closeItem, closedViaHistory: false };
     overlayStack.push(item);
 
     try {
@@ -83,14 +90,27 @@ export function useOverlayBack(isOpen: boolean, onClose: () => void, id: string)
 
     return () => {
       const index = overlayStack.findIndex((o) => o.id === overlayId);
+      let wasClosedViaHistory = false;
       if (index !== -1) {
+        wasClosedViaHistory = !!overlayStack[index].closedViaHistory;
         overlayStack.splice(index, 1);
-        ignorePopCount++;
-        try {
+      }
+
+      // If already closed via hardware/browser back, the browser history has already stepped back!
+      if (wasClosedViaHistory) {
+        return;
+      }
+
+      // If closed in-app (e.g. clicking close icon / back button in modal):
+      // Only step history back IF the current browser state belongs to THIS overlay!
+      // This mathematically guarantees that in-app back will NEVER step past the app's root entry.
+      try {
+        if (window.history.state && window.history.state.onlyus_overlay === overlayId) {
+          pendingPopstateIgnoreId = overlayId;
           window.history.back();
-        } catch (e) {
-          console.warn('Unable to pop history state for overlay', e);
         }
+      } catch (e) {
+        console.warn('Unable to pop history state for overlay', e);
       }
     };
   }, [isOpen, id]);

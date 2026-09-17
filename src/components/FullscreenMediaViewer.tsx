@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useMotionValue } from 'motion/react';
 import { ArrowLeft, X, Play, Pause, Volume2, VolumeX, Download, ZoomIn, ZoomOut, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaAttachment } from '../types';
 import { formatFileSize, getLocalMedia, downloadAndCacheRemoteMedia } from '../lib/mediaStore';
+import { useOverlayBack } from '../lib/overlayManager';
 
 interface FullscreenMediaViewerProps {
   media: MediaAttachment | null;
@@ -75,15 +76,12 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
     };
   }, [activeItem?.id, activeItem?.url]);
 
-  // Support hardware back button & keyboard escape/arrows
+  // Overlay back handling
+  useOverlayBack(Boolean(activeItem), onClose, 'media-viewer');
+
+  // Support keyboard escape/arrows
   useEffect(() => {
     if (!activeItem) return;
-
-    window.history.pushState({ modal: 'media_viewer' }, '');
-
-    const handlePopState = () => {
-      onClose();
-    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -95,13 +93,10 @@ export const FullscreenMediaViewer: React.FC<FullscreenMediaViewerProps> = ({
       }
     };
 
-    window.addEventListener('popstate', handlePopState);
     window.addEventListener('keydown', handleKeyDown);
-
     (window as any).__onCloseActiveMediaViewer = onClose;
 
     return () => {
-      window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('keydown', handleKeyDown);
       delete (window as any).__onCloseActiveMediaViewer;
     };

@@ -205,6 +205,44 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
   - **User-Friendly Segmented Media Control**: Replaced icon-only tabs with labeled, count-aware segmented pills: "Photos (N)", "Videos (N)", and "Links (N)".
   - **Modern Media Grid & Empty States**: `rounded-xl` media thumbnails with smooth hover zoom, centered video play button overlays, theme-adaptive placeholders, and clean, minimal empty states for photos, videos, and links.
   - **Full Theme Variable Integration**: Entire profile modal, sub-views, and edit sheets use semantic CSS tokens (`var(--theme-surface)`, `var(--theme-text)`, `var(--theme-bg)`, `var(--theme-border)`, `var(--theme-accent)`) for seamless consistency across all 14 themes.
+- **Redundant E2EE Cleanup**: Removed duplicate End-to-End Encryption entry from the settings group since the verified lock badge is prominently integrated into the header.
+
+### 11. Modal Back Navigation & Post-Reload Zero-Lag Architecture (`overlayManager.ts`, `ThreeDThemeBackground.tsx`, `useMessageSync.ts`)
+- **Root-Cause Analysis of 2nd-Open Modal Website Exit**:
+  - `FullscreenMediaViewer.tsx` was manually managing window history with `window.history.pushState` and `window.addEventListener('popstate')` in parallel with `overlayManager.ts`.
+  - Transient popovers (`showMenu`, `showAttachmentMenu`, `showNudgeMenu`) were also registered in `useOverlayBack`, pushing extra history entries when clicking menu items that opened modals.
+  - When a user opened a modal a second time, mismatched history depth caused `history.back()` to pop past the root state, closing the website.
+- **Surgical Navigation Fix**:
+  - Centralized all overlay state management exclusively into `src/lib/overlayManager.ts` using `useOverlayBack`.
+  - Added `closedViaHistory` tracking to prevent redundant `history.back()` calls during browser or Android hardware back gestures.
+  - Converted transient popovers (3-dot menu, attachment picker, nudge menu) to direct dismissals via Escape, click-outside, and `window.handleAndroidBack`, keeping the browser history stack pristine.
+- **Root-Cause Analysis of Post-Reload Lag in Normal Themes**:
+  - In `ThreeDThemeBackground.tsx`, the 60fps WebGL/Canvas rendering loop was executing even when a normal (non-3D) theme was active, consuming CPU/GPU cycles on page load.
+  - In `useMessageSync.ts`, `fetchInitialMessages` was pulling 1,000 messages from Supabase on every reload, running full decryption batches and non-debounced `localStorage` serialization (`cacheMessages`) blocking the main UI thread.
+  - `scrollToBottom` on initial message mount was executing an animated smooth scroll curve during DOM hydration.
+- **Surgical Zero-Lag Optimizations**:
+  - **Non-3D Theme Canvas Bypass**: `ThreeDThemeBackground.tsx` checks `!activeTheme.startsWith('3d-')` immediately after context acquisition, clears canvas, and exits without attaching resize observers, scroll listeners, or `requestAnimationFrame` loops (0% CPU/GPU overhead for standard themes).
+  - **Surgical Message Hydration**: Initial load fetches the latest 100 messages, and `onE2EEStatusChange` runs decryption only on messages that are actually encrypted and pending decryption.
+  - **Debounced Safe Storage**: Message caching in `safeStorage.ts` is debounced by 500ms so database hydration does not block the main thread.
+  - **Instant Initial Scroll**: `scrollToBottom(false)` is used on initial message mount to prevent hydration scroll stutter.
+
+### 12. Telegram Cloud Vault Architecture & Auto-Detect System (`TelegramVaultRoom.tsx`, `telegramService.ts`, `server.ts`)
+- **Purpose**: A secondary, permanent encrypted chat room where Rahul and Nusrat can exchange messages backed by Telegram's cloud storage without saving in Supabase.
+- **Bot Configuration**: Uses `@OnlyUs69Bot` (token stored in AI Studio secrets as `TELEGRAM_BOT_TOKEN`).
+- **Telegram Channel ID & Permissions**:
+  - In Telegram's API, private channels require the bot to be added as an **Administrator** with *Post Messages* permission before `getChat` or `sendMessage` will succeed.
+  - Telegram IDs for channels must begin with `-100` (e.g., `-1008992982820`). `server.ts` automatically normalizes plain IDs, links (`t.me/c/...`), and `-100` formats.
+- **Centralized Poller & Conflict Prevention**:
+  - Calling `getUpdates` from multiple client sessions causes Telegram `409 Conflict` errors.
+  - `server.ts` runs a single centralized poller (`startCentralizedTelegramPoller()`) that continuously polls Telegram and caches incoming updates.
+  - Client calls to `/api/telegram/updates` return cached messages instantly without holding connections open or causing 409 errors.
+  - Background poller auto-detects any channel or group where `@OnlyUs69Bot` is added, automatically setting `runtimeChannelId` and connecting without manual ID entry.
+- **Client UI & Naming**:
+  - Branded as **Telegram Vault** across the app (`MultiHubDashboard.tsx`, `App.tsx`, and `TelegramVaultRoom.tsx`).
+  - **Dashboard Card Symmetrical Alignment**: The Telegram Vault entry card in `MultiHubDashboard.tsx` matches the primary OnlyUs Chat card pixel-for-pixel: identical outer padding (`p-4 sm:p-5 rounded-3xl`), identical icon container (`w-12 h-12 rounded-2xl bg-white/20`), authentic centered paper plane icon (`Send` with standard top-right trajectory), compact badge (`VAULT`), and concise 1-line subtitle (`Encrypted cloud chat & media backup`).
+  - **Theme Bubble Contrast & Zero Overlap**: In `TelegramVaultRoom.tsx`, replaced undefined `--theme-bubble-owner-bg` with semantic tokens (`var(--theme-bubble-owner)`, `var(--theme-bubble-owner-text)`, `var(--theme-bubble-partner)`, `var(--theme-bubble-partner-text)`) applied directly via inline styles. This completely resolves the invisible white-on-white text and overlapping colors under light themes (such as Romantic).
+  - **Compact WhatsApp/Signal Security Banner**: Replaced bulky card with a sleek, rounded pill (`AES-256 Encrypted • Private Cloud Vault`), leaving maximum vertical screen real estate for chat messages.
+
 
 
 

@@ -36,11 +36,15 @@ export function useMessageSync({
 
   const channelRef = useRef<any>(null);
   const isFetchingRef = useRef(false);
+  const initialFetchDoneRef = useRef(false);
 
-  // Sync cache whenever messages state changes
+  // Sync cache whenever messages state changes (debounced to avoid blocking main thread on reload)
   useEffect(() => {
     if (messages.length > 0) {
-      cacheMessages(messages);
+      const timer = setTimeout(() => {
+        cacheMessages(messages);
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [messages]);
 
@@ -170,7 +174,13 @@ export function useMessageSync({
     // Re-decrypt messages whenever E2EE shared key becomes active
     const unsubE2EE = onE2EEStatusChange((status) => {
       if (status.isReady && messagesRef.current.length > 0) {
-        decryptRawMessagesBatch(messagesRef.current).then((decryptedList) => {
+        // Only decrypt messages that actually have encrypted ciphertext and have not yet been decrypted
+        const needsDecryption = messagesRef.current.filter(
+          (m) => (m.is_encrypted || (m as any).ciphertext) && (!m.text || m.text.startsWith('🔒'))
+        );
+        if (needsDecryption.length === 0) return;
+
+        decryptRawMessagesBatch(needsDecryption).then((decryptedList) => {
           setMessages((prev) => {
             let hasChanges = false;
             const map = new Map(decryptedList.map((m) => [m.id, m]));
@@ -194,7 +204,7 @@ export function useMessageSync({
           .from('messages')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(1000);
+          .limit(100);
 
         if (isCancelled) return;
 
@@ -225,6 +235,7 @@ export function useMessageSync({
 
           setMessages(uniqueMapped);
           cacheMessages(uniqueMapped);
+          initialFetchDoneRef.current = true;
         }
       } catch (err: any) {
         console.warn(
@@ -398,8 +409,10 @@ export function useMessageSync({
       )
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
-          // Channel connected successfully, catch up on any missed messages
-          refetchCatchUp();
+          // Channel connected successfully, catch up only if initial fetch has already completed
+          if (initialFetchDoneRef.current) {
+            refetchCatchUp();
+          }
         }
       });
 
