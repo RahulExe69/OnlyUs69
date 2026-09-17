@@ -11,10 +11,7 @@ import {
   ChevronRight,
   Flame,
   Lock,
-  ArrowRight,
-  Cloud,
-  ShieldCheck,
-  Send
+  ArrowRight
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { is3DTheme } from '../lib/themes';
@@ -29,7 +26,7 @@ interface MultiHubDashboardProps {
   socketOnlineUsers: string[];
   formatLastSeen: (timestamp: any, uid?: string) => string;
   totalMessages: number;
-  onSelectTab: (tab: 'chat' | 'vault' | 'instagram' | 'whatsapp') => void;
+  onSelectTab: (tab: 'chat' | 'instagram' | 'whatsapp') => void;
   onOpenSettings: () => void;
   onOpenProfile: () => void;
   onOpenPartnerInfo?: () => void;
@@ -55,7 +52,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   const isPartnerOnline = lastSeenStatus === 'Online';
   const isInGame = lastSeenStatus === 'In Game Room 🎮';
 
-  const handleTabClick = (tab: 'chat' | 'vault' | 'instagram' | 'whatsapp') => {
+  const handleTabClick = (tab: 'chat' | 'instagram' | 'whatsapp') => {
     const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
 
     // 1. Notify Android native shell if present
@@ -67,9 +64,9 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       }
     }
 
-    // 2. Chat navigation: switch React view to 'chat' or 'vault'
-    if (tab === 'chat' || tab === 'vault') {
-      onSelectTab(tab);
+    // 2. Chat navigation: ALWAYS switch React view to 'chat'
+    if (tab === 'chat') {
+      onSelectTab('chat');
       return;
     }
 
@@ -235,65 +232,26 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent pointer-events-none" />
           
           <div className="flex items-center justify-between relative z-10">
-            <div className="flex items-center gap-3.5 min-w-0">
+            <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/25 shadow-inner shrink-0">
                 <MessageCircleHeart className="w-6 h-6 stroke-[2.2]" />
               </div>
-              <div className="min-w-0">
+              <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white whitespace-nowrap">
+                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
                     OnlyUs Chat
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[9px] font-bold uppercase tracking-wider text-white shrink-0">
+                  <span className="px-2 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[9px] font-bold uppercase tracking-wider text-white">
                     Primary
                   </span>
                 </div>
-                <p className="text-xs text-white/85 font-medium mt-0.5 truncate">
+                <p className="text-xs text-white/85 font-medium mt-0.5">
                   Messages, voice notes, live calls & games
                 </p>
               </div>
             </div>
 
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shrink-0">
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Secondary Destination: Telegram Vault Chat (E2EE 2nd Room) */}
-        <motion.div
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => handleTabClick('vault')}
-          className="group relative cursor-pointer p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-[#0088cc] via-[#179cde] to-[#229ed9] text-white shadow-md hover:shadow-lg transition-all overflow-hidden"
-          style={{
-            boxShadow: '0 10px 25px -5px rgba(0, 136, 204, 0.38)'
-          }}
-        >
-          {/* Subtle light sheen overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent pointer-events-none" />
-
-          <div className="flex items-center justify-between relative z-10">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/25 shadow-inner shrink-0">
-                <Send className="w-6 h-6 stroke-[2.2] translate-x-[-1px] translate-y-[1px]" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white whitespace-nowrap">
-                    Telegram Vault
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[9px] font-bold uppercase tracking-wider text-white shrink-0">
-                    Vault
-                  </span>
-                </div>
-                <p className="text-xs text-white/85 font-medium mt-0.5 truncate">
-                  Encrypted cloud chat & media backup
-                </p>
-              </div>
-            </div>
-
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-[#0088cc] group-hover:translate-x-0.5 transition-all shrink-0">
               <ArrowRight className="w-4 h-4 stroke-[2.5]" />
             </div>
           </div>

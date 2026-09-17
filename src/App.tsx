@@ -46,10 +46,9 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone, Cloud } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
-import { TelegramVaultRoom } from './components/TelegramVaultRoom';
 import { ExternalHubView } from './components/ExternalHubView';
 import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
@@ -488,12 +487,12 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [isTabActive, setIsTabActive] = useState(true);
   const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
-  const getInitialTab = (): 'dashboard' | 'chat' | 'vault' | 'instagram' | 'whatsapp' => {
+  const getInitialTab = (): 'dashboard' | 'chat' | 'instagram' | 'whatsapp' => {
     if (typeof window !== 'undefined') {
       try {
         const params = new URLSearchParams(window.location.search);
         const tabParam = params.get('tab');
-        if (tabParam === 'chat' || tabParam === 'vault' || tabParam === 'dashboard' || tabParam === 'instagram' || tabParam === 'whatsapp') {
+        if (tabParam === 'chat' || tabParam === 'dashboard' || tabParam === 'instagram' || tabParam === 'whatsapp') {
           return tabParam;
         }
       } catch (e) {}
@@ -501,7 +500,7 @@ export default function App() {
     return 'dashboard';
   };
 
-  const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'vault' | 'instagram' | 'whatsapp'>(getInitialTab);
+  const [activeHubTab, setActiveHubTab] = useState<'dashboard' | 'chat' | 'instagram' | 'whatsapp'>(getInitialTab);
   const mainChannelRef = useRef<any>(null);
 
   // Mobile / Browser Hardware Back Button Overlay Closers
@@ -562,8 +561,8 @@ export default function App() {
     showFullImage,
   ]);
 
-  const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'vault' | 'instagram' | 'whatsapp') => {
-    if (tab !== 'chat' && tab !== 'vault') {
+  const handleHubTabChange = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+    if (tab !== 'chat') {
       closeMobileKeyboard();
     }
     if (tab === 'dashboard' && typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
@@ -579,8 +578,8 @@ export default function App() {
       }
     }
 
-    // Always update React internal state for dashboard, chat, and vault
-    if (tab === 'chat' || tab === 'dashboard' || tab === 'vault') {
+    // Always update React internal state for dashboard and chat
+    if (tab === 'chat' || tab === 'dashboard') {
       setActiveHubTab(tab);
       return;
     }
@@ -601,8 +600,8 @@ export default function App() {
   // Two-way bridge hooks so Android APK can seamlessly interact with the web app
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.setHubTab = (tab: 'dashboard' | 'chat' | 'vault' | 'instagram' | 'whatsapp') => {
-        if (tab !== 'chat' && tab !== 'vault') {
+      window.setHubTab = (tab: 'dashboard' | 'chat' | 'instagram' | 'whatsapp') => {
+        if (tab !== 'chat') {
           closeMobileKeyboard();
         }
         setActiveHubTab(tab);
@@ -1808,14 +1807,6 @@ export default function App() {
           onOpenPartnerInfo={() => setShowPartnerInfo(true)}
           onLogout={handleLogout}
         />
-      ) : activeHubTab === 'vault' ? (
-        <TelegramVaultRoom
-          userProfile={userProfile}
-          partnerProfile={partnerProfile}
-          isOwner={isOwner}
-          onBack={() => handleHubTabChange('dashboard')}
-          onSwitchToOnlyUs={() => handleHubTabChange('chat')}
-        />
       ) : activeHubTab === 'instagram' || activeHubTab === 'whatsapp' ? (
         <ExternalHubView
           type={activeHubTab}
@@ -1946,15 +1937,6 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-1 lg:gap-1.5 shrink-0">
-                    {/* Switch to Telegram Vault */}
-                    <button
-                      onClick={() => handleHubTabChange('vault')}
-                      className="p-2 lg:p-2.5 rounded-full text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 active:scale-95 transition-all"
-                      title="Switch to Telegram Vault"
-                    >
-                      <Cloud className="w-5 h-5" />
-                    </button>
-
                     {/* Voice Call Button */}
                     <button
                       onClick={() => startCall('voice')}
@@ -2030,14 +2012,6 @@ export default function App() {
                               >
                                 <Gamepad2 className="w-4 h-4 text-[var(--theme-accent)]" />
                                 Play Together
-                              </button>
-                              <button 
-                                onPointerDown={(e) => e.preventDefault()}
-                                onClick={() => { handleHubTabChange('vault'); setShowMenu(false); }}
-                                className="w-full px-4 py-3 text-left text-sm font-medium text-sky-400 hover:bg-sky-500/10 flex items-center gap-3 transition-colors"
-                              >
-                                <Cloud className="w-4 h-4 text-sky-400" />
-                                Telegram Vault
                               </button>
                             </motion.div>
                           </>

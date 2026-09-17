@@ -226,41 +226,6 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
   - **Debounced Safe Storage**: Message caching in `safeStorage.ts` is debounced by 500ms so database hydration does not block the main thread.
   - **Instant Initial Scroll**: `scrollToBottom(false)` is used on initial message mount to prevent hydration scroll stutter.
 
-### 12. Telegram Cloud Vault Architecture & Auto-Detect System (`TelegramVaultRoom.tsx`, `telegramService.ts`, `server.ts`)
-- **Purpose**: A secondary, permanent encrypted chat room where Rahul and Nusrat can exchange messages backed by Telegram's cloud storage without saving in Supabase.
-- **Bot Configuration**: Uses `@OnlyUs69Bot` (token stored in AI Studio secrets as `TELEGRAM_BOT_TOKEN`).
-- **Telegram Channel ID & Permissions**:
-  - In Telegram's API, private channels require the bot to be added as an **Administrator** with *Post Messages* permission before `getChat` or `sendMessage` will succeed.
-  - Telegram IDs for channels must begin with `-100` (e.g., `-1008992982820`). `server.ts` automatically normalizes plain IDs, links (`t.me/c/...`), and `-100` formats.
-- **Centralized Poller & Conflict Prevention**:
-  - Calling `getUpdates` from multiple client sessions causes Telegram `409 Conflict` errors.
-  - `server.ts` runs a single centralized poller (`startCentralizedTelegramPoller()`) that continuously polls Telegram and caches incoming updates.
-  - Client calls to `/api/telegram/updates` return cached messages instantly without holding connections open or causing 409 errors.
-  - Background poller auto-detects any channel or group where `@OnlyUs69Bot` is added, automatically setting `runtimeChannelId` and connecting without manual ID entry.
-- **Client UI & Naming**:
-  - Branded as **Telegram Vault** across the app (`MultiHubDashboard.tsx`, `App.tsx`, and `TelegramVaultRoom.tsx`).
-  - **Dashboard Card Symmetrical Alignment**: The Telegram Vault entry card in `MultiHubDashboard.tsx` matches the primary OnlyUs Chat card pixel-for-pixel: identical outer padding (`p-4 sm:p-5 rounded-3xl`), identical icon container (`w-12 h-12 rounded-2xl bg-white/20`), authentic centered paper plane icon (`Send` with standard top-right trajectory), compact badge (`VAULT`), and concise 1-line subtitle (`Encrypted cloud chat & media backup`).
-  - **Theme Bubble Contrast & Zero Overlap**: In `TelegramVaultRoom.tsx`, replaced undefined `--theme-bubble-owner-bg` with semantic tokens (`var(--theme-bubble-owner)`, `var(--theme-bubble-owner-text)`, `var(--theme-bubble-partner)`, `var(--theme-bubble-partner-text)`) applied directly via inline styles. This completely resolves the invisible white-on-white text and overlapping colors under light themes (such as Romantic).
-  - **Compact WhatsApp/Signal Security Banner**: Replaced bulky card with a sleek, rounded pill (`AES-256 Encrypted • Private Cloud Vault`), leaving maximum vertical screen real estate for chat messages.
-- **Vercel Deployment Root Cause & Multi-Tier Resilience Fix**:
-  - **The Issue**: On Vercel (`onlyus69.vercel.app`), the Telegram Vault was trapped in the "Telegram Vault Setup" modal showing `Channel Connection: Pending Setup`, even though the user had already added `@OnlyUs69Bot` as Admin to the `OnlyUs69` channel.
-  - **Root Cause**: Vercel serves the static Vite SPA from `dist/` and rewrites all paths to `index.html`. It does NOT execute `server.ts`. When `telegramService.ts` called `/api/telegram/status`, Vercel returned `index.html` (HTML). Calling `res.json()` failed with a `SyntaxError: Unexpected token '<'`, which caused `getTelegramStatus()` to treat the channel as unconnected and pop open the setup modal indefinitely.
-  - **Surgical Solution**:
-    1. **Supabase Schema & Configuration Storage**: Added `telegram_bot_token`, `telegram_channel_id` (default `-1003839359301`), and `telegram_bot_username` (`OnlyUs69Bot`) to `public.app_config` in Supabase. Also injected `TELEGRAM_BOT_TOKEN` into Supabase Project Secrets.
-    2. **Multi-Tier API Connectivity**: Upgraded `src/lib/telegramService.ts` to attempt the local Node proxy first, and gracefully fall back to direct Telegram Bot API calls (`https://api.telegram.org/bot<token>/...`). Telegram's Bot API natively provides `access-control-allow-origin: *` (CORS enabled), allowing direct browser/app communication on Vercel and Android APKs.
-    3. **Real-Time Supabase WebSocket Broadcast**: Subscribed to a dedicated broadcast channel (`onlyus_telegram_vault_realtime`) via Supabase WebSockets. When a message, reaction, or deletion is sent, it is both securely saved to the Telegram cloud channel and broadcasted directly to the partner's device in under 50ms, guaranteeing instant cross-device synchronization on Vercel and mobile APKs without saving messages into Supabase database tables.
-    4. **Auto-Connected Channel State**: The Telegram channel `-1003839359301` (`OnlyUs69`) is verified and connected immediately on load. The modal no longer displays "Pending Setup", the amber warning banner is hidden, and the chat room is immediately active for both Rahul and Nusrat.
-- **OnlyUs Chat Behavior Parity in Telegram Vault (`TelegramMessageItem.tsx`, `TelegramChatInputBar.tsx`, `TelegramVaultRoom.tsx`)**:
-  - **Conversational Avatar Clustering & WhatsApp Minimal Gap Cadence**: Grouping algorithm derives `isFirstInGroup`, `isLastInGroup`, and `shouldShowAvatar` with 15-minute timeout breaks and sender changes. Partner avatar renders at the start of a cluster with a zero-width-shifting 32px spacer for subsequent consecutive texts. Margins follow authentic WhatsApp cadence (`mt-[2px] sm:mt-[3px]` for consecutive, `mt-2 sm:mt-2.5` for turns).
-  - **Tail-Corner Bubble Geometry**: Tail corners (`rounded-br-xs` / `rounded-bl-xs`) form naturally on the last message of a cluster while middle/top bubbles use rounded 16px geometry.
-  - **Swipe-to-Reply Gesture**: Implemented with `motion/react` horizontal drag (`drag="x"`). Outgoing and incoming messages reveal a centered circular reply pill with haptic vibration feedback (`24ms`) when swiped past threshold (`26px`), auto-populating the reply banner and focusing the textarea.
-  - **Double-Tap ❤️ Heart Pop**: Multi-tap timing refs (`lastTapTimeRef`, `lastTapPosRef`) detect consecutive taps within 330ms and 32px radius, triggering an Instagram-style pop animation with haptic feedback and toggling the reaction badge.
-  - **Long-Press Floating Emoji Palette**: 360ms touch hold triggers a floating reaction menu with 6 emojis (`❤️`, `😂`, `😮`, `😢`, `😡`, `👍`) and quick-delete for own messages, supported by `useOverlayBack` back button dismissal.
-  - **WhatsApp-Style Attached Reaction Badge**: Overlaps the bottom rim of the bubble by 5px (`absolute top-[calc(100%-5px)]`) with a cutout border using `var(--theme-surface)` and `var(--theme-bg)`. Bubble preserves `mb-[18px]` overhang spacing to prevent any layout collisions.
-  - **Tap Quoted Message to Jump & Focus**: Tapping quote previews smoothly scrolls `#vault-msg-${id}` into view with `theme-message-focus` pulsing highlight.
-  - **Whisper Placeholder Marquee Ticker**: `TelegramChatInputBar.tsx` integrates the single-line whisper marquee ticker (`Whisper to Nusrat in Vault...` / `Whisper to Rahul in Vault...`) that smoothly crawls back and forth when text overflows the container, keeping the textarea baseline strictly at 1 row.
-  - **Photo Upload & Full-Screen Image Viewer**: Added photo attachment support via camera/image button, lossless storage bridging, and a tap-to-expand lightbox modal with download and back button support.
-
 
 
 
