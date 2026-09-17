@@ -30,7 +30,8 @@ import {
   sendTelegramVaultMessage, 
   reactTelegramVaultMessage, 
   deleteTelegramVaultMessage, 
-  pullTelegramUpdates 
+  pullTelegramUpdates,
+  subscribeToTelegramVaultRealtime
 } from '../lib/telegramService';
 import { useOverlayBack } from '../lib/overlayManager';
 
@@ -103,6 +104,44 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
+
+  // Real-time broadcast sync between devices (zero latency via Supabase WebSocket)
+  useEffect(() => {
+    const unsubscribe = subscribeToTelegramVaultRealtime((event) => {
+      if (event.type === 'message') {
+        setMessages((prev) => {
+          if (prev.some(m => m.id === event.message.id || (m.telegram_id && m.telegram_id === event.message.telegram_id))) {
+            return prev.map(m => (m.id === event.message.id || (m.telegram_id && m.telegram_id === event.message.telegram_id)) ? event.message : m);
+          }
+          const next = [...prev, event.message];
+          saveCachedVaultMessages(next);
+          return next;
+        });
+        scrollToBottom(true);
+      } else if (event.type === 'reaction') {
+        setMessages((prev) => prev.map(m => {
+          if (m.id === String(event.messageId) || m.telegram_id === Number(event.messageId)) {
+            const nextReactions = { ...(m.reactions || {}) };
+            if (event.emoji) {
+              nextReactions[event.emoji] = 1;
+            } else if (event.previousEmoji) {
+              delete nextReactions[event.previousEmoji];
+            } else {
+              delete nextReactions['❤️'];
+            }
+            return { ...m, reactions: nextReactions };
+          }
+          return m;
+        }));
+      } else if (event.type === 'delete') {
+        setMessages((prev) => prev.filter(m => m.id !== String(event.messageId) && m.telegram_id !== Number(event.messageId)));
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [scrollToBottom]);
 
   // Auto-detect polling when pending setup or setup modal is open
   useEffect(() => {
