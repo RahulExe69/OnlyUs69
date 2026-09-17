@@ -413,7 +413,13 @@ async function broadcastVaultEvent(event: string, payload: any): Promise<void> {
 export async function sendTelegramVaultMessage(
   text: string, 
   senderRole: 'owner' | 'partner', 
-  replyTo?: TelegramVaultMessage | null
+  replyTo?: TelegramVaultMessage | null,
+  media?: {
+    type: 'image' | 'video' | 'audio' | 'document';
+    url: string;
+    fileName?: string;
+    fileSize?: number;
+  }
 ): Promise<TelegramVaultMessage> {
   const key = await getVaultEncryptionKey();
   const timestamp = new Date().toISOString();
@@ -424,12 +430,16 @@ export async function sendTelegramVaultMessage(
     sender_role: replyTo.sender_role
   } : null;
 
-  const payload = {
+  const payload: any = {
     text,
     sender_role: senderRole,
     created_at: timestamp,
     reply_to: replyObj
   };
+
+  if (media) {
+    payload.media = media;
+  }
 
   const { ciphertext, iv } = await encryptChatMessage(payload, key);
   const wireText = `🔒_E2EE:${iv}:${ciphertext}`;
@@ -489,7 +499,8 @@ export async function sendTelegramVaultMessage(
     timestamp,
     created_at: timestamp,
     is_encrypted: true,
-    replyTo: replyObj
+    replyTo: replyObj,
+    media: media || undefined
   };
 
   // Update local cache

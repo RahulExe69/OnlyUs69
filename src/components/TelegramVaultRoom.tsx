@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -17,7 +17,8 @@ import {
   X,
   Heart,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Download
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { 
@@ -34,6 +35,9 @@ import {
   subscribeToTelegramVaultRealtime
 } from '../lib/telegramService';
 import { useOverlayBack } from '../lib/overlayManager';
+import { supabase } from '../lib/supabase';
+import { TelegramMessageItem } from './TelegramMessageItem';
+import { TelegramChatInputBar } from './TelegramChatInputBar';
 
 interface TelegramVaultRoomProps {
   userProfile: UserProfile | null;
@@ -51,9 +55,9 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
   onSwitchToOnlyUs,
 }) => {
   const [messages, setMessages] = useState<TelegramVaultMessage[]>(() => loadCachedVaultMessages());
-  const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [replyTarget, setReplyTarget] = useState<TelegramVaultMessage | null>(null);
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
   
   // Status and setup state
   const [status, setStatus] = useState<TelegramVaultStatus | null>(null);
@@ -71,6 +75,7 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
   const partnerName = userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul');
 
   useOverlayBack(showConfigModal, () => setShowConfigModal(false), 'telegram-config-modal');
+  useOverlayBack(Boolean(viewingImageUrl), () => setViewingImageUrl(null), 'telegram-vault-image-viewer');
 
   const scrollToBottom = useCallback((smooth = true) => {
     if (scrollRef.current) {
@@ -80,6 +85,42 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
       });
     }
   }, []);
+
+  // Jump to quoted message with smooth scroll & temporary pulse highlight
+  const handleScrollToMessage = useCallback((id: string) => {
+    const el = document.getElementById(`vault-msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('theme-message-focus');
+      setTimeout(() => el.classList.remove('theme-message-focus'), 1400);
+    }
+  }, []);
+
+  // WhatsApp-style conversational grouping & avatar clustering
+  const groupedMessages = useMemo(() => {
+    return messages.map((msg, index) => {
+      const prev = messages[index - 1];
+      const next = messages[index + 1];
+
+      const prevDate = prev ? new Date(prev.timestamp).getTime() : 0;
+      const currDate = new Date(msg.timestamp).getTime();
+      const nextDate = next ? new Date(next.timestamp).getTime() : 0;
+
+      const timeDiffPrev = (currDate - prevDate) / (1000 * 60);
+      const timeDiffNext = (nextDate - currDate) / (1000 * 60);
+
+      const isFirstInGroup = !prev || prev.sender_role !== msg.sender_role || timeDiffPrev > 15;
+      const isLastInGroup = !next || next.sender_role !== msg.sender_role || timeDiffNext > 15;
+      const shouldShowAvatar = isFirstInGroup && msg.sender_role !== myRole;
+
+      return {
+        msg,
+        isFirstInGroup,
+        isLastInGroup,
+        shouldShowAvatar
+      };
+    });
+  }, [messages, myRole]);
 
   // Initial status check with auto-adoption
   const refreshStatus = useCallback(async () => {
@@ -191,12 +232,10 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
     };
   }, []);
 
-  // Send message
-  const handleSend = async () => {
-    const text = inputText.trim();
-    if (!text || isSending) return;
+  // Send text message
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isSending) return;
 
-    setInputText('');
     const targetReply = replyTarget;
     setReplyTarget(null);
     setIsSending(true);
@@ -236,6 +275,78 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
     }
   };
 
+  // Send photo attachment
+  const handleSendImage = async (file: File) => {
+    if (isSending) return;
+    setIsSending(true);
+
+    const tempId = `temp_${Date.now()}`;
+    const localPreviewUrl = URL.createObjectURL(file);
+    const targetReply = replyTarget;
+    setReplyTarget(null);
+
+    const optimisticMsg: TelegramVaultMessage = {
+      id: tempId,
+      telegram_id: 0,
+      text: '',
+      sender_role: myRole,
+      timestamp: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      is_encrypted: true,
+      replyTo: targetReply ? {
+        id: targetReply.id,
+        text: targetReply.text,
+        sender_role: targetReply.sender_role
+      } : null,
+      media: {
+        type: 'image',
+        url: localPreviewUrl,
+        fileName: file.name,
+        fileSize: file.size
+      }
+    };
+
+    setMessages(prev => [...prev, optimisticMsg]);
+    scrollToBottom(true);
+
+    try {
+      let finalUrl = localPreviewUrl;
+      const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '');
+      const storagePath = `vault_${Date.now()}_${safeName}`;
+
+      try {
+        const { error: uploadErr } = await supabase.storage
+          .from('chat-media')
+          .upload(storagePath, file, { contentType: file.type || 'image/jpeg', upsert: true });
+
+        if (!uploadErr) {
+          const { data: pubData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+          if (pubData?.publicUrl) {
+            finalUrl = pubData.publicUrl;
+          }
+        }
+      } catch (storageErr) {
+        console.warn('Storage bridge error:', storageErr);
+      }
+
+      const sent = await sendTelegramVaultMessage('', myRole, targetReply, {
+        type: 'image',
+        url: finalUrl,
+        fileName: file.name,
+        fileSize: file.size
+      });
+
+      setMessages(prev => prev.map(m => m.id === tempId ? sent : m));
+    } catch (err: any) {
+      console.warn('[TelegramVault] Image upload error:', err);
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      alert(`Failed to send image: ${err.message || 'Error uploading to Vault'}`);
+    } finally {
+      setIsSending(false);
+      scrollToBottom(true);
+    }
+  };
+
   // Double tap or reaction toggle
   const handleToggleReaction = async (msg: TelegramVaultMessage, emoji: string = '❤️') => {
     const current = msg.reactions?.[emoji] || 0;
@@ -247,7 +358,7 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
     }
 
     setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: nextReactions } : m));
-    saveCachedVaultMessages(messages);
+    saveCachedVaultMessages(messages.map(m => m.id === msg.id ? { ...m, reactions: nextReactions } : m));
     await reactTelegramVaultMessage(msg.telegram_id || msg.id, current > 0 ? '' : emoji, myRole);
   };
 
@@ -399,173 +510,37 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
           </div>
         )}
 
-        {/* Render Messages */}
-        {messages.map((msg) => {
-          const isMe = msg.sender_role === myRole;
-          const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
-
-          return (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} my-0.5 group`}
-            >
-              {/* Message Bubble Container */}
-              <div 
-                className={`relative max-w-[85%] sm:max-w-[75%] ${hasReactions ? 'mb-2.5' : ''}`}
-                onDoubleClick={() => handleToggleReaction(msg, '❤️')}
-              >
-                {/* Reply preview */}
-                {msg.replyTo && (
-                  <div 
-                    className="mb-1 px-2.5 py-1 rounded-lg text-[11px] border-l-2 flex flex-col"
-                    style={{
-                      backgroundColor: isMe ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.06)',
-                      borderColor: 'var(--theme-accent)',
-                      color: isMe ? 'var(--theme-bubble-owner-text)' : 'var(--theme-bubble-partner-text)',
-                    }}
-                  >
-                    <span className="font-bold opacity-85">
-                      {msg.replyTo.sender_role === myRole ? 'You' : partnerName}
-                    </span>
-                    <span className="truncate opacity-90">{msg.replyTo.text}</span>
-                  </div>
-                )}
-
-                {/* Main Bubble */}
-                <div
-                  style={{
-                    backgroundColor: isMe ? 'var(--theme-bubble-owner)' : 'var(--theme-bubble-partner)',
-                    color: isMe ? 'var(--theme-bubble-owner-text)' : 'var(--theme-bubble-partner-text)',
-                    borderColor: isMe ? 'transparent' : 'var(--theme-border)',
-                  }}
-                  className={`px-3.5 py-2 rounded-2xl text-[14px] leading-snug break-words transition-all shadow-xs border ${
-                    isMe
-                      ? 'rounded-br-xs'
-                      : 'rounded-bl-xs'
-                  }`}
-                >
-                  <p 
-                    className="whitespace-pre-wrap select-text leading-relaxed font-normal"
-                    style={{ color: isMe ? 'var(--theme-bubble-owner-text)' : 'var(--theme-bubble-partner-text)' }}
-                  >
-                    {msg.text}
-                  </p>
-
-                  {/* Timestamp & Status */}
-                  <div 
-                    className="mt-1 flex items-center justify-end gap-1.5 text-[10.5px]"
-                    style={{
-                      color: isMe ? 'var(--theme-bubble-owner-text)' : 'var(--theme-bubble-partner-text)',
-                      opacity: 0.75,
-                    }}
-                  >
-                    <span>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    {isMe && (
-                      msg.id.startsWith('temp_') 
-                        ? <RefreshCw className="w-2.5 h-2.5 animate-spin opacity-80" />
-                        : <CheckCheck className="w-3.5 h-3.5 text-sky-400 stroke-[2.5]" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Attached Reaction Badge */}
-                {hasReactions && (
-                  <div 
-                    onClick={() => handleToggleReaction(msg, '❤️')}
-                    className={`absolute -bottom-2 ${isMe ? 'right-2' : 'left-2'} h-5 px-1.5 rounded-full bg-[var(--theme-surface)] border border-[var(--theme-border)] flex items-center gap-1 shadow-sm text-xs cursor-pointer active:scale-95 z-10`}
-                  >
-                    <span>❤️</span>
-                    <span className="text-[10px] font-bold text-[var(--theme-text)]">{Object.values(msg.reactions || {})[0]}</span>
-                  </div>
-                )}
-
-                {/* Hover Quick Actions */}
-                <div className={`opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 ${isMe ? '-left-14' : '-right-14'} flex items-center gap-1 z-10`}>
-                  <button
-                    onClick={() => setReplyTarget(msg)}
-                    className="p-1 rounded-full bg-[var(--theme-surface)] hover:bg-[var(--theme-accent)] hover:text-white border border-[var(--theme-border)] text-xs transition-colors"
-                    title="Reply"
-                  >
-                    <Reply className="w-3 h-3" />
-                  </button>
-                  {isMe && (
-                    <button
-                      onClick={() => handleDeleteMessage(msg)}
-                      className="p-1 rounded-full bg-[var(--theme-surface)] hover:bg-red-500 hover:text-white border border-[var(--theme-border)] text-xs transition-colors text-red-500"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {/* Render Messages with WhatsApp-style grouping, swipe-to-reply, double-tap ❤️ & reactions */}
+        {groupedMessages.map(({ msg, isFirstInGroup, isLastInGroup, shouldShowAvatar }) => (
+          <TelegramMessageItem
+            key={msg.id}
+            msg={msg}
+            myRole={myRole}
+            partnerName={partnerName}
+            isFirstInGroup={isFirstInGroup}
+            isLastInGroup={isLastInGroup}
+            shouldShowAvatar={shouldShowAvatar}
+            userProfile={userProfile}
+            partnerProfile={partnerProfile}
+            onReply={setReplyTarget}
+            onReact={handleToggleReaction}
+            onDelete={handleDeleteMessage}
+            onScrollToMessage={handleScrollToMessage}
+            onViewImage={setViewingImageUrl}
+          />
+        ))}
       </div>
 
-      {/* Reply Banner */}
-      <AnimatePresence>
-        {replyTarget && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="px-4 py-2 bg-[var(--theme-surface)] border-t border-[var(--theme-border)] flex items-center justify-between text-xs z-20"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <Reply className="w-3.5 h-3.5 text-[var(--theme-accent)] shrink-0" />
-              <div className="truncate">
-                <span className="font-bold text-[var(--theme-accent)]">
-                  Replying to {replyTarget.sender_role === myRole ? 'yourself' : partnerName}:
-                </span>{' '}
-                <span className="text-[var(--theme-text)]/70">{replyTarget.text}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => setReplyTarget(null)}
-              className="p-1 hover:bg-white/10 rounded-full text-[var(--theme-text)]/60"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Input Bar */}
-      <footer className="p-2 sm:p-3 bg-[var(--theme-bg)] border-t border-[var(--theme-border)]/70 relative z-30">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="flex items-center gap-2 max-w-4xl mx-auto"
-        >
-          <div className="flex-1 relative flex items-center">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={`Message to Telegram Vault (${partnerName})...`}
-              className="w-full h-11 px-4 rounded-full bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-border)] focus:outline-hidden focus:border-[var(--theme-accent)] text-sm transition-all"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isSending}
-            className="w-11 h-11 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-md shrink-0 cursor-pointer"
-          >
-            {isSending ? (
-              <RefreshCw className="w-5 h-5 animate-spin" />
-            ) : (
-              <Send className="w-5 h-5 ml-0.5" />
-            )}
-          </button>
-        </form>
-      </footer>
+      {/* WhatsApp-style Input Bar with Whisper Marquee Ticker, Emojis & Photo Attach */}
+      <TelegramChatInputBar
+        myRole={myRole}
+        partnerName={partnerName}
+        replyTarget={replyTarget}
+        onClearReply={() => setReplyTarget(null)}
+        onSendMessage={handleSendMessage}
+        onSendImage={handleSendImage}
+        isSending={isSending}
+      />
 
       {/* Settings / Configuration Modal */}
       <AnimatePresence>
@@ -775,6 +750,51 @@ export const TelegramVaultRoom: React.FC<TelegramVaultRoomProps> = ({
                   </button>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Photo Viewer */}
+      <AnimatePresence>
+        {viewingImageUrl && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+            onClick={() => setViewingImageUrl(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="relative max-w-3xl max-h-[85vh] flex flex-col items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+                <a
+                  href={viewingImageUrl}
+                  download="vault-media.jpg"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2 rounded-full bg-black/50 hover:bg-black/75 text-white transition-all backdrop-blur-sm cursor-pointer"
+                  title="Download Image"
+                >
+                  <Download className="w-5 h-5" />
+                </a>
+                <button
+                  onClick={() => setViewingImageUrl(null)}
+                  className="p-2 rounded-full bg-black/50 hover:bg-black/75 text-white transition-all backdrop-blur-sm cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <img
+                src={viewingImageUrl}
+                alt="Vault Attachment"
+                className="max-h-[80vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
+              />
             </motion.div>
           </div>
         )}
