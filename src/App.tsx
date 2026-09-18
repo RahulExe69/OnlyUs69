@@ -463,7 +463,16 @@ export default function App() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [isTabActive, setIsTabActive] = useState(true);
-  const [activeNudge, setActiveNudge] = useState<{ type: string, sender: string } | null>(null);
+  const [activeNudge, setActiveNudge] = useState<{ type: string; sender: string; isFromPartner?: boolean } | null>(null);
+  const nudgeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleDismissNudge = useCallback(() => {
+    if (nudgeTimerRef.current) {
+      clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = null;
+    }
+    setActiveNudge(null);
+  }, []);
   const getInitialTab = (): 'dashboard' | 'chat' | 'instagram' | 'whatsapp' => {
     if (typeof window !== 'undefined') {
       try {
@@ -491,7 +500,7 @@ export default function App() {
   useOverlayBack(showDeleteChoices, () => setShowDeleteChoices(false), 'delete-choices');
   // If active game is open and not minimized, back button minimizes it!
   useOverlayBack(!!activeGame && !isGameMinimized, () => handleMinimizeGame(), 'active-game');
-  useOverlayBack(!!activeNudge, () => setActiveNudge(null), 'active-nudge');
+  useOverlayBack(!!activeNudge, handleDismissNudge, 'active-nudge');
   useOverlayBack(showGamesMenu, () => setShowGamesMenu(false), 'games-menu');
   useOverlayBack(selectedMessages.length > 0, () => setSelectedMessages([]), 'selected-messages');
   useOverlayBack(isSidebarOpen, () => setIsSidebarOpen(false), 'sidebar-drawer');
@@ -1142,12 +1151,16 @@ export default function App() {
                                      senderName || 
                                      (myRole === 'owner' ? 'Nusrat' : 'Rahul');
 
-          setActiveNudge({ type: type || 'hug', sender: partnerDisplayName });
-          // Auto-clear nudge after 4 seconds
-          setTimeout(() => setActiveNudge(null), 4000);
-          // WhatsApp style double vibration pulse for feeling
+          if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+          setActiveNudge({ type: type || 'hug', sender: partnerDisplayName, isFromPartner: true });
+          // Auto-clear feeling overlay after 3.8s
+          nudgeTimerRef.current = setTimeout(() => {
+            setActiveNudge(null);
+            nudgeTimerRef.current = null;
+          }, 3800);
+          // Romantic heartbeat double vibration pulse (lub-dub... lub-dub)
           if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-            try { window.navigator.vibrate([150, 80, 150]); } catch (_) {}
+            try { window.navigator.vibrate([60, 80, 60, 160, 60, 80, 60]); } catch (_) {}
           }
         }
       })
@@ -1261,12 +1274,16 @@ export default function App() {
     const nudgeId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // 1. Instant local visual celebration
-    setActiveNudge({ type, sender: 'You' });
-    setTimeout(() => setActiveNudge(null), 4000);
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    setActiveNudge({ type, sender: 'You', isFromPartner: false });
+    nudgeTimerRef.current = setTimeout(() => {
+      setActiveNudge(null);
+      nudgeTimerRef.current = null;
+    }, 3800);
 
     // Haptic feedback
     if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-      try { window.navigator.vibrate([100, 50, 100]); } catch (_) {}
+      try { window.navigator.vibrate([60, 80, 60]); } catch (_) {}
     }
 
     // 2. Real-time broadcast to partner
@@ -1744,19 +1761,10 @@ export default function App() {
     return <StealthNotepadView onUnlock={handleUnlockVault} />;
   }
 
-  if (showIntro) {
+  if (showIntro || loading) {
     return (
       <OnlyUsIntro
         ready={!loading}
-        onFinish={handleFinishIntro}
-      />
-    );
-  }
-
-  if (loading) {
-    return (
-      <OnlyUsIntro
-        ready={false}
         onFinish={handleFinishIntro}
       />
     );
@@ -2179,6 +2187,17 @@ export default function App() {
         onToggleCamera={toggleCamera}
         onFlipCamera={flipCamera}
       />
+
+      {/* Real-time Feeling / Nudge Overlay with Edge-Lighting Shader & Romantic Capsule */}
+      <AnimatePresence>
+        {activeNudge && (
+          <NudgeOverlay
+            nudge={activeNudge}
+            onDismiss={handleDismissNudge}
+            onSendBack={(type) => sendNudge(type)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3131,12 +3150,6 @@ const ChatView = React.memo(function ChatView({
             })
           )}
         </div>
-
-        <AnimatePresence>
-          {activeNudge && (
-            <NudgeOverlay nudge={activeNudge} onDismiss={onDismissNudge} />
-          )}
-        </AnimatePresence>
 
         {/* Scroll to bottom & New messages indicator pill */}
         <AnimatePresence>

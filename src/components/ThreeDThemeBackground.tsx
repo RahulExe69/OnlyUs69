@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { NeuralNoiseBackground } from './NeuralNoiseBackground';
+import { getShaderThemeComponent } from './ShaderThemesThreeD';
 
 interface ThreeDThemeBackgroundProps {
   theme?: string;
@@ -9,29 +9,36 @@ interface ThreeDThemeBackgroundProps {
 
 /**
  * ThreeDThemeBackground
- * High-performance, hardware-accelerated 60fps 3D canvas background engine.
+ * High-performance, hardware-accelerated 3D canvas and WebGL shader background engine.
  * 
- * Includes:
- * 1. 3d-romantic: Dreamy Rose Quartz & Ethereal Silk WebGL Fluid Shader (Default OnlyUs)
- * 2. 3d-neural: Living Procedural WebGL Neural Noise Shader
- * 3. 3d-light: 3D Minimalist Geometric Wireframe Cubes
- * 4. 3d-dark: 3D Cosmic Starfield Warp & Shooting Stars
- * 5. 3d-lavender: 3D Volumetric Violet Aura Orbs & Stardust
- * 6. 3d-ocean: 3D Underwater Caustic Waves & Bioluminescent Bubbles
- * 7. 3d-sunset: 3D Rising Golden Embers & Warm Flares
- * 8. 3d-doodle: 3D Playful Bouncing Confetti & Stars
- * 9. 3d-noir: 3D Monochrome Crystalline Shards & Gold Motes
- * 10. 3d-forest: 3D Rotating Emerald Gems & Firefly Trails
- * 11. 3d-cyber: 3D Perspective Cybernetic Grid & Neon Ribbons
- * 12. 3d-aurora: 3D Northern Lights (Aurora Borealis) Curtains
+ * Shader themes (in /src/components/ShaderThemesThreeD/):
+ * 1. OnlyUs (3d-romantic / romantic): Dreamy Sakura Blossom WebGL Shader
+ * 2. Nebula (3d-neural / neural): Living Procedural WebGL Neural Noise / Nebula Shader
+ * 
+ * Future Shader Themes (migrating one-by-one from canvas 2D fallback):
+ * - 3d-light: Minimalist Geometric Wireframe
+ * - 3d-dark: Cosmic Starfield Warp & Nebulae
+ * - 3d-lavender: Volumetric Violet Aura Orbs
+ * - 3d-ocean: Underwater Tidal Caustics & Bioluminescent Bubbles
+ * - 3d-sunset: Rising Golden Embers & Warm Flares
+ * - 3d-doodle: Playful Bouncing Confetti & Stars
+ * - 3d-noir: Monochrome Crystalline Shards & Gold Motes
+ * - 3d-forest: Rotating Emerald Gems & Firefly Trails
+ * - 3d-cyber: Perspective Cybernetic Grid & Neon Ribbons
+ * - 3d-aurora: Northern Lights Curtains
+ * - 3d-anime: Manga Halftone Screentone & Action SFX
+ * - 3d-pokemon: Battle dialogue, Gengar & Electric Arcs
+ * - 3d-akatsuki: Crimson Clouds & Rainstorm
  */
 export const ThreeDThemeBackground: React.FC<ThreeDThemeBackgroundProps> = (props) => {
   const activeTheme = (props.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined) || '3d-romantic').toLowerCase();
 
-  // If neural theme, route to dedicated GPU procedural WebGL shader
-  if (activeTheme === '3d-neural' || activeTheme === 'neural') {
-    return <NeuralNoiseBackground className={props.className} paused={props.paused} />;
+  // If a dedicated GPU WebGL shader exists in ShaderThemesThreeD, prioritize it
+  const ShaderComponent = getShaderThemeComponent(activeTheme);
+  if (ShaderComponent) {
+    return <ShaderComponent className={props.className} paused={props.paused} />;
   }
+
   return <ThreeDCanvas2DBackground {...props} />;
 };
 

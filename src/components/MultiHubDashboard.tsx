@@ -16,6 +16,8 @@ import {
 import { UserProfile } from '../types';
 import { is3DTheme } from '../lib/themes';
 import { QuantumAuraBackground } from './QuantumAuraBackground';
+import { ShaderBorderBeam } from './ShaderBorderBeam';
+import { LiquidCardShader } from './LiquidCardShader';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -102,8 +104,8 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       {/* Top Header Bar */}
       <header className="relative z-10 px-5 pt-[max(1rem,calc(0.75rem+env(safe-area-inset-top,0px)))] pb-3 flex items-center justify-between max-w-md mx-auto w-full">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center border border-[var(--theme-accent)]/20 shadow-2xs">
-            <Heart className="w-4 h-4 fill-current" />
+          <div className="w-9 h-9 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center border border-[var(--theme-accent)]/25 shadow-2xs">
+            <Heart className="w-4 h-4 fill-current animate-pulse" />
           </div>
           <div className="leading-tight">
             <div className="flex items-center gap-1.5">
@@ -151,18 +153,18 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       {/* Main Hub Body */}
       <main className="relative z-10 px-5 py-2 max-w-md mx-auto w-full flex-1 flex flex-col justify-center gap-4">
         
-        {/* Partner Sanctuary Card */}
+        {/* Partner Sanctuary Card - Clean, intimate, theme-responsive */}
         <motion.div 
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           whileTap={{ scale: 0.985 }}
+          className="p-3.5 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)]/70 shadow-xs flex items-center justify-between cursor-pointer hover:border-[var(--theme-accent)]/40 transition-all"
           onClick={onOpenPartnerInfo || onOpenProfile}
-          className="p-3.5 rounded-2xl bg-[var(--theme-surface)]/80 backdrop-blur-md border border-[var(--theme-border)]/60 shadow-xs flex items-center justify-between cursor-pointer hover:border-[var(--theme-accent)]/35 transition-all"
           title="View Partner Profile"
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0 w-12 h-12 aspect-square">
-              <div className="w-12 h-12 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/35 ring-2 ring-[var(--theme-accent)]/15 shadow-2xs bg-[var(--theme-surface)]">
+              <div className="w-12 h-12 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 ring-2 ring-[var(--theme-accent)]/15 shadow-2xs bg-[var(--theme-surface)]">
                 {partnerProfile?.photo_url ? (
                   <img 
                     src={partnerProfile.photo_url} 
@@ -179,9 +181,9 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
               
               {/* Online indicator */}
               {isPartnerOnline ? (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
               ) : isInGame ? (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
               ) : null}
             </div>
 
@@ -212,52 +214,68 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
 
           {/* Messages count pill */}
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] border border-[var(--theme-accent)]/20 shrink-0 text-xs font-bold shadow-2xs">
-            <Flame className="w-3.5 h-3.5 fill-current" />
+            <Flame className="w-3.5 h-3.5 fill-current text-orange-500 animate-pulse" />
             <span>{totalMessages.toLocaleString()}</span>
           </div>
         </motion.div>
 
-        {/* Primary Destination: OnlyUs Chat */}
+        {/* Primary Destination: OnlyUs Chat with Theme-Adaptive Velvet Silk Shader */}
         <motion.div
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => handleTabClick('chat')}
-          className="group relative cursor-pointer p-4.5 rounded-3xl text-white shadow-lg overflow-hidden transition-all"
-          style={{
-            background: 'linear-gradient(135deg, var(--theme-accent) 0%, color-mix(in srgb, var(--theme-accent) 70%, black 30%) 100%)',
-            boxShadow: '0 10px 25px -5px color-mix(in srgb, var(--theme-accent) 35%, transparent)'
-          }}
+          className="group cursor-pointer"
         >
-          {/* Subtle light sheen overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent pointer-events-none" />
-          
-          <div className="flex items-center justify-between relative z-10">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/25 shadow-inner shrink-0">
-                <MessageCircleHeart className="w-6 h-6 stroke-[2.2]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
-                    OnlyUs Chat
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[9px] font-bold uppercase tracking-wider text-white">
-                    Primary
-                  </span>
-                </div>
-                <p className="text-xs text-white/85 font-medium mt-0.5">
-                  Messages, voice notes, live calls & games
-                </p>
-              </div>
-            </div>
+          <ShaderBorderBeam
+            borderRadius="rounded-3xl"
+            innerRadius="rounded-[calc(1.5rem-2px)]"
+            borderWidth={1.5}
+            beamColors={['var(--theme-accent)', 'rgba(255, 255, 255, 0.8)', 'var(--theme-accent)']}
+            duration={8.0}
+            beamLength={80}
+            glow={true}
+            glowIntensity={0.25}
+            className="relative p-4.5 text-white shadow-lg overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, var(--theme-accent) 0%, color-mix(in srgb, var(--theme-accent) 65%, black 35%) 100%)',
+              boxShadow: '0 10px 24px -4px color-mix(in srgb, var(--theme-accent) 35%, transparent)',
+            }}
+          >
+            {/* Theme-Adaptive Calm Liquid Silk Shader */}
+            <LiquidCardShader intensity={0.45} speed={0.0006} />
 
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shrink-0">
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            {/* Subtle glass reflection overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/10 pointer-events-none" />
+            
+            <div className="flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),0_4px_12px_rgba(0,0,0,0.15)] shrink-0">
+                  <MessageCircleHeart className="w-6 h-6 stroke-[2.2] drop-shadow-sm" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black tracking-tight text-white drop-shadow-xs">
+                      OnlyUs Chat
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-white/30 backdrop-blur-md text-[9px] font-extrabold uppercase tracking-wider text-white border border-white/30 shadow-2xs">
+                      Primary
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/90 font-medium mt-0.5 drop-shadow-xs">
+                    Messages, voice notes, live calls & games
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Arrow Button */}
+              <div className="w-9 h-9 rounded-full bg-white/25 backdrop-blur-md flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shadow-sm shrink-0">
+                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              </div>
             </div>
-          </div>
+          </ShaderBorderBeam>
         </motion.div>
 
-        {/* Companion Apps Section */}
+        {/* Companion Apps Section - Clean, Elegant & Clutter-Free */}
         <div className="space-y-2.5 pt-1">
           <div className="flex items-center gap-2 px-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--theme-text)]/50">
@@ -272,7 +290,7 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
               whileHover={{ scale: 1.008 }}
               whileTap={{ scale: 0.985 }}
               onClick={() => handleTabClick('instagram')}
-              className="group cursor-pointer p-3.5 rounded-2xl bg-[var(--theme-surface)]/80 backdrop-blur-md border border-[var(--theme-border)]/60 hover:border-pink-500/35 shadow-2xs transition-all flex items-center justify-between"
+              className="group cursor-pointer p-3.5 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)]/70 hover:border-pink-500/40 shadow-2xs transition-all flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white shadow-xs shrink-0">
@@ -293,12 +311,12 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
               </div>
             </motion.div>
 
-            {/* WhatsApp */}
+            {/* WhatsApp Web */}
             <motion.div
               whileHover={{ scale: 1.008 }}
               whileTap={{ scale: 0.985 }}
               onClick={() => handleTabClick('whatsapp')}
-              className="group cursor-pointer p-3.5 rounded-2xl bg-[var(--theme-surface)]/80 backdrop-blur-md border border-[var(--theme-border)]/60 hover:border-emerald-500/35 shadow-2xs transition-all flex items-center justify-between"
+              className="group cursor-pointer p-3.5 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)]/70 hover:border-emerald-500/40 shadow-2xs transition-all flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#25D366] to-[#128C7E] flex items-center justify-center text-white shadow-xs shrink-0">
@@ -323,8 +341,10 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       </main>
 
       {/* Bottom Footer */}
-      <footer className="relative z-10 px-5 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom,0px)))] pt-2 text-center text-[10px] text-[var(--theme-text)]/40 font-medium">
-        OnlyUs • Built with love for Rahul & Nusrat
+      <footer className="relative z-10 w-full flex items-center justify-center px-5 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom,0px)))] pt-2 text-center text-[10px] text-[var(--theme-text)]/50 font-medium tracking-wide">
+        <span>OnlyUs • Made with love</span>
+        <span className="inline-block mx-1 text-red-500 animate-pulse">❤️</span>
+        <span>for Rahul & Nusrat</span>
       </footer>
     </div>
   );
