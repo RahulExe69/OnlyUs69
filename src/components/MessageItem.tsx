@@ -604,6 +604,7 @@ function MessageItemComponent({
             </AnimatePresence>
 
             <div
+              data-msg-id={msg.id}
               className={`leading-relaxed shadow-sm relative transition-all select-none max-w-full min-w-0 break-words ${
                 isMediaOnly
                   ? 'p-[3px] rounded-[18px]'

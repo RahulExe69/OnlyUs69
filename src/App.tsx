@@ -4,7 +4,7 @@ import { StealthNotepadView } from './components/StealthNotepadView';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
-import { AppConfig, UserRole, UserProfile, Message, MediaAttachment } from './types';
+import { AppConfig, UserRole, UserProfile, Message, MediaAttachment, PetSettings } from './types';
 import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
@@ -36,6 +36,8 @@ import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { CallModal } from './components/CallModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
+import { ChatPetCompanion } from './components/ChatPetCompanion';
+import { PetSettingsModal } from './components/PetSettingsModal';
 
 // Dynamic lazy imports for heavy secondary modal dialogs
 const ProfileModal = lazy(() => import('./components/ProfileModal').then(m => ({ default: m.ProfileModal })));
@@ -279,6 +281,35 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
+  const [showPetModal, setShowPetModal] = useState(false);
+  const [petSettings, setPetSettings] = useState<PetSettings>(() => {
+    if (typeof window === 'undefined') {
+      return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
+    }
+    try {
+      const stored = localStorage.getItem('onlyus_pet_settings');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed.enabled === 'boolean') {
+          return {
+            enabled: parsed.enabled,
+            name: parsed.name || 'Mochi',
+            breed: parsed.breed || 'mochi',
+            accessory: parsed.accessory || 'bow',
+            soundEnabled: parsed.soundEnabled ?? true,
+          };
+        }
+      }
+    } catch (_) {}
+    return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
+  });
+
+  const handleUpdatePetSettings = useCallback((updated: PetSettings) => {
+    setPetSettings(updated);
+    try {
+      localStorage.setItem('onlyus_pet_settings', JSON.stringify(updated));
+    } catch (_) {}
+  }, []);
   const [showE2EEModal, setShowE2EEModal] = useState(false);
   const [isE2EEActive, setIsE2EEActive] = useState(isE2EEReady());
 
@@ -503,6 +534,7 @@ export default function App() {
   useOverlayBack(activeHubTab !== 'dashboard', () => setActiveHubTab('dashboard'), 'hub-active-tab');
   useOverlayBack(showProfileModal, () => setShowProfileModal(false), 'profile-modal');
   useOverlayBack(showPartnerInfo, () => setShowPartnerInfo(false), 'partner-info-modal');
+  useOverlayBack(showPetModal, () => setShowPetModal(false), 'pet-settings-modal');
   useOverlayBack(showE2EEModal, () => setShowE2EEModal(false), 'e2ee-modal');
   useOverlayBack(!!showFullImage, () => setShowFullImage(null), 'full-image-viewer');
   useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
@@ -2041,6 +2073,14 @@ export default function App() {
                                 <Gamepad2 className="w-4 h-4 text-[var(--theme-accent)]" />
                                 Play Together
                               </button>
+                              <button 
+                                onPointerDown={(e) => e.preventDefault()}
+                                onClick={() => { setShowPetModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
+                              >
+                                <span className="text-base leading-none">🐱</span>
+                                <span>Pet Companion ({petSettings.enabled ? petSettings.name : 'Off'})</span>
+                              </button>
                             </motion.div>
                           </>
                         )}
@@ -2058,7 +2098,7 @@ export default function App() {
             {(is3DTheme(userProfile?.theme) || (typeof document !== 'undefined' && is3DTheme(document.documentElement.dataset.chatTheme))) && (
               <QuantumAuraBackground 
                 theme={userProfile?.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined)} 
-                paused={Boolean(showProfileModal || showCustomizeModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || showMenu || (!!activeGame && !isGameMinimized))}
+                paused={Boolean(showProfileModal || showCustomizeModal || showPartnerInfo || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || showMenu || (!!activeGame && !isGameMinimized))}
               />
             )}
             <div className="relative z-10 h-full flex flex-col">
@@ -2078,11 +2118,12 @@ export default function App() {
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={(url) => setShowFullImage(url)}
-                isOverlayOpen={showProfileModal || showPartnerInfo || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
+                isOverlayOpen={showProfileModal || showPartnerInfo || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
                 showAttachmentMenu={showAttachmentMenu}
                 onSetShowAttachmentMenu={setShowAttachmentMenu}
                 showGamesMenu={showGamesMenu}
                 onSetShowGamesMenu={setShowGamesMenu}
+                petSettings={petSettings}
                 activeGame={activeGame}
                 onSetActiveGame={(game) => {
                   if (minimizedTimerRef.current) {
@@ -2141,9 +2182,18 @@ export default function App() {
               currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
               onThemeSelect={selectTheme}
               isThemeSaving={isThemeSaving}
+              petSettings={petSettings}
+              onOpenPetSettings={() => setShowPetModal(true)}
             />
           )}
         </AnimatePresence>
+
+        <PetSettingsModal
+          isOpen={showPetModal}
+          onClose={() => setShowPetModal(false)}
+          settings={petSettings}
+          onSaveSettings={handleUpdatePetSettings}
+        />
 
         <AnimatePresence>
           {showE2EEModal && (
@@ -2273,7 +2323,8 @@ const ChatView = React.memo(function ChatView({
   showNudgeMenu,
   onSetShowNudgeMenu,
   activeNudge,
-  onDismissNudge
+  onDismissNudge,
+  petSettings
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -2309,7 +2360,8 @@ const ChatView = React.memo(function ChatView({
   showNudgeMenu: boolean,
   onSetShowNudgeMenu: (val: boolean) => void,
   activeNudge?: { type: string, sender: string } | null,
-  onDismissNudge?: () => void
+  onDismissNudge?: () => void,
+  petSettings?: PetSettings
 }) {
   const [selectedMediaFiles, setSelectedMediaFiles] = useState<SelectedMediaFile[]>([]);
   const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
@@ -3110,6 +3162,13 @@ const ChatView = React.memo(function ChatView({
           style={{ touchAction: 'pan-y' }}
           className="flex-1 overflow-y-auto pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
         >
+          {petSettings && (
+            <ChatPetCompanion 
+              settings={petSettings} 
+              lastMessageId={messages[messages.length - 1]?.id} 
+              isTyping={socketTypingUsers.length > 0} 
+            />
+          )}
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
             <span className="text-[9px] font-bold text-[var(--theme-accent)] uppercase tracking-[0.4em] bg-[var(--theme-surface)]/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[var(--theme-border)]">Our Story Begins Here</span>
@@ -3185,6 +3244,8 @@ const ChatView = React.memo(function ChatView({
               );
             })
           )}
+          {/* Permanent anchor for companion pet and scroll boundary */}
+          <div id="chat-messages-bottom-anchor" className="h-6 w-full pointer-events-none opacity-0 select-none" />
         </div>
 
         {/* Scroll to bottom & New messages indicator pill */}

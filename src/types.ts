@@ -113,3 +113,14 @@ export interface CallSignalPayload {
   candidate?: RTCIceCandidateInit;
   timestamp: number;
 }
+
+export type PetBreed = 'mochi' | 'calico' | 'caramel' | 'luna';
+export type PetAccessory = 'none' | 'bow' | 'bell' | 'sakura' | 'scarf' | 'crown';
+
+export interface PetSettings {
+  enabled: boolean;
+  name: string;
+  breed: PetBreed;
+  accessory: PetAccessory;
+  soundEnabled?: boolean;
+}
