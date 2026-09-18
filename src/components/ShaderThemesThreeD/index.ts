@@ -4,6 +4,7 @@ import { NebulaShader } from './NebulaShader';
 import { LavenderHaze } from './LavenderHaze';
 import { LavenderShader } from './LavenderShader';
 import { AkatsukiShader } from './AkatsukiShader';
+import { NeonArcadeShader } from './NeonArcadeShader';
 import { ShaderThemeProps } from './types';
 
 export * from './types';
@@ -12,6 +13,7 @@ export { NebulaShader } from './NebulaShader';
 export { LavenderHaze } from './LavenderHaze';
 export { LavenderShader } from './LavenderShader';
 export { AkatsukiShader } from './AkatsukiShader';
+export { NeonArcadeShader } from './NeonArcadeShader';
 
 /**
  * Registry mapping theme identifiers to their dedicated WebGL shader components.
@@ -35,6 +37,11 @@ export const SHADER_THEME_REGISTRY: Record<string, React.FC<ShaderThemeProps>> =
   // Akatsuki (Naruto Rogue Syndicate Crimson Clouds, Sharingan & Storm Rain)
   '3d-akatsuki': AkatsukiShader,
   'akatsuki': AkatsukiShader,
+
+  // Neon Arcade (Outrun Synthwave Cyber Grid, Horizon Sun & Equalizer Sine Waves)
+  '3d-cyber': NeonArcadeShader,
+  'cyber': NeonArcadeShader,
+  '3d-waves': NeonArcadeShader,
 };
 
 

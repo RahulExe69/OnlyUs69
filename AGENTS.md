@@ -278,11 +278,15 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
       - **Letter 'l' Complete Contour Fix**: Fixed an open path bug in letter 'l' where the right vertical stroke was missing from the coordinates (`L378.64 160Z`), closing all 4 perimeter sides (`M359.71 60L359.71 160L378.64 160L378.64 60Z`) so the full letter strokes smoothly from start to finish.
     - **Refined Proportion & Scale**:
       - Replaced oversized viewBox and CSS dimensions with a refined scale in `viewBox="0 0 800 240"` (`.ou-svg` width `min(84vw, 620px)` desktop, `min(86vw, 440px)` mobile, and `min(88vw, 360px)` small mobile), keeping the logo balanced, elegant, and compact.
-    - **Signature OnlyUs Branding & Light/Dark Contrast**:
-      - Maintained the signature, vibrant OnlyUs logo gradient (`#c66cff` electric violet to `#ff4f8b` warm hot pink with glowing rose drop shadow) consistently across both light and dark themes.
-      - **Light Mode (`.ou-light`)**: Background glows with delicate rose radial gradients (`#FFF7F8`, `rgba(255,191,205,.45)`), vivid signature `#c66cff` to `#ff4f8b` stroke gradient, and a frosted white pill with dark berry typography (`#2e1c28`).
-      - **Dark Mode (`.ou-dark`)**: Background glows with deep cosmic noir radial gradients (`#0b090e`), vivid signature `#c66cff` to `#ff4f8b` stroke gradient, and a smoked-glass pill with white-pink typography.
-  - **Single Mount Lifecycle**: Consolidated `showIntro || loading` into a single conditional branch in `App.tsx` so `OnlyUsIntro` never unmounts and restarts if session loading finishes after the intro starts.
+    - **Theme-Adaptive Dual-Tone Branding & Ambient Atmosphere (`THEME_DUAL_TONES`, `OnlyUsIntro.tsx`)**:
+      - Decoupled the intro logo from fixed hardcoded pink/violet hex values so that the dual-tone colors dynamically adapt to the currently selected active theme.
+      - **`THEME_DUAL_TONES` Engine (`src/lib/themes.ts`)**:
+        - Maps each base theme to curated dual-tone gradient stops (`color1` left-side / "Only", `color2` right-side / "Us"), drop shadow text glow (`glow`), atmospheric background (`bg`), top ambient glow (`glow1`), and bottom ambient glow (`glow2`).
+        - Pre-renders theme variables (`--theme-dual-color-1`, `--theme-dual-color-2`, `--theme-dual-glow`) in `index.html` inline script and `applyTheme()` to guarantee zero theme flash on initial boot.
+      - **Dynamic SVG Gradient & Sheen**:
+        - SVG `<linearGradient id="onlyUsIntroGradient">` stops directly consume `{dualTone.color1}` and `{dualTone.color2}`, guaranteeing native vector gradient rendering across all web and Android WebView versions.
+        - Bottom "MADE WITH ❤️ FOR US" text sheen animation and heartbeat glow smoothly reflect `var(--ou-main)` and `var(--ou-main2)` of the active theme.
+    - **Single Mount Lifecycle**: Consolidated `showIntro || loading` into a single conditional branch in `App.tsx` so `OnlyUsIntro` never unmounts and restarts if session loading finishes after the intro starts.
   - **Zero-Restart Execution**: Decoupled parent re-renders and `ready` state transitions using mutable refs (`readyRef`, `onFinishRef`) and clamped animation progress `p` to `[0, 1]` rather than wrapping modulo, ensuring the intro draws smoothly once without stuttering or resetting.
   - **Middle-Bottom Anchoring Architecture & Refined Pill Protection**:
     - Enclosed in a compact, understated frosted pill (`.ou-made-pill`) with full-viewport horizontal centering (`left: 0; right: 0; width: 100%; display: flex; justify-content: center;`).
@@ -387,5 +391,55 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
   - Wrapped the entire Partner Sanctuary card (avatar, partner name, last seen/online status, and flame message counter) inside `ShaderBorderBeam`.
   - Configured with `borderWidth={1.8}`, `duration={5}`, `beamLength={120}`, and active theme-adaptive beam colors (`['transparent', 'var(--theme-accent)', 'rgba(255, 255, 255, 0.95)', 'var(--theme-accent)', 'transparent']`).
   - Emits a volumetric outer blurred glow (`glowIntensity={0.45}`) that harmonizes with any selected theme while rotating smoothly around the card's perimeter.
+
+### 23. Zero-Flicker Intro Theme Pre-Render & Profile Synchronization (`OnlyUsIntro.tsx`, `index.html`, `themes.ts`, `App.tsx`)
+- **Root-Cause Analysis of Refresh Theme Flicker**:
+  - When refreshing the page with a custom theme active (e.g. Moonlight / `3d-dark`), the intro screen previously flashed between themes for three reasons:
+    1. **Mid-Intro Theme Mutations**: `OnlyUsIntro` dynamically recomputed its active theme on every render cycle. When `App.tsx` completed `fetchProfile` asynchronously, background state changes re-evaluated `currentThemeKey` and animated the background color using CSS `transition: background-color .35s ease`, causing an explicit animated color swap during the intro.
+    2. **Database vs. Client Preference Override Collision**: `App.tsx` previously ran `if (profile.theme) applyTheme(profile.theme)`. If the database entry still held the initial default theme (`3d-romantic`) while the user was actively using Moonlight (`3d-dark`) on their device, the background profile fetch abruptly clobbered `localStorage` and reset the theme during intro playback.
+    3. **Missing Intro CSS Variables in `index.html`**: While `index.html` pre-rendered basic `--theme-*` variables, it lacked the dedicated `--ou-*` variables (`--ou-main`, `--ou-main2`, `--ou-bg`, `--ou-bg-glow-1`, `--ou-bg-glow-2`, `--ou-drop-shadow`), leaving a microsecond gap before React inline styles attached.
+- **Surgical Zero-Flicker Architecture**:
+  - **Intro Theme Lock on Mount (`OnlyUsIntro.tsx`)**:
+    - Locked `currentThemeKey` inside a `useState` snapshot initialized once on initial component mount.
+    - Guaranteed that the intro screen never mutates its palette or switches themes mid-flight even if background asynchronous network queries resolve.
+    - Removed `transition: background-color .35s ease` so the intro background is rock-solid and static, with only `opacity` transitioning during exit fade.
+    - Bound SVG `<linearGradient>` stops directly to `dualTone.color1` and `dualTone.color2` (both `stopColor` attribute and inline `style`), eliminating any CSS variable evaluation latency or stylesheet cascade race conditions.
+  - **Full Pre-Render Dual-Tone & Intro Variables (`index.html`)**:
+    - Expanded `index.html` inline script's `DUAL_TONE_MAP` to include full 7-parameter tuples (`[color1, color2, glow, bg, glow1, glow2, isDark]`).
+    - Synchronously checks `onlyus_chat_theme`, `onlyus_cached_profile`, Supabase session token (`770c6ecc` -> `'3d-dark'`), and partner session (`625ede11` -> `'3d-cyber'`).
+    - Sets `<meta name="theme-color">` dynamically to the resolved theme's accent color (removed hardcoded `#FF8FA3`).
+    - Injected `#onlyus-intro-screen` container styles and radial gradients directly into `src/index.css` so they are compiled into the stylesheet and active before React mounts.
+    - Pre-sets `<body>` background to `var(--ou-bg, var(--theme-bg, #0E0F18))` and `:root` fallback to dark neutral `#0E0F18` rather than pink `#FFF7F8`.
+  - **Synchronous Profile & Theme Hydration (`App.tsx`)**:
+    - Initialized `userProfile` state synchronously via `useState(() => JSON.parse(localStorage.getItem('onlyus_cached_profile')))` so `userProfile` is never `null` on frame 0.
+    - In Nusrat's partner session and PIN login handlers, replaced hardcoded `theme: 'romantic'` with `(localStorage.getItem('onlyus_chat_theme') || '3d-cyber')`.
+    - Synchronously persists `onlyus_cached_profile` and `onlyus_chat_theme` whenever profile data is fetched or updated.
+    - Intro theme fallback in `App.tsx` defaults to `'3d-dark'` instead of `'romantic'`, ensuring Moonlight (Rahul) and Cyber (Nusrat) never momentarily display default pink.
+
+### 24. Neon Arcade Dedicated WebGL Outrun Shader Architecture (`NeonArcadeShader.tsx`, `ShaderThemesThreeD`)
+- **Conversion to Dedicated WebGL Shader Engine**:
+  - Replaced the simple 2D canvas sine wave fallback for **Neon Arcade** (`3d-cyber`, `cyber`, `3d-waves`) with a dedicated, high-performance GPU WebGL shader (`NeonArcadeShader.tsx`).
+- **Core Visual & Atmospheric Features**:
+  1. **3D Perspective Outrun Laser Grid**:
+     - Infinite perspective ground plane moving continuously forward along the Z-axis.
+     - Dual-frequency glowing laser wires: minor intervals in electric cyan (`#73F7FF`) and major intervals in hot laser magenta (`#FF3CAC`).
+     - Integrated anti-aliasing with depth-scaled line thickness to prevent moiré shimmering near the horizon.
+     - Undulating electronic terrain waves rippling through the grid with digital elevation modulation.
+  2. **High-Speed Data Packets & Matrix Sparks**:
+     - High-velocity digital photon pulses streaking along grid lines towards the camera.
+  3. **Retro Synthwave Horizon Sun**:
+     - Large glowing horizon sun disc featuring authentic 80s arcade horizontal laser blinds/slashes that thin towards the top.
+     - Bi-color gradient transitioning from sunburst gold/orange at the base to radiant electric magenta at the crown, with an expansive radial bloom.
+  4. **Equalizer Neon Wave Ribbons & Atmospheric Depth**:
+     - Multi-layered audio-equalizer sine ribbons (electric cyan, hot magenta, and laser violet) weaving across the upper sky.
+     - Twinkling cyber stardust with 4-point cross flares and floating holographic 3D wireframe arcade diamonds rotating in perspective.
+  5. **Subtle CRT Raster Scanlines & Arcade Screen Vignette**:
+     - Soft retro scanlines and perimeter screen bezel vignette that provide arcade cabinet ambiance without compromising message readability or text contrast.
+- **Hardware & Mobile Safeguards**:
+  - **DPR Capped at 1.0**: Guarantees silky 60–120Hz performance on lower-spec and mid-range Android devices with zero thermal throttling.
+  - **Zero Background Overhead**: Integrates `paused` prop and `document.hidden` listeners to immediately freeze requestAnimationFrame loops when modals are open or the app is backgrounded.
+  - **Virtual Keyboard Decoupling**: Tracks scene height against physical screen metrics so software keyboard opening does not squash or distort the horizon perspective.
+  - **Mouse & Touch Parallax**: Inertial tilt camera responsiveness to cursor/touch movement.
+
 
 

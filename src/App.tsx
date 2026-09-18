@@ -16,7 +16,7 @@ import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/medi
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
-import { THEMES, ThemeName, applyTheme, is3DTheme } from './lib/themes';
+import { THEMES, ThemeName, applyTheme, is3DTheme, isValidTheme } from './lib/themes';
 import { QuantumAuraBackground } from './components/QuantumAuraBackground';
 import { getMillis, parseDate, hydrateMessageMedia } from './lib/dateUtils';
 import { initializeE2EE, isE2EEReady, encryptChatMessage, resetE2EECache, onE2EEStatusChange, exportSharedSecretBase64 } from './lib/e2ee';
@@ -64,7 +64,17 @@ export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = localStorage.getItem('onlyus_cached_profile');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch (e) {}
+    return null;
+  });
   const [partnerProfile, setPartnerProfile] = useState<UserProfile | null>(null);
   const partnerProfileRef = useRef<UserProfile | null>(null);
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
@@ -766,7 +776,7 @@ export default function App() {
             role: 'partner',
             display_name: 'Nusrat',
             photo_url: '',
-            theme: 'romantic',
+            theme: ((typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') || localStorage.getItem('onlyus_partner_theme')) : null) as ThemeName) || '3d-cyber',
             last_seen: new Date().toISOString(),
             last_read_at: new Date().toISOString()
           });
@@ -965,8 +975,30 @@ export default function App() {
         if (data) {
           const defaultHandle = data.username || (data.email ? data.email.split('@')[0] : (data.role === 'owner' ? 'rahul' : 'nusrat'));
           const profile = { ...data, uid: user.id, username: defaultHandle } as UserProfile;
+
+          const cachedTheme = (typeof window !== 'undefined' ? localStorage.getItem('onlyus_chat_theme') : null) as ThemeName | null;
+          // Determine the user's intended theme:
+          // If the user has a custom active theme in localStorage that differs from a default database entry, preserve user's choice and sync it
+          const resolvedTheme = (cachedTheme && isValidTheme(cachedTheme) && cachedTheme !== 'romantic' && cachedTheme !== '3d-romantic' && (profile.theme === 'romantic' || profile.theme === '3d-romantic' || !profile.theme))
+            ? cachedTheme
+            : ((profile.theme as ThemeName) || cachedTheme || 'romantic');
+
+          if (profile.theme !== resolvedTheme) {
+            profile.theme = resolvedTheme;
+            supabase.from('users').update({ theme: resolvedTheme }).eq('id', user.id).then(undefined, () => {});
+          }
+
           setUserProfile(profile);
-          if (profile.theme) applyTheme(profile.theme as ThemeName);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('onlyus_cached_profile', JSON.stringify(profile));
+              localStorage.setItem('onlyus_chat_theme', resolvedTheme);
+            } catch(e) {}
+          }
+
+          if (typeof document !== 'undefined' && document.documentElement.dataset.chatTheme !== resolvedTheme) {
+            applyTheme(resolvedTheme);
+          }
         } else if (!error || error.code === 'PGRST116') {
           const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
           const defaultHandle = (email || "").split('@')[0] || (role === 'owner' ? 'rahul' : 'nusrat');
@@ -1428,7 +1460,7 @@ export default function App() {
           role: 'partner',
           display_name: 'Nusrat',
           photo_url: '',
-          theme: 'romantic',
+          theme: ((typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') || localStorage.getItem('onlyus_partner_theme')) : null) as ThemeName) || '3d-cyber',
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString()
         });
@@ -1450,10 +1482,12 @@ export default function App() {
     }
   };
 
-  // Apply theme when userProfile changes
+  // Apply theme when userProfile changes (skip redundant apply to prevent flicker)
   useEffect(() => {
     if (userProfile?.theme) {
-      applyTheme(userProfile.theme as ThemeName);
+      if (typeof document !== 'undefined' && document.documentElement.dataset.chatTheme !== userProfile.theme) {
+        applyTheme(userProfile.theme as ThemeName);
+      }
     }
   }, [userProfile?.theme]);
 
@@ -1762,10 +1796,12 @@ export default function App() {
   }
 
   if (showIntro || loading) {
+    const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
       <OnlyUsIntro
         ready={!loading}
         onFinish={handleFinishIntro}
+        themeName={activeIntroTheme}
       />
     );
   }

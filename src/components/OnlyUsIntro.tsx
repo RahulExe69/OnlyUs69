@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { getThemeDualTone, ThemeDualTone } from '../lib/themes';
 
 interface OnlyUsIntroProps {
   onFinish?: () => void;
   ready?: boolean;
   minDuration?: number;
+  themeName?: string | null;
 }
 
 // Pure individual letter vector paths for "OnlyUs" with clean contours (zero font overlaps or variable-font construction loops across all devices)
@@ -34,7 +36,7 @@ const ONLYUS_LETTERS = [
   },
 ];
 
-export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: OnlyUsIntroProps) {
+export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200, themeName }: OnlyUsIntroProps) {
   const letterRefs = useRef<(SVGPathElement | null)[]>([]);
   const [isFadingOut, setIsFadingOut] = useState(false);
   const minTimeElapsedRef = useRef(false);
@@ -47,14 +49,26 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
   const onFinishRef = useRef(onFinish);
   onFinishRef.current = onFinish;
 
-  // Accurate dark/light theme detection synced with OnlyUs theme storage
-  const isDark = (() => {
-    if (typeof window === 'undefined') return false;
-    const theme = (localStorage.getItem('onlyus_chat_theme') || 'romantic').toLowerCase();
-    const cleanTheme = theme.replace(/^3d-/, '');
-    const darkThemes = ['dark', 'noir', 'forest', 'cyber', 'pokemon', 'akatsuki', 'neural', 'cosmos', 'waves'];
-    return darkThemes.includes(cleanTheme) || darkThemes.includes(theme);
-  })();
+  // Accurate active theme resolution locked on mount so the intro NEVER flickers or mutates mid-playback
+  const [currentThemeKey] = useState<string>(() => {
+    if (themeName) return themeName;
+    if (typeof window !== 'undefined') {
+      const docTheme = document.documentElement.dataset.chatTheme;
+      if (docTheme) return docTheme;
+      const localTheme = localStorage.getItem('onlyus_chat_theme');
+      if (localTheme) return localTheme;
+      try {
+        const cached = localStorage.getItem('onlyus_cached_profile');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.theme) return parsed.theme;
+        }
+      } catch (e) {}
+    }
+    return '3d-dark';
+  });
+  const dualTone = getThemeDualTone(currentThemeKey);
+  const isDark = dualTone.isDark;
 
   const triggerFinish = useCallback(() => {
     if (hasFinishedRef.current) return;
@@ -152,22 +166,22 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
       style={{
-        backgroundColor: 'var(--ou-bg)',
+        backgroundColor: dualTone.bg,
         colorScheme: isDark ? 'dark' : 'light',
+        ['--ou-main' as any]: dualTone.color2,
+        ['--ou-main2' as any]: dualTone.color1,
+        ['--ou-drop-shadow' as any]: dualTone.glow,
+        ['--ou-bg' as any]: dualTone.bg,
+        ['--ou-bg-glow-1' as any]: dualTone.glow1,
+        ['--ou-bg-glow-2' as any]: dualTone.glow2,
       }}
     >
       <style>{`
         #onlyus-intro-screen {
-          transition: background-color .35s ease, opacity .55s ease;
+          transition: opacity .55s ease;
         }
 
         #onlyus-intro-screen.ou-dark {
-          --ou-bg: #0b090e;
-          --ou-bg-glow-1: rgba(240, 147, 251, .12);
-          --ou-bg-glow-2: rgba(245, 87, 108, .09);
-          --ou-main: #ff4f8b;
-          --ou-main2: #c66cff;
-          --ou-drop-shadow: rgba(255, 79, 139, 0.35);
           --ou-pill-bg: rgba(18, 14, 24, 0.48);
           --ou-pill-border: rgba(255, 255, 255, 0.08);
           --ou-pill-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4);
@@ -178,15 +192,9 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
         }
 
         #onlyus-intro-screen.ou-light {
-          --ou-bg: #FFF7F8;
-          --ou-bg-glow-1: rgba(255, 191, 205, .45);
-          --ou-bg-glow-2: rgba(255, 221, 194, .48);
-          --ou-main: #ff4f8b;
-          --ou-main2: #c66cff;
-          --ou-drop-shadow: rgba(255, 79, 139, 0.35);
           --ou-pill-bg: rgba(255, 255, 255, 0.85);
-          --ou-pill-border: rgba(255, 79, 139, 0.24);
-          --ou-pill-shadow: 0 4px 16px -2px rgba(255, 79, 139, 0.16), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+          --ou-pill-border: var(--ou-bg-glow-1);
+          --ou-pill-shadow: 0 4px 16px -2px var(--ou-drop-shadow), inset 0 1px 1px rgba(255, 255, 255, 0.95);
           background:
             radial-gradient(ellipse 90% 55% at 50% -10%, var(--ou-bg-glow-1), transparent 68%),
             radial-gradient(ellipse 75% 55% at 85% 110%, var(--ou-bg-glow-2), transparent 68%),
@@ -271,9 +279,9 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
             110deg,
             rgba(255, 255, 255, 0.72) 0%,
             rgba(255, 255, 255, 0.72) 38%,
-            rgba(255, 175, 205, 0.95) 50%,
-            rgba(255, 255, 255, 1) 54%,
-            rgba(255, 175, 205, 0.95) 58%,
+            var(--ou-main2) 50%,
+            #ffffff 54%,
+            var(--ou-main) 58%,
             rgba(255, 255, 255, 0.72) 70%,
             rgba(255, 255, 255, 0.72) 100%
           );
@@ -290,9 +298,9 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
             110deg,
             rgba(46, 28, 40, 0.88) 0%,
             rgba(46, 28, 40, 0.88) 36%,
-            rgba(215, 38, 102, 1) 48%,
-            rgba(130, 50, 215, 1) 52%,
-            rgba(215, 38, 102, 1) 56%,
+            var(--ou-main) 48%,
+            var(--ou-main2) 52%,
+            var(--ou-main) 56%,
             rgba(46, 28, 40, 0.88) 68%,
             rgba(46, 28, 40, 0.88) 100%
           );
@@ -308,9 +316,9 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
           display: inline-block;
           margin: 0 .22em;
           vertical-align: baseline;
-          color: #ef3e73;
-          -webkit-text-fill-color: #ef3e73;
-          filter: drop-shadow(0 0 5px rgba(239, 62, 115, 0.65));
+          color: var(--ou-main, #ef3e73);
+          -webkit-text-fill-color: var(--ou-main, #ef3e73);
+          filter: drop-shadow(0 0 5px var(--ou-drop-shadow));
           animation: ouHeartbeat 1.8s ease-in-out infinite;
         }
 
@@ -413,8 +421,8 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200 }: Only
             >
               <defs>
                 <linearGradient id="onlyUsIntroGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="var(--ou-main2, #c66cff)" />
-                  <stop offset="100%" stopColor="var(--ou-main, #ff4f8b)" />
+                  <stop offset="0%" stopColor={dualTone.color1} style={{ stopColor: dualTone.color1 }} />
+                  <stop offset="100%" stopColor={dualTone.color2} style={{ stopColor: dualTone.color2 }} />
                 </linearGradient>
               </defs>
 

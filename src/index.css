@@ -1,19 +1,53 @@
 @import "tailwindcss";
 
 :root {
-  --theme-bg: #FFF7F8;
-  --theme-text: #3A202B;
-  --theme-header-bg: rgba(255, 250, 251, .86);
-  --theme-bubble-owner: #E45F84;
-  --theme-bubble-owner-text: #FFFFFF;
-  --theme-bubble-partner: #FFE0E7;
-  --theme-bubble-partner-text: #663746;
-  --theme-input-bg: #FFFFFF;
-  --theme-surface: #FFFDFD;
-  --theme-accent: #E45F84;
-  --theme-border: rgba(228, 95, 132, .18);
-  --theme-decoration: radial-gradient(circle at 8% 14%, rgba(255,191,205,.48), transparent 25%), radial-gradient(circle at 94% 76%, rgba(255,221,194,.54), transparent 28%);
-  --theme-font: "Nunito", "Inter", sans-serif;
+  --theme-bg: var(--ou-bg, #0E0F18);
+  --theme-text: #F6F4FF;
+  --theme-header-bg: rgba(24, 25, 39, .86);
+  --theme-bubble-owner: #B69CFF;
+  --theme-bubble-owner-text: #171322;
+  --theme-bubble-partner: #28293A;
+  --theme-bubble-partner-text: #F0EDFF;
+  --theme-input-bg: #202130;
+  --theme-surface: #1B1C29;
+  --theme-accent: #B69CFF;
+  --theme-border: rgba(182, 156, 255, .22);
+  --theme-decoration: radial-gradient(circle at 16% 8%, rgba(182,156,255,.2), transparent 28%), radial-gradient(circle at 88% 76%, rgba(84,193,255,.12), transparent 24%);
+  --theme-font: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --theme-dual-color-1: #54C1FF;
+  --theme-dual-color-2: #B69CFF;
+  --theme-dual-glow: rgba(182, 156, 255, 0.45);
+  --ou-main: #B69CFF;
+  --ou-main2: #54C1FF;
+  --ou-drop-shadow: rgba(182, 156, 255, 0.45);
+  --ou-bg: #0E0F18;
+  --ou-bg-glow-1: rgba(84, 193, 255, 0.16);
+  --ou-bg-glow-2: rgba(182, 156, 255, 0.18);
+  --ou-is-dark: 1;
+}
+
+#onlyus-intro-screen {
+  transition: opacity .55s ease;
+}
+
+#onlyus-intro-screen.ou-dark {
+  --ou-pill-bg: rgba(18, 14, 24, 0.48);
+  --ou-pill-border: rgba(255, 255, 255, 0.08);
+  --ou-pill-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4);
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -10%, var(--ou-bg-glow-1), transparent 68%),
+    radial-gradient(ellipse 75% 55% at 85% 110%, var(--ou-bg-glow-2), transparent 68%),
+    var(--ou-bg);
+}
+
+#onlyus-intro-screen.ou-light {
+  --ou-pill-bg: rgba(255, 255, 255, 0.85);
+  --ou-pill-border: var(--ou-bg-glow-1);
+  --ou-pill-shadow: 0 4px 16px -2px var(--ou-drop-shadow), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -10%, var(--ou-bg-glow-1), transparent 68%),
+    radial-gradient(ellipse 75% 55% at 85% 110%, var(--ou-bg-glow-2), transparent 68%),
+    var(--ou-bg);
 }
 
 html, body {

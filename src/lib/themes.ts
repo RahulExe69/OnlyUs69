@@ -75,7 +75,7 @@ export const THEMES = {
     name: 'Enchanted Forest', note: 'Mossy layers with 3D rotating emerald crystals & fireflies.', bg: '#102A24', text: '#EBF7DD', header: 'rgba(15, 44, 37, .88)', owner: '#C9E265', ownerText: '#19352A', partner: '#1E4537', partnerText: '#E5F6DB', input: '#183C31', surface: '#16352C', accent: '#C9E265', border: 'rgba(201, 226, 101, .25)', decoration: 'radial-gradient(circle at 12% 18%, rgba(201,226,101,.38) 0 2px, transparent 3px), radial-gradient(circle at 76% 23%, rgba(201,226,101,.34) 0 1px, transparent 3px), radial-gradient(circle at 90% 76%, rgba(89,166,114,.3), transparent 30%), repeating-linear-gradient(130deg, transparent 0 42px, rgba(201,226,101,.05) 43px 45px, transparent 46px 88px)', font: '"Trebuchet MS", "Segoe UI", sans-serif'
   },
   '3d-cyber': {
-    name: 'Neon Arcade', note: 'Electric gridlines with 3D cybernetic wireframe grid and neon pulses.', bg: '#0B0920', text: '#F4F0FF', header: 'rgba(14, 10, 38, .9)', owner: '#FF3CAC', ownerText: '#FFFFFF', partner: '#1B1740', partnerText: '#73F7FF', input: '#151135', surface: '#100D2A', accent: '#73F7FF', border: 'rgba(115, 247, 255, .4)', decoration: 'linear-gradient(rgba(115,247,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(115,247,255,.12) 1px, transparent 1px), radial-gradient(circle at 50% 105%, rgba(255,60,172,.42), transparent 45%)', font: '"Courier New", monospace'
+    name: 'Neon Arcade', note: 'Electric retro-arcade WebGL shader with 3D outrun perspective grid, synthwave sun, and neon sine ribbons.', bg: '#0B0920', text: '#F4F0FF', header: 'rgba(14, 10, 38, .9)', owner: '#FF3CAC', ownerText: '#FFFFFF', partner: '#1B1740', partnerText: '#73F7FF', input: '#151135', surface: '#100D2A', accent: '#73F7FF', border: 'rgba(115, 247, 255, .4)', decoration: 'linear-gradient(rgba(115,247,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(115,247,255,.12) 1px, transparent 1px), radial-gradient(circle at 50% 105%, rgba(255,60,172,.42), transparent 45%)', font: '"Courier New", monospace'
   },
   '3d-aurora': {
     name: 'Aurora Drift', note: 'A luminous northern-sky wash with 3D shifting aurora borealis ribbons.', bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif'
@@ -184,6 +184,162 @@ export const getTheme = (themeName?: string | null) => {
   return THEMES[DEFAULT_THEME];
 };
 
+export interface ThemeDualTone {
+  color1: string; // Left/Start stop ("Only")
+  color2: string; // Right/End stop ("Us")
+  glow: string;   // Drop shadow glow for text
+  bg: string;     // Atmospheric background for intro
+  glow1: string;  // Top ambient radial glow
+  glow2: string;  // Bottom ambient radial glow
+  isDark: boolean;
+}
+
+export const THEME_DUAL_TONES: Record<string, ThemeDualTone> = {
+  romantic: {
+    color1: '#C66CFF',
+    color2: '#FF4F8B',
+    glow: 'rgba(255, 79, 139, 0.45)',
+    bg: '#FFF7F8',
+    glow1: 'rgba(255, 191, 205, 0.45)',
+    glow2: 'rgba(255, 221, 194, 0.48)',
+    isDark: false,
+  },
+  light: {
+    color1: '#38BDF8',
+    color2: '#4263EB',
+    glow: 'rgba(66, 99, 235, 0.4)',
+    bg: '#F7F9FC',
+    glow1: 'rgba(56, 189, 248, 0.25)',
+    glow2: 'rgba(66, 99, 235, 0.2)',
+    isDark: false,
+  },
+  dark: {
+    color1: '#54C1FF',
+    color2: '#B69CFF',
+    glow: 'rgba(182, 156, 255, 0.45)',
+    bg: '#0E0F18',
+    glow1: 'rgba(84, 193, 255, 0.16)',
+    glow2: 'rgba(182, 156, 255, 0.18)',
+    isDark: true,
+  },
+  lavender: {
+    color1: '#C2A7FF',
+    color2: '#8062C7',
+    glow: 'rgba(128, 98, 199, 0.4)',
+    bg: '#F7F3FF',
+    glow1: 'rgba(194, 167, 255, 0.35)',
+    glow2: 'rgba(232, 223, 255, 0.5)',
+    isDark: false,
+  },
+  ocean: {
+    color1: '#00D2D3',
+    color2: '#247C86',
+    glow: 'rgba(0, 210, 211, 0.4)',
+    bg: '#EDF8F8',
+    glow1: 'rgba(0, 210, 211, 0.25)',
+    glow2: 'rgba(36, 124, 134, 0.22)',
+    isDark: false,
+  },
+  sunset: {
+    color1: '#FFA07A',
+    color2: '#CD6C58',
+    glow: 'rgba(205, 108, 88, 0.4)',
+    bg: '#FFF5EC',
+    glow1: 'rgba(255, 160, 122, 0.32)',
+    glow2: 'rgba(205, 108, 88, 0.25)',
+    isDark: false,
+  },
+  doodle: {
+    color1: '#FF6B6B',
+    color2: '#2878B5',
+    glow: 'rgba(255, 107, 107, 0.4)',
+    bg: '#FFFBE7',
+    glow1: 'rgba(255, 217, 61, 0.35)',
+    glow2: 'rgba(77, 150, 255, 0.25)',
+    isDark: false,
+  },
+  noir: {
+    color1: '#FFE082',
+    color2: '#E0B85C',
+    glow: 'rgba(224, 184, 92, 0.45)',
+    bg: '#141414',
+    glow1: 'rgba(255, 224, 130, 0.15)',
+    glow2: 'rgba(224, 184, 92, 0.12)',
+    isDark: true,
+  },
+  forest: {
+    color1: '#C9E265',
+    color2: '#10B981',
+    glow: 'rgba(201, 226, 101, 0.45)',
+    bg: '#0B1F19',
+    glow1: 'rgba(201, 226, 101, 0.18)',
+    glow2: 'rgba(16, 185, 129, 0.16)',
+    isDark: true,
+  },
+  cyber: {
+    color1: '#73F7FF',
+    color2: '#FF3CAC',
+    glow: 'rgba(115, 247, 255, 0.5)',
+    bg: '#080717',
+    glow1: 'rgba(115, 247, 255, 0.22)',
+    glow2: 'rgba(255, 60, 172, 0.22)',
+    isDark: true,
+  },
+  aurora: {
+    color1: '#26C6A0',
+    color2: '#8B5CF6',
+    glow: 'rgba(139, 92, 246, 0.4)',
+    bg: '#EAF8F7',
+    glow1: 'rgba(38, 198, 160, 0.3)',
+    glow2: 'rgba(139, 92, 246, 0.25)',
+    isDark: false,
+  },
+  anime: {
+    color1: '#00D2D3',
+    color2: '#FF4757',
+    glow: 'rgba(255, 71, 87, 0.45)',
+    bg: '#FFFDF2',
+    glow1: 'rgba(0, 210, 211, 0.28)',
+    glow2: 'rgba(255, 71, 87, 0.22)',
+    isDark: false,
+  },
+  pokemon: {
+    color1: '#FFCB05',
+    color2: '#EE3B3B',
+    glow: 'rgba(255, 203, 5, 0.5)',
+    bg: '#0C1118',
+    glow1: 'rgba(255, 203, 5, 0.2)',
+    glow2: 'rgba(238, 59, 59, 0.22)',
+    isDark: true,
+  },
+  akatsuki: {
+    color1: '#FF4D4D',
+    color2: '#B91C1C',
+    glow: 'rgba(239, 68, 68, 0.55)',
+    bg: '#08080D',
+    glow1: 'rgba(239, 68, 68, 0.22)',
+    glow2: 'rgba(185, 28, 28, 0.24)',
+    isDark: true,
+  },
+  neural: {
+    color1: '#A855F7',
+    color2: '#E63366',
+    glow: 'rgba(230, 51, 102, 0.5)',
+    bg: '#0A060A',
+    glow1: 'rgba(168, 85, 247, 0.22)',
+    glow2: 'rgba(230, 51, 102, 0.24)',
+    isDark: true,
+  },
+};
+
+export const getThemeDualTone = (themeName?: string | null): ThemeDualTone => {
+  const base = toBaseThemeKey(themeName);
+  if (base in THEME_DUAL_TONES) {
+    return THEME_DUAL_TONES[base];
+  }
+  return THEME_DUAL_TONES.romantic;
+};
+
 export const applyTheme = (themeName: ThemeName) => {
   const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
   const root = document.documentElement;
@@ -201,6 +357,20 @@ export const applyTheme = (themeName: ThemeName) => {
   root.style.setProperty('--theme-border', theme.border);
   root.style.setProperty('--theme-decoration', theme.decoration);
   root.style.setProperty('--theme-font', theme.font);
+
+  // Set dual-tone theme variables for responsive intro and accents
+  const dualTone = getThemeDualTone(themeName);
+  root.style.setProperty('--theme-dual-color-1', dualTone.color1);
+  root.style.setProperty('--theme-dual-color-2', dualTone.color2);
+  root.style.setProperty('--theme-dual-glow', dualTone.glow);
+  root.style.setProperty('--ou-main', dualTone.color2);
+  root.style.setProperty('--ou-main2', dualTone.color1);
+  root.style.setProperty('--ou-drop-shadow', dualTone.glow);
+  root.style.setProperty('--ou-bg', dualTone.bg);
+  root.style.setProperty('--ou-bg-glow-1', dualTone.glow1);
+  root.style.setProperty('--ou-bg-glow-2', dualTone.glow2);
+  root.style.setProperty('--ou-is-dark', dualTone.isDark ? '1' : '0');
+
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.accent);
   try {
     localStorage.setItem('onlyus_chat_theme', themeName);
