@@ -82,14 +82,14 @@ export const ShaderBorderBeam: React.FC<ShaderBorderBeamProps> = ({
         ...style,
       }}
     >
-      {/* Outer Volumetric Shader Glow (soft ambient aura around the card) */}
+      {/* Outer Volumetric Shader Glow (radiant ambient aura around the card) */}
       {glow && (
         <div
           aria-hidden="true"
-          className={`absolute inset-0 ${borderRadius} pointer-events-none transition-opacity duration-500 overflow-hidden`}
+          className={`absolute -inset-1.5 sm:-inset-2 ${borderRadius} pointer-events-none transition-opacity duration-500 overflow-hidden`}
           style={{
-            filter: 'blur(12px)',
-            opacity: isHovered ? Math.min(1, glowIntensity * 1.4) : glowIntensity * 0.75,
+            filter: 'blur(14px)',
+            opacity: isHovered ? Math.min(1, glowIntensity * 1.3) : glowIntensity,
             zIndex: 0,
           }}
         >

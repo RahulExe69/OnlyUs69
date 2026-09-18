@@ -17,7 +17,7 @@ import { UserProfile } from '../types';
 import { is3DTheme } from '../lib/themes';
 import { QuantumAuraBackground } from './QuantumAuraBackground';
 import { ShaderBorderBeam } from './ShaderBorderBeam';
-import { LiquidCardShader } from './LiquidCardShader';
+import { RomanticCardAmbiance } from './RomanticCardAmbiance';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -47,8 +47,11 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   onOpenPartnerInfo,
   onLogout,
 }) => {
-  const partnerName = userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul');
-  const myName = userProfile?.display_name || (isOwner ? 'Rahul' : 'Nusrat');
+  // Normal names (strictly account display names or standard 'Rahul' & 'Nusrat', excluding nicknames)
+  const partnerNormalName = partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul');
+  const myNormalName = userProfile?.display_name || (isOwner ? 'Rahul' : 'Nusrat');
+  const partnerName = userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerNormalName;
+  const myName = myNormalName;
   
   const lastSeenStatus = formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid);
   const isPartnerOnline = lastSeenStatus === 'Online';
@@ -112,12 +115,9 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
               <h1 className="text-base font-black tracking-tight text-[var(--theme-text)]">
                 OnlyUs
               </h1>
-              <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] border border-[var(--theme-accent)]/20">
-                Hub
-              </span>
             </div>
             <p className="text-[11px] text-[var(--theme-text)]/60 font-medium truncate max-w-[140px] sm:max-w-[180px]">
-              {partnerName} & {myName}
+              {isOwner ? 'Nusrat & Rahul' : 'Rahul & Nusrat'}
             </p>
           </div>
         </div>
@@ -153,126 +153,133 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
       {/* Main Hub Body */}
       <main className="relative z-10 px-5 py-2 max-w-md mx-auto w-full flex-1 flex flex-col justify-center gap-4">
         
-        {/* Partner Sanctuary Card - Clean, intimate, theme-responsive */}
+        {/* Partner Sanctuary Card - Wrapped in swirling theme-adaptive ShaderBorderBeam */}
         <motion.div 
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           whileTap={{ scale: 0.985 }}
-          className="p-3.5 rounded-2xl bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)]/70 shadow-xs flex items-center justify-between cursor-pointer hover:border-[var(--theme-accent)]/40 transition-all"
-          onClick={onOpenPartnerInfo || onOpenProfile}
-          title="View Partner Profile"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="relative shrink-0 w-12 h-12 aspect-square">
-              <div className="w-12 h-12 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 ring-2 ring-[var(--theme-accent)]/15 shadow-2xs bg-[var(--theme-surface)]">
-                {partnerProfile?.photo_url ? (
-                  <img 
-                    src={partnerProfile.photo_url} 
-                    alt={partnerName} 
-                    className="w-full h-full object-cover rounded-full aspect-square block"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-full h-full rounded-full bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center font-bold text-base">
-                    {partnerName[0] || (isOwner ? 'N' : 'R')}
-                  </div>
-                )}
-              </div>
-              
-              {/* Online indicator */}
-              {isPartnerOnline ? (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
-              ) : isInGame ? (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
-              ) : null}
-            </div>
-
-            <div className="min-w-0">
-              <h2 className="font-bold text-sm sm:text-base text-[var(--theme-text)] truncate leading-tight">
-                {partnerName}
-              </h2>
-              
-              <div className="mt-0.5 flex items-center gap-1.5">
-                {isPartnerOnline ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Online now
-                  </span>
-                ) : isInGame ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
-                    In Game Room 🎮
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-[var(--theme-text)]/60 font-medium">
-                    {lastSeenStatus}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Messages count pill */}
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] border border-[var(--theme-accent)]/20 shrink-0 text-xs font-bold shadow-2xs">
-            <Flame className="w-3.5 h-3.5 fill-current text-orange-500 animate-pulse" />
-            <span>{totalMessages.toLocaleString()}</span>
-          </div>
-        </motion.div>
-
-        {/* Primary Destination: OnlyUs Chat with Theme-Adaptive Velvet Silk Shader */}
-        <motion.div
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => handleTabClick('chat')}
           className="group cursor-pointer"
         >
           <ShaderBorderBeam
-            borderRadius="rounded-3xl"
-            innerRadius="rounded-[calc(1.5rem-2px)]"
-            borderWidth={1.5}
-            beamColors={['var(--theme-accent)', 'rgba(255, 255, 255, 0.8)', 'var(--theme-accent)']}
-            duration={8.0}
-            beamLength={80}
+            borderRadius="rounded-2xl"
+            innerRadius="rounded-[calc(1rem-1.5px)]"
+            borderWidth={1.8}
+            duration={5}
+            beamLength={120}
             glow={true}
-            glowIntensity={0.25}
-            className="relative p-4.5 text-white shadow-lg overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, var(--theme-accent) 0%, color-mix(in srgb, var(--theme-accent) 65%, black 35%) 100%)',
-              boxShadow: '0 10px 24px -4px color-mix(in srgb, var(--theme-accent) 35%, transparent)',
-            }}
+            glowIntensity={0.45}
+            beamColors={[
+              'transparent',
+              'var(--theme-accent)',
+              'rgba(255, 255, 255, 0.95)',
+              'var(--theme-accent)',
+              'transparent',
+            ]}
+            onClick={onOpenPartnerInfo || onOpenProfile}
+            className="p-3.5 bg-[var(--theme-surface)]/90 backdrop-blur-md flex items-center justify-between transition-all"
           >
-            {/* Theme-Adaptive Calm Liquid Silk Shader */}
-            <LiquidCardShader intensity={0.45} speed={0.0006} />
-
-            {/* Subtle glass reflection overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/10 pointer-events-none" />
-            
-            <div className="flex items-center justify-between relative z-10">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),0_4px_12px_rgba(0,0,0,0.15)] shrink-0">
-                  <MessageCircleHeart className="w-6 h-6 stroke-[2.2] drop-shadow-sm" />
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative shrink-0 w-12 h-12 aspect-square">
+                <div className="w-12 h-12 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 ring-2 ring-[var(--theme-accent)]/15 shadow-2xs bg-[var(--theme-surface)]">
+                  {partnerProfile?.photo_url ? (
+                    <img 
+                      src={partnerProfile.photo_url} 
+                      alt={partnerName} 
+                      className="w-full h-full object-cover rounded-full aspect-square block"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center font-bold text-base">
+                      {partnerName[0] || (isOwner ? 'N' : 'R')}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-black tracking-tight text-white drop-shadow-xs">
-                      OnlyUs Chat
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-white/30 backdrop-blur-md text-[9px] font-extrabold uppercase tracking-wider text-white border border-white/30 shadow-2xs">
-                      Primary
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/90 font-medium mt-0.5 drop-shadow-xs">
-                    Messages, voice notes, live calls & games
-                  </p>
-                </div>
+                
+                {/* Online indicator */}
+                {isPartnerOnline ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
+                ) : isInGame ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 border-2 border-[var(--theme-surface)] rounded-full animate-pulse z-10 shadow-xs" />
+                ) : null}
               </div>
 
-              {/* Action Arrow Button */}
-              <div className="w-9 h-9 rounded-full bg-white/25 backdrop-blur-md flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shadow-sm shrink-0">
-                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              <div className="min-w-0">
+                <h2 className="font-bold text-sm sm:text-base text-[var(--theme-text)] truncate leading-tight">
+                  {partnerName}
+                </h2>
+                
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  {isPartnerOnline ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Online now
+                    </span>
+                  ) : isInGame ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                      In Game Room 🎮
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-[var(--theme-text)]/60 font-medium">
+                      {lastSeenStatus}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Messages count pill */}
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] border border-[var(--theme-accent)]/20 shrink-0 text-xs font-bold shadow-2xs">
+              <Flame className="w-3.5 h-3.5 fill-current text-orange-500 animate-pulse" />
+              <span>{totalMessages.toLocaleString()}</span>
+            </div>
           </ShaderBorderBeam>
+        </motion.div>
+
+        {/* Primary Destination: OnlyUs Chat with Romantic Floating Hearts & Stardust Ambiance */}
+        <motion.div
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => handleTabClick('chat')}
+          className="group cursor-pointer relative rounded-3xl p-5 text-white shadow-xl overflow-hidden transition-all duration-300"
+          style={{
+            background: 'linear-gradient(135deg, color-mix(in srgb, var(--theme-accent) 92%, #FF80AB 8%) 0%, color-mix(in srgb, var(--theme-accent) 80%, black 20%) 100%)',
+            boxShadow: '0 12px 32px -4px color-mix(in srgb, var(--theme-accent) 45%, transparent), 0 0 20px -2px rgba(255, 182, 193, 0.28)',
+            border: '1.5px solid rgba(255, 255, 255, 0.3)',
+          }}
+        >
+          {/* Romantic Floating Hearts & Twinkling Stardust Ambiance (Nusrat's Favorite Ambiance) */}
+          <RomanticCardAmbiance heartCount={12} starCount={18} />
+
+          {/* Gentle romantic ambient light overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/15 pointer-events-none" />
+          
+          <div className="flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),0_4px_14px_rgba(0,0,0,0.15)] shrink-0 group-hover:scale-105 transition-transform">
+                <MessageCircleHeart className="w-6 h-6 stroke-[2.2] text-rose-100 drop-shadow-sm" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white drop-shadow-xs">
+                    OnlyUs Chat
+                  </h3>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/25 backdrop-blur-md text-[9px] font-extrabold uppercase tracking-wider text-white border border-white/30 shadow-2xs">
+                    <Heart className="w-2.5 h-2.5 fill-current text-rose-300 animate-pulse" />
+                    <span>Our Place</span>
+                  </span>
+                </div>
+                <p className="text-xs text-white/90 font-medium mt-0.5 drop-shadow-xs">
+                  Messages, voice notes, live calls & games
+                </p>
+              </div>
+            </div>
+
+            {/* Action Arrow Button with Soft Romantic Glow */}
+            <div className="w-9 h-9 rounded-full bg-white/25 backdrop-blur-md flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shadow-md shrink-0 border border-white/30">
+              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            </div>
+          </div>
         </motion.div>
 
         {/* Companion Apps Section - Clean, Elegant & Clutter-Free */}

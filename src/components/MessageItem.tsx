@@ -770,23 +770,70 @@ function MessageItemComponent({
                   </button>
                 </div>
               )}
-              {/* Instagram-style floating heart pop on double tap */}
+              {/* Romantic GPU Heartwave Shockwave & Stardust Embers on double tap */}
               <AnimatePresence>
                 {showHeartBurst && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.35, 1], opacity: [0, 1, 0] }}
-                    exit={{ scale: 1.5, opacity: 0 }}
-                    transition={{ duration: 0.65, ease: 'easeOut' }}
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
-                  >
-                    <span className="text-4xl sm:text-5xl select-none drop-shadow-lg">❤️</span>
-                  </motion.div>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                    {/* Expanding Radial Light Shockwave */}
+                    <motion.div
+                      initial={{ scale: 0.1, opacity: 0.95 }}
+                      animate={{ scale: 2.2, opacity: 0 }}
+                      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute w-24 h-24 rounded-full border-2 border-rose-300/80 shadow-[0_0_25px_6px_rgba(244,63,94,0.55)] pointer-events-none"
+                    />
+
+                    {/* Secondary Subtle Color Dispersion Ring */}
+                    <motion.div
+                      initial={{ scale: 0.2, opacity: 0.8 }}
+                      animate={{ scale: 1.6, opacity: 0 }}
+                      transition={{ duration: 0.5, delay: 0.05, ease: 'easeOut' }}
+                      className="absolute w-20 h-20 rounded-full border border-pink-200/60 shadow-[0_0_15px_rgba(255,255,255,0.7)] pointer-events-none"
+                    />
+
+                    {/* Stardust Embers Radiating Outward */}
+                    {[
+                      { x: -32, y: -28, delay: 0 },
+                      { x: 30, y: -26, delay: 0.04 },
+                      { x: -35, y: 14, delay: 0.07 },
+                      { x: 33, y: 16, delay: 0.03 },
+                      { x: 0, y: -38, delay: 0.02 },
+                      { x: -20, y: 32, delay: 0.09 },
+                      { x: 22, y: 34, delay: 0.06 },
+                    ].map((ember, i) => (
+                      <motion.span
+                        key={i}
+                        initial={{ scale: 0, x: 0, y: 0, opacity: 1 }}
+                        animate={{
+                          scale: [0, 1.25, 0.7],
+                          x: ember.x,
+                          y: ember.y,
+                          opacity: [1, 0.9, 0],
+                        }}
+                        transition={{ duration: 0.6, delay: ember.delay, ease: 'easeOut' }}
+                        className="absolute text-xs select-none pointer-events-none drop-shadow-[0_0_8px_#FFE082]"
+                      >
+                        ✨
+                      </motion.span>
+                    ))}
+
+                    {/* Central Glowing Pop Heart */}
+                    <motion.div
+                      initial={{ scale: 0.2, y: 8, opacity: 0 }}
+                      animate={{ scale: [0.2, 1.45, 1.15], y: [8, -4, 0], opacity: [0, 1, 0] }}
+                      exit={{ scale: 1.5, opacity: 0 }}
+                      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                      className="relative flex items-center justify-center select-none"
+                    >
+                      <span className="text-4xl sm:text-5xl select-none drop-shadow-[0_0_22px_rgba(244,63,94,0.9)]">
+                        ❤️
+                      </span>
+                    </motion.div>
+                  </div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* Reactions display - WhatsApp-style attached badge */}
+            {/* Reactions display - WhatsApp-style attached badge with Emissive Liquid Core */}
             {hasReactions && (
               <div
                 className={`absolute top-[calc(100%-5px)] flex items-center z-20 pointer-events-auto select-none ${
@@ -798,10 +845,10 @@ function MessageItemComponent({
                   initial={{ scale: 0.75, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className={`flex items-center gap-1 h-[22px] sm:h-[24px] px-1.5 sm:px-2 rounded-full border-2 shadow-[0_2px_6px_rgba(0,0,0,0.18)] transition-all ${
+                  className={`relative flex items-center gap-1 h-[22px] sm:h-[24px] px-1.5 sm:px-2 rounded-full border-2 transition-all ${
                     msg.reactions?.[role]
-                      ? 'ring-1 ring-[var(--theme-accent)]/35'
-                      : ''
+                      ? 'ring-1 ring-[var(--theme-accent)]/50 shadow-[0_0_14px_-1px_var(--theme-accent),0_2px_6px_rgba(0,0,0,0.18)]'
+                      : 'shadow-[0_0_10px_-2px_rgba(244,63,94,0.25),0_2px_6px_rgba(0,0,0,0.18)]'
                   }`}
                   style={{
                     backgroundColor: 'var(--theme-surface)',
@@ -809,6 +856,8 @@ function MessageItemComponent({
                     color: 'var(--theme-text)',
                   }}
                 >
+                  {/* Subtle specular glass highlight along top rim */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/12 to-transparent pointer-events-none" />
                   {Object.entries(
                     Object.values(msg.reactions!).reduce((acc: Record<string, number>, emoji: any) => {
                       const key = String(emoji);

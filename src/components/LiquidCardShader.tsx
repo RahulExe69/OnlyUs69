@@ -146,11 +146,11 @@ export const LiquidCardShader: React.FC<LiquidCardShaderProps> = ({
           const clamped = Math.max(0, Math.min(1, val));
 
           // Theme-Harmonized Silk Caustics:
-          // Smoothly interpolates from a deeper shade of the theme color to a soft, warm luminous highlight
-          const highlight = clamped * 0.35;
-          const r = Math.min(255, Math.floor(baseR * 0.7 + (255 - baseR * 0.7) * highlight));
-          const g = Math.min(255, Math.floor(baseG * 0.7 + (255 - baseG * 0.7) * highlight));
-          const b = Math.min(255, Math.floor(baseB * 0.7 + (255 - baseB * 0.7) * highlight));
+          // Smoothly interpolates from a rich vibrant tone to a luminous silk highlight
+          const highlight = clamped * 0.45;
+          const r = Math.min(255, Math.floor(baseR * 0.85 + (255 - baseR * 0.85) * highlight));
+          const g = Math.min(255, Math.floor(baseG * 0.85 + (255 - baseG * 0.85) * highlight));
+          const b = Math.min(255, Math.floor(baseB * 0.85 + (255 - baseB * 0.85) * highlight));
 
           data[idx] = r;
           data[idx + 1] = g;

@@ -39,9 +39,31 @@ export const VoiceNoteBubble = React.memo<VoiceNoteBubbleProps>(function VoiceNo
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(!media.url);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [animTime, setAnimTime] = useState<number>(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Smooth 60fps animation frame loop while audio is actively playing for fluid liquid ripples
+  useEffect(() => {
+    if (!isPlaying) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      return;
+    }
+
+    let start = performance.now();
+    const updateLoop = (now: number) => {
+      setAnimTime((now - start) * 0.001);
+      animFrameRef.current = requestAnimationFrame(updateLoop);
+    };
+
+    animFrameRef.current = requestAnimationFrame(updateLoop);
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isPlaying]);
 
   useEffect(() => {
     let isMounted = true;
@@ -195,61 +217,92 @@ export const VoiceNoteBubble = React.memo<VoiceNoteBubbleProps>(function VoiceNo
       )}
 
       <div className="flex items-center gap-2.5 sm:gap-3">
-        {/* Play/Pause Button */}
-        <button
-          type="button"
-          onClick={togglePlay}
-          disabled={isLoading || hasError}
-          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-150 active:scale-95 shadow-md shrink-0 cursor-pointer ${
-            isOwn
-              ? 'bg-white/20 hover:bg-white/30 text-white'
-              : 'bg-[var(--theme-accent)] hover:opacity-90 text-white'
-          }`}
-          style={{
-            touchAction: 'manipulation'
-          }}
-          aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
-        >
-          {isLoading ? (
-            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          ) : hasError ? (
-            <AlertCircle className="w-5 h-5 text-red-400" />
-          ) : isPlaying ? (
-            <Pause className="w-5 h-5 fill-current" />
-          ) : (
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+        {/* Play/Pause Button with Pulsing Acoustic Aura */}
+        <div className="relative shrink-0">
+          {isPlaying && (
+            <div
+              className={`absolute -inset-1 rounded-full pointer-events-none animate-ping opacity-35 ${
+                isOwn ? 'bg-white' : 'bg-[var(--theme-accent)]'
+              }`}
+            />
           )}
-        </button>
+          <button
+            type="button"
+            onClick={togglePlay}
+            disabled={isLoading || hasError}
+            className={`relative w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-150 active:scale-95 shadow-md shrink-0 cursor-pointer ${
+              isOwn
+                ? 'bg-white/25 hover:bg-white/35 text-white shadow-[0_0_12px_rgba(255,255,255,0.25)]'
+                : 'bg-[var(--theme-accent)] hover:opacity-90 text-white shadow-[0_0_12px_var(--theme-accent)]'
+            }`}
+            style={{
+              touchAction: 'manipulation'
+            }}
+            aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
+          >
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : hasError ? (
+              <AlertCircle className="w-5 h-5 text-red-400" />
+            ) : isPlaying ? (
+              <Pause className="w-5 h-5 fill-current" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
+          </button>
+        </div>
 
         {/* Waveform and Timer Container */}
         <div className="flex-1 min-w-0 flex flex-col justify-center">
-          {/* Interactive Waveform Bar Visualizer */}
+          {/* Interactive Liquid Mercury / Neon Plasma Waveform */}
           <div
             ref={waveformRef}
             onClick={handleWaveformClick}
-            className="h-8 flex items-center gap-[2px] sm:gap-[3px] cursor-pointer py-1.5 px-0.5"
+            className="h-8 flex items-center gap-[2px] sm:gap-[3px] cursor-pointer py-1.5 px-0.5 relative group"
             title="Tap to scrub voice note"
           >
             {WAVEFORM_HEIGHTS.map((heightFraction, index) => {
               const barFraction = index / WAVEFORM_HEIGHTS.length;
+              const nextBarFraction = (index + 1) / WAVEFORM_HEIGHTS.length;
               const isPlayed = barFraction <= progressFraction;
+              const isCurrentHead = progressFraction >= barFraction && progressFraction < nextBarFraction;
+
+              // Dynamic liquid ripple factor during playback
+              const wave = isPlaying
+                ? Math.sin(index * 0.45 - animTime * 7) * 0.16 + Math.cos(index * 0.25 + animTime * 4) * 0.08
+                : 0;
+              const calculatedHeight = Math.max(16, Math.min(100, (heightFraction + wave * (isPlayed ? 1.0 : 0.45)) * 100));
 
               return (
                 <div
                   key={index}
-                  className={`flex-1 min-w-[2px] max-w-[4px] rounded-full transition-all duration-100 ${
-                    isPlayed
-                      ? isOwn
-                        ? 'bg-white'
-                        : 'bg-[var(--theme-accent)]'
-                      : isOwn
-                        ? 'bg-white/35'
-                        : 'bg-[var(--theme-text)]/25'
-                  }`}
-                  style={{
-                    height: `${Math.max(16, heightFraction * 100)}%`,
-                  }}
-                />
+                  className="flex-1 min-w-[2px] max-w-[4px] h-full flex items-center justify-center relative"
+                >
+                  <div
+                    className={`w-full rounded-full transition-all duration-75 ${
+                      isPlayed
+                        ? isOwn
+                          ? 'bg-gradient-to-t from-white/90 via-white to-pink-100 shadow-[0_0_6px_rgba(255,255,255,0.4)]'
+                          : 'bg-gradient-to-t from-[var(--theme-accent)] via-pink-400 to-rose-300 shadow-[0_0_6px_var(--theme-accent)]'
+                        : isOwn
+                          ? 'bg-white/30 group-hover:bg-white/40'
+                          : 'bg-[var(--theme-text)]/20 group-hover:bg-[var(--theme-text)]/30'
+                    }`}
+                    style={{
+                      height: `${calculatedHeight}%`,
+                    }}
+                  />
+                  {/* Glowing Playhead Bead at current playback head */}
+                  {isCurrentHead && isPlaying && (
+                    <div
+                      className={`absolute w-2 h-2 rounded-full -top-1 pointer-events-none ${
+                        isOwn
+                          ? 'bg-white shadow-[0_0_10px_2px_#ffffff]'
+                          : 'bg-white shadow-[0_0_12px_3px_var(--theme-accent)]'
+                      }`}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>

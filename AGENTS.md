@@ -353,7 +353,39 @@ OnlyUs uses high-priority Firebase Cloud Messaging (FCM v1) to ensure zero-laten
 - **Global Hoisting**:
   - Hoisted `NudgeOverlay` to root `App.tsx`, guaranteeing zero-latency delivery whether either partner is in the chat room, browsing the Hub Dashboard, or playing arcade games.
 
+### 20. Hub Header Display Names & Vibrant Chat Shader Architecture (`MultiHubDashboard.tsx`, `ShaderBorderBeam.tsx`, `LiquidCardShader.tsx`)
+- **Hub Header Normal Names (Excluding Custom Nicknames)**:
+  - In `MultiHubDashboard.tsx`, decoupled the top-left header subtitle under "OnlyUs HUB" from custom partner nicknames (`userProfile.partnerNicknames`).
+  - Derived `normalPartnerName` and `normalMyName` directly from account `display_name` (with standard fallbacks to 'Rahul' and 'Nusrat').
+  - Renders `{isOwner ? `${myNormalName} & ${partnerNormalName}` : `${partnerNormalName} & ${myNormalName}`}` so both Rahul and Nusrat consistently see their real names ("Rahul & Nusrat") under the Hub title.
+- **OnlyUs Chat Shader Vibrancy & Radiant Outer Beam**:
+  - In `ShaderBorderBeam.tsx`, expanded outer volumetric glow from `inset-0` to `-inset-1.5 sm:-inset-2` with `filter: blur(14px)`, allowing the luminous rotating beam to radiate a genuine ambient aura into the surrounding dashboard canvas without clipping.
+  - In `LiquidCardShader.tsx`, upgraded the dynamic silk caustics to use 85% base saturation and specular highlight (`clamped * 0.45`), eliminating muddy brown/dark-pink tones and making the card feel luminous, warm, and alive.
 
+### 21. Romantic Chat Ambiance, Emissive Reaction Badges & Liquid Mercury Waveforms (`RomanticCardAmbiance.tsx`, `MultiHubDashboard.tsx`, `MessageItem.tsx`, `VoiceNoteBubble.tsx`)
+- **OnlyUs Chat Romantic Card Ambiance (`RomanticCardAmbiance.tsx`, `MultiHubDashboard.tsx`)**:
+  - Removed the swirling beam and caustic liquid shader from the center of the "OnlyUs Chat" dashboard card.
+  - Introduced `RomanticCardAmbiance.tsx`: A smooth 60fps canvas animation rendering gently drifting pastel rose and ruby floating hearts paired with twinkling stardust motes and a rhythmic breathing heartbeat aura (`sin` scale pulse).
+  - Restyled the card with a warm romantic gradient (`color-mix(in srgb, var(--theme-accent) 92%, #FF80AB 8%)`), delicate semi-transparent white border (`1.5px solid rgba(255, 255, 255, 0.3)`), ambient rose glow (`shadow-[0_12px_32px_-4px_rgba(244,63,94,0.45)]`), and a tender `"Our Place"` badge featuring a pulsing pink heart.
+- **Option 2: Emissive Reaction Badges & Double-Tap ❤️ Heartwave Shockwave (`MessageItem.tsx`)**:
+  - **Emissive Liquid Core Badge**: Added a soft specular top-rim glass highlight (`bg-gradient-to-b from-white/12 to-transparent`) and a luminous glow halo (`shadow-[0_0_14px_-1px_var(--theme-accent),0_2px_6px_rgba(0,0,0,0.18)]`) to the WhatsApp-style attached reaction pill, creating a radiant jewel look.
+  - **Double-Tap ❤️ Shockwave & Stardust Embers**: On double-tapping any message, triggers an expansive radial light shockwave (`scale: [0.1, 2.2]`, `border-rose-300/80` with `25px` rose drop-shadow) with 7 radiating stardust embers (`✨`) that burst outward and dissolve, while the central heart pops smoothly with spring easing.
+- **Option 3: Liquid Mercury / Neon Plasma Waveforms (`VoiceNoteBubble.tsx`)**:
+  - **Dynamic Waveform Ripples**: During voice playback, a continuous 60fps `requestAnimationFrame` loop computes harmonic fluid wave displacements (`Math.sin(index * 0.45 - animTime * 7) * 0.16 + Math.cos(index * 0.25 + animTime * 4) * 0.08`), giving audio tracks the feel of connected liquid plasma.
+  - **Luminous Neon Gradient & Glow**: Played waveform bars render with neon gradients (`from-[var(--theme-accent)] via-pink-400 to-rose-300` or glowing white for own messages) with outer shadow bloom.
+  - **Glow Trail Playhead Bead**: The active scrubber head renders a luminous droplet bead (`shadow-[0_0_12px_3px_var(--theme-accent)]`) tracking voice playback in real time.
+  - **Pulsing Acoustic Aura**: The play button features a soft breathing acoustic ring (`animate-ping opacity-35`) radiating around the circular control when active.
 
+### 22. Hub Clean Header Branding & Partner Sanctuary Swirling Shader (`MultiHubDashboard.tsx`)
+- **Hub Header Symmetry & Clean Branding**:
+  - Removed the `Hub` pill badge after `OnlyUs` for a cleaner, unified title presentation.
+  - Strict Dual-Account Name Symmetry:
+    - On Rahul's account (`isOwner = true`), subtitle renders: `"Nusrat & Rahul"`.
+    - On Nusrat's account (`isOwner = false`), subtitle renders: `"Rahul & Nusrat"`.
+    - Completely decoupled from styled or symbol-heavy profile usernames, ensuring consistent real-name presentation.
+- **Partner Sanctuary Card Theme-Adaptive Swirling Shader**:
+  - Wrapped the entire Partner Sanctuary card (avatar, partner name, last seen/online status, and flame message counter) inside `ShaderBorderBeam`.
+  - Configured with `borderWidth={1.8}`, `duration={5}`, `beamLength={120}`, and active theme-adaptive beam colors (`['transparent', 'var(--theme-accent)', 'rgba(255, 255, 255, 0.95)', 'var(--theme-accent)', 'transparent']`).
+  - Emits a volumetric outer blurred glow (`glowIntensity={0.45}`) that harmonizes with any selected theme while rotating smoothly around the card's perimeter.
 
 
