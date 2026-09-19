@@ -1333,6 +1333,8 @@ export function drawCuteKitten(
   let whiskerColor = '#2A2733';
   let spotColor1: string | null = null;
   let spotColor2: string | null = null;
+  let eyeColor = '#22202A';
+  let pawColor = bodyColor;
 
   if (breed === 'mochi') {
     // Pure snowy milky kitten (100% match to reference photo)
@@ -1341,6 +1343,8 @@ export function drawCuteKitten(
     outlineColor = '#2A2733';
     earPink = '#FFB2C3';
     noseColor = '#FF8DA5';
+    eyeColor = '#22202A';
+    pawColor = '#FFFFFF';
   } else if (breed === 'calico') {
     // Calico with sweet apricot & chocolate patches
     bodyColor = '#FCFAF8';
@@ -1350,6 +1354,8 @@ export function drawCuteKitten(
     outlineColor = '#2B221E';
     earPink = '#FCA5A5';
     noseColor = '#FB7185';
+    eyeColor = '#22202A';
+    pawColor = '#FCFAF8';
   } else if (breed === 'caramel') {
     // Honey ginger tabby kitten
     bodyColor = '#FB923C';
@@ -1358,6 +1364,8 @@ export function drawCuteKitten(
     outlineColor = '#381A08';
     earPink = '#FCA5A5';
     noseColor = '#EA580C';
+    eyeColor = '#22202A';
+    pawColor = '#FB923C';
   } else if (breed === 'luna') {
     // Velvet midnight black kitten
     bodyColor = '#23232B';
@@ -1367,6 +1375,65 @@ export function drawCuteKitten(
     padColor = '#FFB6C1';
     noseColor = '#7A5463';
     whiskerColor = 'rgba(240, 240, 250, 0.7)';
+    eyeColor = '#34D399';
+    pawColor = '#FFFFFF';
+  } else if (breed === 'siamese') {
+    // Seal Point Siamese kitten (creamy silk with espresso points & sapphire eyes)
+    bodyColor = '#F5EBE6';
+    bellyColor = '#FAF5F0';
+    outlineColor = '#3A2926';
+    spotColor1 = '#4A3531'; // seal point chocolate
+    earPink = '#5C4033';
+    padColor = '#4A3531';
+    noseColor = '#4A3531';
+    whiskerColor = '#3A2926';
+    eyeColor = '#0284C7'; // sapphire sky blue
+    pawColor = '#4A3531';
+  } else if (breed === 'tuxedo') {
+    // Dapper Tuxedo kitten (formal black coat, white socks & golden topaz eyes)
+    bodyColor = '#1E1E24';
+    bellyColor = '#FFFFFF';
+    outlineColor = '#111116';
+    earPink = '#F472B6';
+    padColor = '#FFAEC9';
+    noseColor = '#FB7185';
+    whiskerColor = 'rgba(255, 255, 255, 0.85)';
+    eyeColor = '#EAB308'; // golden topaz
+    pawColor = '#FFFFFF';
+  } else if (breed === 'silver') {
+    // Silver British Shorthair (soft misty slate coat with emerald green eyes)
+    bodyColor = '#94A3B8';
+    bellyColor = '#E2E8F0';
+    outlineColor = '#334155';
+    earPink = '#F9A8D4';
+    padColor = '#FDA4AF';
+    noseColor = '#BE185D';
+    whiskerColor = '#1E293B';
+    eyeColor = '#059669'; // seafoam emerald
+    pawColor = '#94A3B8';
+  } else if (breed === 'cinnamon') {
+    // Warm Cinnamon Tabby (rich terracotta coat with amber eyes)
+    bodyColor = '#C27852';
+    bellyColor = '#FEF3C7';
+    spotColor1 = '#7C2D12';
+    outlineColor = '#451A03';
+    earPink = '#FCA5A5';
+    padColor = '#F472B6';
+    noseColor = '#9A3412';
+    whiskerColor = '#451A03';
+    eyeColor = '#D97706'; // honey amber
+    pawColor = '#C27852';
+  } else if (breed === 'berry') {
+    // Sweet Strawberry Milk (pastel blush pink kitten with sparkling ruby eyes)
+    bodyColor = '#FDE8EF';
+    bellyColor = '#FFF5F8';
+    outlineColor = '#831843';
+    earPink = '#F472B6';
+    padColor = '#FB7185';
+    noseColor = '#E11D48';
+    whiskerColor = '#9D174D';
+    eyeColor = '#BE185D'; // sparkling ruby
+    pawColor = '#FDE8EF';
   }
 
   // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
@@ -1423,7 +1490,7 @@ export function drawCuteKitten(
   ctx.stroke();
 
   // Tail fur core
-  ctx.strokeStyle = bodyColor;
+  ctx.strokeStyle = breed === 'siamese' ? '#4A3531' : bodyColor;
   ctx.lineWidth = 3.2;
   ctx.lineCap = 'round';
   ctx.stroke();
@@ -1458,7 +1525,7 @@ export function drawCuteKitten(
     // Left Back Paw
     ctx.beginPath();
     ctx.ellipse(-9.5 + stepOffset1, -1.8, 4.2, 2.6, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#FFFFFF' : bodyColor;
+    ctx.fillStyle = pawColor;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
@@ -1467,7 +1534,7 @@ export function drawCuteKitten(
     // Right Back Paw
     ctx.beginPath();
     ctx.ellipse(9.5 + stepOffset2, -1.8, 4.2, 2.6, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#FFFFFF' : bodyColor;
+    ctx.fillStyle = pawColor;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
@@ -1554,7 +1621,7 @@ export function drawCuteKitten(
   ctx.quadraticCurveTo(0, -8.5, 6.5, -4.5);
   ctx.quadraticCurveTo(3, 1.5, 1, 5);
   ctx.closePath();
-  ctx.fillStyle = spotColor2 && breed === 'calico' ? spotColor2 : bodyColor;
+  ctx.fillStyle = breed === 'siamese' ? '#4A3531' : (spotColor2 && breed === 'calico' ? spotColor2 : bodyColor);
   ctx.fill();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
@@ -1580,7 +1647,7 @@ export function drawCuteKitten(
   ctx.quadraticCurveTo(0, -8.5, -6.5, -4.5);
   ctx.quadraticCurveTo(-3, 1.5, -1, 5);
   ctx.closePath();
-  ctx.fillStyle = spotColor1 && breed === 'calico' ? spotColor1 : bodyColor;
+  ctx.fillStyle = breed === 'siamese' ? '#4A3531' : (spotColor1 && breed === 'calico' ? spotColor1 : bodyColor);
   ctx.fill();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
@@ -1622,8 +1689,8 @@ export function drawCuteKitten(
   ctx.fill();
   ctx.stroke();
 
-  // Tabby Forehead 'M' Marking for Caramel
-  if (breed === 'caramel') {
+  // Tabby Forehead 'M' Marking for Caramel & Cinnamon
+  if (breed === 'caramel' || breed === 'cinnamon') {
     ctx.save();
     ctx.strokeStyle = spotColor1 || '#C2410C';
     ctx.lineWidth = 1.2;
@@ -1647,6 +1714,26 @@ export function drawCuteKitten(
     ctx.restore();
   }
 
+  // Siamese Seal Point Face Mask
+  if (breed === 'siamese') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 1.0, 7.6, 5.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#4A3531';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Tuxedo White Muzzle / Chin
+  if (breed === 'tuxedo') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 3.4, 6.4, 4.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.restore();
+  }
+
   // CHEEKS: Pastel Rosy Blush Ovals
   ctx.beginPath();
   ctx.ellipse(-7.8, 3.5, 3.2, 1.8, 0, 0, Math.PI * 2);
@@ -1654,7 +1741,7 @@ export function drawCuteKitten(
   ctx.fillStyle = 'rgba(255, 140, 175, 0.48)';
   ctx.fill();
 
-  // EYES: LARGE, SPARKLING GLOSSY CARTOON BLACK BUTTONS (Dual Specular Highlights)
+  // EYES: LARGE, SPARKLING GLOSSY CARTOON BUTTONS (Dual Specular Highlights)
   const eyeY = -0.4;
   const lookShiftX = Math.max(-1.4, Math.min(1.4, eyeOffset.dx));
   const lookShiftY = Math.max(-1.4, Math.min(1.4, eyeOffset.dy));
@@ -1673,10 +1760,10 @@ export function drawCuteKitten(
     const eyeXL = -5.6 + lookShiftX * 0.45;
     const eyeYL = eyeY + lookShiftY * 0.45;
 
-    // Solid glossy black eye
+    // Solid glossy eye
     ctx.beginPath();
     ctx.ellipse(eyeXL, eyeYL, 3.6, 3.9, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#34D399' : '#22202A';
+    ctx.fillStyle = eyeColor;
     ctx.fill();
 
     // Big Top-Right Specular Highlight
@@ -1695,10 +1782,10 @@ export function drawCuteKitten(
     const eyeXR = 5.6 + lookShiftX * 0.45;
     const eyeYR = eyeY + lookShiftY * 0.45;
 
-    // Solid glossy black eye
+    // Solid glossy eye
     ctx.beginPath();
     ctx.ellipse(eyeXR, eyeYR, 3.6, 3.9, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#34D399' : '#22202A';
+    ctx.fillStyle = eyeColor;
     ctx.fill();
 
     // Big Top-Right Specular Highlight
@@ -1789,7 +1876,7 @@ export function drawCuteKitten(
     ctx.beginPath();
     ctx.ellipse(-4.5 + stretchX, -1.8, 4.2, 2.6, 0, 0, Math.PI * 2);
     ctx.ellipse(4.5 + stretchX, -1.8, 4.2, 2.6, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#FFFFFF' : bodyColor;
+    ctx.fillStyle = pawColor;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
@@ -1804,7 +1891,7 @@ export function drawCuteKitten(
     // Left Front Paw
     ctx.beginPath();
     ctx.ellipse(-3.6 + frontStep1, -2.0, 3.5, 3.8, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#FFFFFF' : bodyColor;
+    ctx.fillStyle = pawColor;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
@@ -1823,7 +1910,7 @@ export function drawCuteKitten(
     // Right Front Paw
     ctx.beginPath();
     ctx.ellipse(3.6 + frontStep2, -2.0, 3.5, 3.8, 0, 0, Math.PI * 2);
-    ctx.fillStyle = breed === 'luna' ? '#FFFFFF' : bodyColor;
+    ctx.fillStyle = pawColor;
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
@@ -1957,31 +2044,75 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
     ctx.fill();
     ctx.restore();
   } else if (accessory === 'scarf') {
-    // Cozy Knitted Winter Scarf with Fringe
+    // 🧣 Cozy Knitted Winter Scarf (Emoji 🧣 Style)
     ctx.save();
-    ctx.translate(0, 10);
+    ctx.translate(0, 10.5);
+
+    // 1. Back fold layer
     ctx.beginPath();
-    ctx.ellipse(0, 0, 9.5, 3.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -1.2, 10.2, 3.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#991B1B';
+    ctx.fill();
+
+    // 2. Draped Scarf Tail hanging down with dynamic curve and folds
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-6.8, 0.5);
+    ctx.quadraticCurveTo(-8.2, 5.5, -6.8, 11.2);
+    ctx.lineTo(-1.6, 11.2);
+    ctx.quadraticCurveTo(-2.6, 5.0, -2.2, 1.2);
+    ctx.closePath();
     ctx.fillStyle = '#DC2626';
     ctx.fill();
-    ctx.lineWidth = 1;
     ctx.strokeStyle = '#991B1B';
+    ctx.lineWidth = 1.0;
     ctx.stroke();
 
-    // Scarf tail
+    // Knitted vertical weave crease
     ctx.beginPath();
-    ctx.rect(-7, 2, 4.5, 8.5);
-    ctx.fillStyle = '#EF4444';
+    ctx.moveTo(-4.2, 2.5);
+    ctx.quadraticCurveTo(-5.0, 6.5, -4.0, 10.5);
+    ctx.strokeStyle = '#B91C1C';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    // 🧣 Fringe tassels at bottom edge of tail
+    const fringeY = 11.2;
+    ctx.strokeStyle = '#FCA5A5';
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    for (let f = -6.2; f <= -2.0; f += 1.3) {
+      ctx.beginPath();
+      ctx.moveTo(f, fringeY);
+      ctx.lineTo(f + 0.3, fringeY + 2.4);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3. Volumetric Main Front Neck Wrap (Plump, cozy 🧣 collar)
+    ctx.beginPath();
+    ctx.ellipse(0, 0.6, 10.6, 4.2, -0.04, 0, Math.PI * 2);
+    ctx.fillStyle = '#DC2626';
     ctx.fill();
+    ctx.strokeStyle = '#991B1B';
+    ctx.lineWidth = 1.2;
     ctx.stroke();
 
-    // Fringe
+    // Top soft wool highlight sheen
     ctx.beginPath();
-    ctx.moveTo(-7, 10.5);
-    ctx.lineTo(-2.5, 10.5);
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 1.6;
+    ctx.ellipse(0.5, -0.8, 8.0, 2.0, -0.04, Math.PI * 0.9, Math.PI * 2.1);
+    ctx.strokeStyle = 'rgba(254, 202, 202, 0.65)';
+    ctx.lineWidth = 1.1;
     ctx.stroke();
+
+    // Cozy wrap crossover fold ridge
+    ctx.beginPath();
+    ctx.moveTo(-2.2, -2.0);
+    ctx.quadraticCurveTo(-4.0, 1.2, -6.2, 3.6);
+    ctx.strokeStyle = '#7F1D1D';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
     ctx.restore();
   } else if (accessory === 'crown') {
     // Tiny Golden Royal Crown with Ruby Studs
@@ -2009,6 +2140,232 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
     ctx.arc(6, -3, 0.9, 0, Math.PI * 2);
     ctx.fillStyle = '#EF4444';
     ctx.fill();
+    ctx.restore();
+  } else if (accessory === 'glasses') {
+    // 👓 Cute Round Golden Wireframe Glasses
+    ctx.save();
+    ctx.translate(0, -0.4);
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 1.2;
+
+    // Left Lens Frame
+    ctx.beginPath();
+    ctx.arc(-5.6, 0, 4.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.fill();
+    ctx.stroke();
+
+    // Right Lens Frame
+    ctx.beginPath();
+    ctx.arc(5.6, 0, 4.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.fill();
+    ctx.stroke();
+
+    // Nose Bridge
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -0.6);
+    ctx.quadraticCurveTo(0, -1.8, 1.2, -0.6);
+    ctx.stroke();
+
+    // Side Temples
+    ctx.beginPath();
+    ctx.moveTo(-10.0, 0);
+    ctx.lineTo(-13.5, -1.5);
+    ctx.moveTo(10.0, 0);
+    ctx.lineTo(13.5, -1.5);
+    ctx.stroke();
+
+    // Glass shine gleam
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -2.2);
+    ctx.lineTo(-4.5, -3.4);
+    ctx.moveTo(3.8, -2.2);
+    ctx.lineTo(6.8, -3.4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    ctx.restore();
+  } else if (accessory === 'sprout') {
+    // 🌱 Cute Little Green Plant Sprout on Head
+    ctx.save();
+    ctx.translate(0, -11.5);
+
+    // Tiny curved green stem
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-1.5, -4.5, 0, -7.5);
+    ctx.strokeStyle = '#16A34A';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Left rounded leaf
+    ctx.save();
+    ctx.translate(0, -7.5);
+    ctx.beginPath();
+    ctx.ellipse(-4.2, -2.2, 4.2, 2.2, -0.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#22C55E';
+    ctx.fill();
+    ctx.strokeStyle = '#15803D';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Right rounded leaf
+    ctx.beginPath();
+    ctx.ellipse(4.2, -2.2, 4.2, 2.2, 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#4ADE80';
+    ctx.fill();
+    ctx.strokeStyle = '#15803D';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  } else if (accessory === 'beanie') {
+    // 🧶 Cozy Knitted Winter Beanie with Fluffy Pom-Pom
+    ctx.save();
+    ctx.translate(0, -11);
+
+    // Beanie Dome Cap
+    ctx.beginPath();
+    ctx.moveTo(-9.5, 1.5);
+    ctx.quadraticCurveTo(-10.5, -8.5, 0, -9.5);
+    ctx.quadraticCurveTo(10.5, -8.5, 9.5, 1.5);
+    ctx.closePath();
+    ctx.fillStyle = '#3B82F6';
+    ctx.fill();
+    ctx.strokeStyle = '#1D4ED8';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    // Knit stripes on dome
+    ctx.beginPath();
+    ctx.moveTo(-4.5, -8.5);
+    ctx.quadraticCurveTo(-6.0, -3.0, -5.5, 1.5);
+    ctx.moveTo(4.5, -8.5);
+    ctx.quadraticCurveTo(6.0, -3.0, 5.5, 1.5);
+    ctx.strokeStyle = '#60A5FA';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    // Ribbed folded brim
+    ctx.beginPath();
+    ctx.ellipse(0, 1.8, 10.5, 2.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#1E40AF';
+    ctx.fill();
+    ctx.strokeStyle = '#172554';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    // Fluffy pom-pom on top
+    ctx.beginPath();
+    ctx.arc(0, -10.5, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.strokeStyle = '#93C5FD';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.restore();
+  } else if (accessory === 'angel_halo') {
+    // ✨ Radiant Floating Angel Halo
+    ctx.save();
+    ctx.translate(0, -16.5);
+
+    // Golden Halo Ring
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9.0, 3.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(254, 240, 138, 0.35)';
+    ctx.fill();
+    ctx.strokeStyle = '#FBBF24';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Top glint
+    ctx.beginPath();
+    ctx.ellipse(1.5, -0.6, 6.0, 1.4, 0, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
+
+    // Tiny sparkle star
+    ctx.fillStyle = '#FEF08A';
+    ctx.beginPath();
+    ctx.arc(7.5, -2.5, 1.0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (accessory === 'heart_clip') {
+    // 💖 Sweet Pink Heart Hair Barrette Clip
+    ctx.save();
+    ctx.translate(8.5, -8.5);
+    ctx.rotate(0.2);
+
+    // Metallic clip pin
+    ctx.beginPath();
+    ctx.rect(-2.5, 1.0, 7.5, 1.4);
+    ctx.fillStyle = '#94A3B8';
+    ctx.fill();
+
+    // Glossy Pink Heart
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-2.8, -3.2, -5.2, 0, 0, 4.2);
+    ctx.bezierCurveTo(5.2, 0, 2.8, -3.2, 0, 0);
+    ctx.fillStyle = '#EC4899';
+    ctx.fill();
+    ctx.strokeStyle = '#BE185D';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // Glint
+    ctx.beginPath();
+    ctx.arc(-1.2, -0.8, 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.restore();
+  } else if (accessory === 'party_hat') {
+    // 🥳 Festive Birthday Party Cone Hat with Pom-Pom
+    ctx.save();
+    ctx.translate(0, -11);
+    ctx.rotate(-0.1);
+
+    // Cone body
+    ctx.beginPath();
+    ctx.moveTo(-6.5, 2.5);
+    ctx.lineTo(0, -11.5);
+    ctx.lineTo(6.5, 2.5);
+    ctx.closePath();
+    ctx.fillStyle = '#8B5CF6';
+    ctx.fill();
+    ctx.strokeStyle = '#6D28D9';
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
+
+    // Colorful diagonal stripes
+    ctx.save();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.moveTo(-8, -2);
+    ctx.lineTo(8, -6);
+    ctx.strokeStyle = '#FBBF24';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-8, 2);
+    ctx.lineTo(8, -2);
+    ctx.strokeStyle = '#EC4899';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.restore();
+
+    // Pom-pom on tip
+    ctx.beginPath();
+    ctx.arc(0, -12.5, 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#F59E0B';
+    ctx.fill();
+
     ctx.restore();
   }
 }

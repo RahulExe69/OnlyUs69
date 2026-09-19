@@ -94,7 +94,7 @@ const MiniMochiCanvas: React.FC<{
   scale?: number;
   width?: number;
   height?: number;
-}> = ({ breed, accessory, scale = 1.35, width = 110, height = 85 }) => {
+}> = ({ breed, accessory, scale = 1.15, width = 84, height = 66 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ const MiniMochiCanvas: React.FC<{
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
-    ctx.translate(width / 2, height / 2 + 16);
+    ctx.translate(width / 2, height / 2 + 13);
     ctx.scale(scale, scale);
 
     drawCuteKitten(
@@ -237,6 +237,11 @@ const SKINS: SkinItem[] = [
   { id: 'calico', name: 'Sweet Calico' },
   { id: 'caramel', name: 'Honey Tabby' },
   { id: 'luna', name: 'Midnight Luna' },
+  { id: 'siamese', name: 'Seal Siamese' },
+  { id: 'tuxedo', name: 'Dapper Tuxedo' },
+  { id: 'silver', name: 'Misty Silver' },
+  { id: 'cinnamon', name: 'Cinnamon Spice' },
+  { id: 'berry', name: 'Berry Blush' },
 ];
 
 interface WardrobeItem {
@@ -248,9 +253,15 @@ const ITEMS: WardrobeItem[] = [
   { id: 'none', name: 'Natural' },
   { id: 'bow', name: 'Pink Ribbon' },
   { id: 'bell', name: 'Golden Bell' },
-  { id: 'sakura', name: 'Sakura Flower' },
-  { id: 'scarf', name: 'Cozy Scarf' },
+  { id: 'sakura', name: 'Sakura Petal' },
+  { id: 'scarf', name: 'Cozy Scarf 🧣' },
   { id: 'crown', name: 'Royal Crown' },
+  { id: 'glasses', name: 'Round Glasses' },
+  { id: 'sprout', name: 'Plant Sprout' },
+  { id: 'beanie', name: 'Cozy Beanie' },
+  { id: 'angel_halo', name: 'Angel Halo' },
+  { id: 'heart_clip', name: 'Heart Pin' },
+  { id: 'party_hat', name: 'Party Hat' },
 ];
 
 const CUDDLE_PHRASES = [
@@ -409,10 +420,38 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
         </header>
 
         {/* 🐾 MAIN SCROLLABLE CONTENT */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5 max-w-lg mx-auto w-full custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4 max-w-lg mx-auto w-full custom-scrollbar">
           
-          {/* 🐱 1. HERO PREVIEW STAGE */}
-          <div className="relative flex flex-col items-center justify-center pt-2 pb-1">
+          {/* 🐱 1. HERO PREVIEW STAGE WITH TOP FLOATING TOGGLE */}
+          <div className="relative flex flex-col items-center justify-center pt-2 pb-2 rounded-3xl bg-[var(--theme-surface)]/50 border border-[var(--theme-border)]/60 shadow-xs overflow-hidden">
+            
+            {/* Top Floating Toggle at Top Side of Mochi */}
+            <div className="w-full flex items-center justify-between px-4 pt-1.5 pb-0.5 z-20">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">{localSettings.enabled ? '🐾' : '💤'}</span>
+                <span className="text-xs font-semibold text-[var(--theme-text)]/75">
+                  {localSettings.enabled ? 'Active' : 'Resting'}
+                </span>
+              </div>
+
+              {/* Floating Toggle Switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={localSettings.enabled}
+                onClick={handleToggleActive}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-xs ${
+                  localSettings.enabled ? 'bg-[var(--theme-accent)]' : 'bg-[var(--theme-text)]/20'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    localSettings.enabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
             {/* Floating Heart Particles */}
             <AnimatePresence>
               {floatingHearts.map((heart) => (
@@ -437,7 +476,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                   initial={{ opacity: 0, y: 6, scale: 0.85 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -6, scale: 0.85 }}
-                  className="absolute -top-1 px-3.5 py-1.5 rounded-full bg-white/95 text-slate-900 shadow-md text-xs font-bold border border-rose-200 pointer-events-none z-30 flex items-center gap-1.5"
+                  className="absolute top-8 px-3.5 py-1.5 rounded-full bg-white/95 text-slate-900 shadow-md text-xs font-bold border border-rose-200 pointer-events-none z-30 flex items-center gap-1.5"
                 >
                   <span>{speech}</span>
                 </motion.div>
@@ -499,58 +538,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
             </div>
           </div>
 
-          {/* 🔘 2. SHARED ON / OFF TOGGLE (FIRST) */}
-          <div className="flex items-center justify-between p-4 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)] shadow-xs">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-colors ${
-                  localSettings.enabled
-                    ? 'bg-emerald-500/15 text-emerald-500'
-                    : 'bg-[var(--theme-text)]/10 text-[var(--theme-text)]/40'
-                }`}
-              >
-                {localSettings.enabled ? '🐾' : '💤'}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-[var(--theme-text)]">
-                    {localSettings.enabled ? 'Mochi in Chat' : 'Mochi Resting'}
-                  </h3>
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      localSettings.enabled
-                        ? 'bg-emerald-500/15 text-emerald-500'
-                        : 'bg-[var(--theme-text)]/10 text-[var(--theme-text)]/50'
-                    }`}
-                  >
-                    {localSettings.enabled ? 'Active' : 'Off'}
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--theme-text)]/60 mt-0.5">
-                  Shared toggle for Rahul &amp; {partnerName || 'Nusrat'}
-                </p>
-              </div>
-            </div>
-
-            {/* Toggle Switch */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={localSettings.enabled}
-              onClick={handleToggleActive}
-              className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                localSettings.enabled ? 'bg-[var(--theme-accent)]' : 'bg-[var(--theme-text)]/20'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  localSettings.enabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* 🎨 3. THREE OPTIONS: SKINS, ITEMS, AND AI BRAIN */}
+          {/* 🎨 2. OPTIONS TABS: SKINS & ITEMS */}
           <div className="space-y-3">
             {/* Clean Segmented Pill Switcher */}
             <div className="flex p-1 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)]">
@@ -563,7 +551,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                     : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
                 }`}
               >
-                Skins
+                Skins ({SKINS.length})
               </button>
               <button
                 type="button"
@@ -574,13 +562,13 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                     : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
                 }`}
               >
-                Items
+                Items ({ITEMS.length})
               </button>
             </div>
 
-            {/* TAB A: SKINS (Shows actual Mochi with skin name) */}
+            {/* TAB A: SKINS (3-Grid Layout) */}
             {activeTab === 'skins' && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 {SKINS.map((skin) => {
                   const isSelected = localSettings.breed === skin.id;
                   return (
@@ -588,28 +576,31 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                       key={skin.id}
                       type="button"
                       onClick={() => handleSelectSkin(skin.id)}
-                      className={`relative p-3 rounded-2xl border-2 text-center transition-all cursor-pointer flex flex-col items-center justify-between overflow-hidden group ${
+                      className={`relative p-2 rounded-2xl border-2 text-center transition-all cursor-pointer flex flex-col items-center justify-between overflow-hidden group ${
                         isSelected
-                          ? 'bg-[var(--theme-accent)]/12 border-[var(--theme-accent)] shadow-sm'
+                          ? 'bg-[var(--theme-accent)]/12 border-[var(--theme-accent)] shadow-xs'
                           : 'bg-[var(--theme-surface)] border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40'
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
-                          <Check className="w-3 h-3 stroke-[3]" />
+                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs z-10">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
                         </span>
                       )}
 
                       {/* Actual Mochi Render */}
-                      <div className="py-1">
+                      <div className="py-0.5">
                         <MiniMochiCanvas
                           breed={skin.id}
                           accessory={localSettings.accessory}
+                          scale={1.15}
+                          width={84}
+                          height={66}
                         />
                       </div>
 
                       {/* Skin Name */}
-                      <span className="text-xs font-bold text-[var(--theme-text)] mt-1">
+                      <span className="text-[11px] sm:text-xs font-bold text-[var(--theme-text)] mt-1 truncate max-w-full px-0.5 leading-tight">
                         {skin.name}
                       </span>
                     </button>
@@ -618,9 +609,9 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
               </div>
             )}
 
-            {/* TAB B: ITEMS (Accessories) */}
+            {/* TAB B: ITEMS (3-Grid Layout) */}
             {activeTab === 'items' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 {ITEMS.map((item) => {
                   const isSelected = localSettings.accessory === item.id;
                   return (
@@ -628,15 +619,15 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                       key={item.id}
                       type="button"
                       onClick={() => handleSelectAccessory(item.id)}
-                      className={`relative p-3 rounded-2xl border-2 text-center transition-all cursor-pointer flex flex-col items-center justify-between overflow-hidden group ${
+                      className={`relative p-2 rounded-2xl border-2 text-center transition-all cursor-pointer flex flex-col items-center justify-between overflow-hidden group ${
                         isSelected
-                          ? 'bg-[var(--theme-accent)]/12 border-[var(--theme-accent)] shadow-sm'
+                          ? 'bg-[var(--theme-accent)]/12 border-[var(--theme-accent)] shadow-xs'
                           : 'bg-[var(--theme-surface)] border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40'
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
-                          <Check className="w-3 h-3 stroke-[3]" />
+                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs z-10">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
                         </span>
                       )}
 
@@ -645,14 +636,14 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                         <MiniMochiCanvas
                           breed={localSettings.breed}
                           accessory={item.id}
-                          scale={1.25}
-                          width={95}
-                          height={75}
+                          scale={1.15}
+                          width={84}
+                          height={66}
                         />
                       </div>
 
                       {/* Item Name */}
-                      <span className="text-xs font-bold text-[var(--theme-text)] mt-1 truncate max-w-full px-1">
+                      <span className="text-[11px] sm:text-xs font-bold text-[var(--theme-text)] mt-1 truncate max-w-full px-0.5 leading-tight">
                         {item.name}
                       </span>
                     </button>

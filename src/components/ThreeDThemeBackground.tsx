@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { getShaderThemeComponent } from './ShaderThemesThreeD';
+import { is3DTheme } from '../lib/themes';
 
 interface ThreeDThemeBackgroundProps {
   theme?: string;
@@ -32,6 +33,11 @@ interface ThreeDThemeBackgroundProps {
  */
 export const ThreeDThemeBackground: React.FC<ThreeDThemeBackgroundProps> = (props) => {
   const activeTheme = (props.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined) || '3d-romantic').toLowerCase();
+
+  // If this is NOT a 3D theme, do NOT render any 3D/shader background
+  if (!is3DTheme(activeTheme)) {
+    return null;
+  }
 
   // If a dedicated GPU WebGL shader exists in ShaderThemesThreeD, prioritize it
   const ShaderComponent = getShaderThemeComponent(activeTheme);

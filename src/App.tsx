@@ -2191,7 +2191,7 @@ export default function App() {
             {(is3DTheme(userProfile?.theme) || (typeof document !== 'undefined' && is3DTheme(document.documentElement.dataset.chatTheme))) && (
               <QuantumAuraBackground 
                 theme={userProfile?.theme || (typeof document !== 'undefined' ? document.documentElement.dataset.chatTheme : undefined)} 
-                paused={Boolean(showProfileModal || showCustomizeModal || showPartnerInfo || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || showMenu || (!!activeGame && !isGameMinimized))}
+                paused={Boolean(!!showFullImage || (!!activeGame && !isGameMinimized))}
               />
             )}
             <div className="relative z-10 h-full flex flex-col">
@@ -3449,7 +3449,7 @@ const ChatView = React.memo(function ChatView({
         onClose={() => onSetShowAttachmentMenu(false)}
         title="Share with Love"
       >
-        <div className="grid grid-cols-5 gap-2 sm:gap-4 p-4 lg:p-6">
+        <div className="grid grid-cols-4 gap-2 sm:gap-4 p-4 lg:p-6">
           <AttachmentOption 
             icon={<Camera className="w-5 h-5 sm:w-6 sm:h-6" />} 
             label="Camera" 
@@ -3484,15 +3484,6 @@ const ChatView = React.memo(function ChatView({
             onClick={() => {
               onSetShowAttachmentMenu(false);
               audioInputRef.current?.click();
-            }} 
-          />
-          <AttachmentOption 
-            icon={<Gamepad2 className="w-5 h-5 sm:w-6 sm:h-6" />} 
-            label="Games" 
-            color="bg-gradient-to-tr from-pink-500 to-violet-600 text-white" 
-            onClick={() => {
-              onSetShowAttachmentMenu(false);
-              onSetShowGamesMenu(true);
             }} 
           />
         </div>

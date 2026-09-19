@@ -82,13 +82,17 @@ jobs:
           cache: 'npm'
 
       - name: Install Node Dependencies
-        run: npm ci || npm install
+        run: |
+          set -o pipefail
+          (npm ci || npm install) 2>&1 | tee npm-install.log
 
       - name: Build Web Application
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee vite-build.log
 
       - name: Generate Custom Android Flavor Icons
         run: npm run icons
@@ -111,7 +115,9 @@ jobs:
           sdkmanager "platforms;android-36" || true
 
       - name: Sync Capacitor Web Assets
-        run: npx cap sync android
+        run: |
+          set -o pipefail
+          npx cap sync android 2>&1 | tee cap-sync.log
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x ./android/gradlew
@@ -122,13 +128,14 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS || 'onlyus' }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'onlyuspassword' }}
         run: |
+          set -o pipefail
           cd android
           TASK_SUFFIX="${{ steps.vars.outputs.gradle_task_suffix }}"
           echo "Executing Gradle tasks: assembleNusrat${TASK_SUFFIX} assembleRahul${TASK_SUFFIX}"
           ./gradlew "assembleNusrat${TASK_SUFFIX}" "assembleRahul${TASK_SUFFIX}" \
             -PversionCode=${{ steps.vars.outputs.version_code }} \
             -PversionName=${{ steps.vars.outputs.version_name }} \
-            --no-daemon --build-cache --parallel --stacktrace
+            --no-daemon --build-cache --parallel --stacktrace 2>&1 | tee ../gradle-build.log
 
       - name: Organize APK Artifacts
         run: |
@@ -214,7 +221,8 @@ jobs:
             OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
             OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
 
-      - name: Workflow Summary
+      - name: Workflow Summary (Success)
+        if: success()
         run: |
           echo "### OnlyUs Dual Android APKs Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "Version: **${{ steps.vars.outputs.version_name }}** (Build code: **${{ steps.vars.outputs.version_code }}**)" >> $GITHUB_STEP_SUMMARY
@@ -223,3 +231,22 @@ jobs:
           echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
           echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
           echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Inline Notifications)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Diagnose Build Failure & Generate Fix Report
+        if: failure()
+        run: |
+          node .github/scripts/diagnose-build-failure.js
+
+      - name: Upload Build Failure Diagnostic Log Artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnlyUs-Build-Failure-Diagnostic-Log
+          path: |
+            OnlyUs-Build-Failure-Diagnostic.md
+            OnlyUs-Build-Failure-Diagnostic.txt
+            gradle-build.log
+            vite-build.log
+            cap-sync.log
+            npm-install.log
+          retention-days: 14

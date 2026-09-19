@@ -26,34 +26,27 @@ export { MoonlightShader } from './MoonlightShader';
 export const SHADER_THEME_REGISTRY: Record<string, React.FC<ShaderThemeProps>> = {
   // OnlyUs (Default Romantic Sakura Blossom Engine)
   '3d-romantic': OnlyUsShader,
-  'romantic': OnlyUsShader,
   '3d-cherry': OnlyUsShader,
 
   // Moonlight (Cinematic Procedural Moon, God-Rays & Deep Water Reflection Shader)
   '3d-dark': MoonlightShader,
-  'dark': MoonlightShader,
   '3d-cosmos': MoonlightShader,
 
   // Clean Slate (Architectural Liquid Quartz & Prismatic Caustic WebGL Shader)
   '3d-light': CleanSlateShader,
-  'light': CleanSlateShader,
 
   // Nebula (Neural Noise Procedural Cosmic Filament WebGL Shader)
   '3d-neural': NebulaShader,
-  'neural': NebulaShader,
 
   // Lavender Haze (Velvety Violet & Lilac Volumetric Aura WebGL Shader)
   '3d-lavender': LavenderHaze,
-  'lavender': LavenderHaze,
   '3d-aura': LavenderHaze,
 
   // Akatsuki (Naruto Rogue Syndicate Crimson Clouds, Sharingan & Storm Rain)
   '3d-akatsuki': AkatsukiShader,
-  'akatsuki': AkatsukiShader,
 
   // Neon Arcade (Outrun Synthwave Cyber Grid, Horizon Sun & Equalizer Sine Waves)
   '3d-cyber': NeonArcadeShader,
-  'cyber': NeonArcadeShader,
   '3d-waves': NeonArcadeShader,
 };
 

@@ -115,8 +115,30 @@ export interface CallSignalPayload {
   timestamp: number;
 }
 
-export type PetBreed = 'mochi' | 'calico' | 'caramel' | 'luna';
-export type PetAccessory = 'none' | 'bow' | 'bell' | 'sakura' | 'scarf' | 'crown';
+export type PetBreed =
+  | 'mochi'
+  | 'calico'
+  | 'caramel'
+  | 'luna'
+  | 'siamese'
+  | 'tuxedo'
+  | 'silver'
+  | 'cinnamon'
+  | 'berry';
+
+export type PetAccessory =
+  | 'none'
+  | 'bow'
+  | 'bell'
+  | 'sakura'
+  | 'scarf'
+  | 'crown'
+  | 'glasses'
+  | 'sprout'
+  | 'beanie'
+  | 'angel_halo'
+  | 'heart_clip'
+  | 'party_hat';
 
 export interface PetSettings {
   enabled: boolean;

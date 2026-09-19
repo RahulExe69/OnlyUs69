@@ -156,8 +156,9 @@ export type ThemeName = keyof typeof THEMES;
 export const DEFAULT_THEME: ThemeName = '3d-romantic';
 
 export const is3DTheme = (themeName?: string | null): boolean => {
-  if (!themeName || typeof themeName !== 'string') return true;
-  return themeName.startsWith('3d-') || themeName === 'romantic' || themeName === 'neural';
+  if (typeof themeName !== 'string' || !themeName.trim()) return false;
+  const key = themeName.trim().toLowerCase();
+  return key.startsWith('3d-');
 };
 
 export const getThemeCategory = (themeName: ThemeName): '3d' | 'dark' | 'light' => {
