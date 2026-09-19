@@ -551,7 +551,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         {/* Active Audio Recording Bar (Expands smoothly)               */}
         {/* ----------------------------------------------------------- */}
         {isRecording ? (
-          <div className="flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]">
+          <div 
+            id="chat-input-capsule"
+            className="chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
+          >
             {/* Pulsing red recording dot */}
             <div className="relative flex items-center justify-center w-5 h-5">
               <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-red-400 opacity-75" />
@@ -598,7 +601,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           /* --------------------------------------------------------- */
           /* Review / Preview Recorded Voice Note                     */
           /* --------------------------------------------------------- */
-          <div className="flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]">
+          <div 
+            id="chat-input-capsule"
+            className="chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
+          >
             {recordedAudioUrl && (
               <audio
                 ref={previewAudioRef}
@@ -652,7 +658,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           /* --------------------------------------------------------- */
           /* Standard WhatsApp-style Input Container                  */
           /* --------------------------------------------------------- */
-          <div className="relative flex-1 flex items-end bg-[var(--theme-input-bg)]/85 backdrop-blur-md border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden">
+          <div 
+            id="chat-input-capsule"
+            className="chat-input-perch relative flex-1 flex items-end bg-[var(--theme-input-bg)]/85 backdrop-blur-md border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden"
+          >
             {/* WhatsApp emoji toggle button */}
             <button
               type="button"

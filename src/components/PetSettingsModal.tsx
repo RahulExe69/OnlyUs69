@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Check, Volume2, VolumeX, Edit2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  Volume2,
+  VolumeX,
+  Edit2,
+  Sparkles,
+  Heart,
+} from 'lucide-react';
 import { PetSettings, PetBreed, PetAccessory } from '../types';
 import { drawCuteKitten } from './ChatPetCompanion';
 
@@ -142,6 +150,7 @@ const HeroMochiCanvas: React.FC<{
   const blinkRef = useRef(70);
   const isBlinkingRef = useRef(false);
   const earTwitchRef = useRef(0);
+  const breatheRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -157,6 +166,7 @@ const HeroMochiCanvas: React.FC<{
 
     const render = () => {
       tailRef.current += 0.05;
+      breatheRef.current += 0.035;
       blinkRef.current--;
       if (blinkRef.current <= 0) {
         isBlinkingRef.current = true;
@@ -189,7 +199,8 @@ const HeroMochiCanvas: React.FC<{
         earTwitchRef.current,
         0,
         0,
-        { dx: 0, dy: 0 }
+        { dx: 0, dy: 0 },
+        breatheRef.current
       );
       ctx.restore();
 
@@ -539,14 +550,14 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
             </button>
           </div>
 
-          {/* 🎨 3. TWO OPTIONS: SKINS AND ITEMS */}
+          {/* 🎨 3. THREE OPTIONS: SKINS, ITEMS, AND AI BRAIN */}
           <div className="space-y-3">
             {/* Clean Segmented Pill Switcher */}
             <div className="flex p-1 rounded-2xl bg-[var(--theme-surface)] border border-[var(--theme-border)]">
               <button
                 type="button"
                 onClick={() => setActiveTab('skins')}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'skins'
                     ? 'bg-[var(--theme-bg)] text-[var(--theme-text)] shadow-xs border border-[var(--theme-border)]'
                     : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -557,7 +568,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('items')}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'items'
                     ? 'bg-[var(--theme-bg)] text-[var(--theme-text)] shadow-xs border border-[var(--theme-border)]'
                     : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -624,8 +635,8 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                       }`}
                     >
                       {isSelected && (
-                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
-                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
+                          <Check className="w-3 h-3 stroke-[3]" />
                         </span>
                       )}
 

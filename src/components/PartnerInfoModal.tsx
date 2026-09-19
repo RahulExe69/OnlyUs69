@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink, Cat } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, Message, APP_VERSION, PetSettings } from '../types';
@@ -505,11 +505,11 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0 text-xl shadow-xs">
-                        🐱
+                      <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0 shadow-xs">
+                        <Cat className="w-5 h-5 text-[var(--theme-accent)]" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Chat Pet Companion</p>
+                        <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Pet</p>
                         <p className="text-[12px] text-[var(--theme-text)]/60 mt-0.5 leading-tight">
                           {petSettings?.name || 'Mochi'} • {petSettings?.enabled ? 'Active in chat' : 'Resting'}
                         </p>

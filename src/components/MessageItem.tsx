@@ -621,6 +621,8 @@ function MessageItemComponent({
               {/* Show reply context */}
               {resolvedReplyTo && !msg.deleted && (
                 <div
+                  id={`chat-reply-quote-${msg.id}`}
+                  data-reply-quote-id={msg.id}
                   onClick={(e) => {
                     e.stopPropagation();
                     const el = document.getElementById(`msg-${resolvedReplyTo.id}`);
@@ -630,7 +632,7 @@ function MessageItemComponent({
                       setTimeout(() => el.classList.remove('theme-message-focus'), 1400);
                     }
                   }}
-                  className={`theme-reply-context ${
+                  className={`theme-reply-context chat-reply-perch ${
                     isOwn ? 'theme-reply-context-owner' : 'theme-reply-context-partner'
                   } mb-2 p-2 rounded-xl text-[11px] border-l-4 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all select-none w-full max-w-full min-w-0 overflow-hidden`}
                 >

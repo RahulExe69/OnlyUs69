@@ -5,7 +5,7 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment, PetSettings } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone, Cat } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -304,6 +304,7 @@ export default function App() {
     return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
   });
 
+  const petConfigDebounceTimerRef = useRef<any>(null);
   const handleUpdatePetSettings = useCallback(async (updated: PetSettings) => {
     setPetSettings(updated);
     try {
@@ -323,12 +324,17 @@ export default function App() {
       }
     }
 
-    // 2. Persist to Supabase app_config so both partners share Mochi's name and look permanently
-    try {
-      await supabase.from('app_config').update({ pet_config: updated }).eq('id', 'main');
-    } catch (err) {
-      console.warn("Notice: pet settings app_config update", err);
+    // 2. Persist to Supabase app_config so both partners share Mochi's name, look & AI brain permanently
+    if (petConfigDebounceTimerRef.current) {
+      clearTimeout(petConfigDebounceTimerRef.current);
     }
+    petConfigDebounceTimerRef.current = setTimeout(async () => {
+      try {
+        await supabase.from('app_config').update({ pet_config: updated }).eq('id', 'main');
+      } catch (err) {
+        console.warn("Notice: pet settings app_config update", err);
+      }
+    }, 1200);
   }, []);
   const [showE2EEModal, setShowE2EEModal] = useState(false);
   const [isE2EEActive, setIsE2EEActive] = useState(isE2EEReady());
@@ -2165,8 +2171,8 @@ export default function App() {
                                 onClick={() => { setShowPetModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
-                                <span className="text-base leading-none">🐱</span>
-                                <span>Pet Companion ({petSettings.enabled ? petSettings.name : 'Off'})</span>
+                                <Cat className="w-4 h-4 text-[var(--theme-accent)]" />
+                                <span>Pet</span>
                               </button>
                             </motion.div>
                           </>
@@ -2211,6 +2217,7 @@ export default function App() {
                 showGamesMenu={showGamesMenu}
                 onSetShowGamesMenu={setShowGamesMenu}
                 petSettings={petSettings}
+                onUpdatePetSettings={handleUpdatePetSettings}
                 activeGame={activeGame}
                 onSetActiveGame={(game) => {
                   if (minimizedTimerRef.current) {
@@ -2413,7 +2420,8 @@ const ChatView = React.memo(function ChatView({
   onSetShowNudgeMenu,
   activeNudge,
   onDismissNudge,
-  petSettings
+  petSettings,
+  onUpdatePetSettings
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -2450,7 +2458,8 @@ const ChatView = React.memo(function ChatView({
   onSetShowNudgeMenu: (val: boolean) => void,
   activeNudge?: { type: string, sender: string } | null,
   onDismissNudge?: () => void,
-  petSettings?: PetSettings
+  petSettings?: PetSettings,
+  onUpdatePetSettings?: (settings: PetSettings) => void
 }) {
   const [selectedMediaFiles, setSelectedMediaFiles] = useState<SelectedMediaFile[]>([]);
   const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
@@ -3242,6 +3251,8 @@ const ChatView = React.memo(function ChatView({
     updateReadStatus();
   }, [messages.length, userProfile?.uid, role, isTabActive, isOverlayOpen]);
 
+  const partnerName = partnerProfile?.display_name || (role === 'owner' ? 'Nusrat' : 'Rahul');
+
   return (
     <div className="flex flex-col h-full relative">
       <div className="relative flex-1 overflow-hidden flex flex-col min-h-0">
@@ -3254,8 +3265,13 @@ const ChatView = React.memo(function ChatView({
           {petSettings && (
             <ChatPetCompanion 
               settings={petSettings} 
+              onUpdateSettings={onUpdatePetSettings}
               lastMessageId={messages[messages.length - 1]?.id} 
+              lastMessageText={messages[messages.length - 1]?.text}
+              lastMessageSender={messages[messages.length - 1]?.sender_role === 'owner' ? 'Rahul' : partnerName}
               isTyping={socketTypingUsers.length > 0} 
+              partnerName={partnerName}
+              currentUserRole={role}
             />
           )}
           {quotaExceeded && <QuotaBanner />}
