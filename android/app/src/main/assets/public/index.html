@@ -7,7 +7,7 @@
     <link rel="icon" type="image/webp" href="/favicon.webp" />
     <link rel="apple-touch-icon" href="/favicon.webp" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#FF8FA3" />
+    <meta name="theme-color" content="#11121B" />
     <script>
       (function() {
         try {
@@ -34,16 +34,45 @@
             aurora: { bg: '#EAF8F7', text: '#16363F', header: 'rgba(238, 253, 252, .78)', owner: '#237A96', ownerText: '#FFFFFF', partner: '#D8EFEB', partnerText: '#1D4A54', input: '#F9FFFF', surface: '#F4FCFB', accent: '#8B5CF6', border: 'rgba(36, 143, 150, .2)', decoration: 'radial-gradient(ellipse at 8% 8%, rgba(139,92,246,.38), transparent 32%), radial-gradient(ellipse at 92% 18%, rgba(38,198,160,.38), transparent 36%), radial-gradient(ellipse at 48% 105%, rgba(46,168,210,.25), transparent 45%)', font: '"Avenir Next", "Trebuchet MS", sans-serif' },
             anime: { bg: '#FFFDF2', text: '#181829', header: 'rgba(255, 253, 242, .94)', owner: '#FF4757', ownerText: '#FFFFFF', partner: '#FFFFFF', partnerText: '#181829', input: '#FFFFFF', surface: '#FFF9EB', accent: '#00D2D3', border: 'rgba(24, 24, 41, .35)', decoration: 'radial-gradient(circle at 10% 12%, rgba(0,210,211,.25), transparent 28%), radial-gradient(circle at 90% 88%, rgba(255,71,87,.2), transparent 32%), radial-gradient(#181829 1.2px, transparent 1.2px)', font: '"Comic Sans MS", "Bangers", "Impact", cursive, sans-serif' },
             pokemon: { bg: '#0F141C', text: '#FBFDFF', header: 'rgba(22, 28, 40, .9)', owner: '#EE3B3B', ownerText: '#FFFFFF', partner: '#222B3D', partnerText: '#F6F9FF', input: '#1B2232', surface: '#141A26', accent: '#FFCB05', border: 'rgba(255, 203, 5, .35)', decoration: 'radial-gradient(circle at 18% 12%, rgba(238,59,59,.25), transparent 32%), radial-gradient(circle at 82% 82%, rgba(255,203,5,.2), transparent 35%)', font: '"Trebuchet MS", "Inter", sans-serif' },
-            akatsuki: { bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif' }
+            akatsuki: { bg: '#08080D', text: '#F5F5FA', header: 'rgba(10, 10, 16, .92)', owner: '#B91C1C', ownerText: '#FFFFFF', partner: '#161722', partnerText: '#ECECF4', input: '#12131C', surface: '#0D0E17', accent: '#EF4444', border: 'rgba(239, 68, 68, .35)', decoration: 'radial-gradient(circle at 20% 15%, rgba(185,28,28,.28), transparent 35%), radial-gradient(circle at 80% 80%, rgba(239,68,68,.18), transparent 40%)', font: '"Cinzel", "Palatino Linotype", "Times New Roman", serif' },
+            neural: { bg: '#0A060A', text: '#FDF2F4', header: 'rgba(15, 9, 16, .88)', owner: '#E63366', ownerText: '#FFFFFF', partner: '#1A101C', partnerText: '#FCE7EB', input: '#150D18', surface: '#120B15', accent: '#E63366', border: 'rgba(230, 51, 102, .35)', decoration: 'radial-gradient(circle at 18% 15%, rgba(230,51,102,.28), transparent 38%), radial-gradient(circle at 82% 80%, rgba(255,102,153,.18), transparent 42%)', font: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }
           };
-          var tName = localStorage.getItem('onlyus_chat_theme') || 'romantic';
+          var tName = localStorage.getItem('onlyus_chat_theme');
+          if (!tName) {
+            try {
+              var p = JSON.parse(localStorage.getItem('onlyus_cached_profile') || '{}');
+              if (p && p.theme) tName = p.theme;
+            } catch (e) {}
+          }
+          if (!tName) {
+            try {
+              var rawSb = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
+              if (rawSb && rawSb.indexOf('770c6ecc') !== -1) {
+                tName = '3d-dark';
+              }
+            } catch (e) {}
+          }
+          if (!tName) {
+            try {
+              var partner = JSON.parse(localStorage.getItem('onlyus_partner_session') || '{}');
+              if (partner && (partner.id || partner.isPartnerPasscode)) {
+                tName = localStorage.getItem('onlyus_partner_theme') || '3d-cyber';
+              }
+            } catch (e) {}
+          }
+          if (!tName) tName = '3d-dark';
+          
+          try {
+            localStorage.setItem('onlyus_chat_theme', tName);
+          } catch(e) {}
+
           var baseName = tName.replace(/^3d-/, '');
           if (tName === '3d-cosmos') baseName = 'dark';
           else if (tName === '3d-crystal') baseName = 'forest';
           else if (tName === '3d-waves') baseName = 'cyber';
           else if (tName === '3d-aura') baseName = 'lavender';
           else if (tName === '3d-cherry') baseName = 'romantic';
-          var t = THEME_MAP[tName] || THEME_MAP[baseName] || THEME_MAP.romantic;
+          var t = THEME_MAP[tName] || THEME_MAP[baseName] || THEME_MAP.dark;
           var root = document.documentElement;
           root.dataset.chatTheme = tName;
           root.style.setProperty('--theme-bg', t.bg);
@@ -59,6 +88,37 @@
           root.style.setProperty('--theme-border', t.border);
           root.style.setProperty('--theme-decoration', t.decoration);
           root.style.setProperty('--theme-font', t.font);
+
+          // Pre-render dual-tone and intro variables for responsive zero-flicker intro
+          var DUAL_TONE_MAP = {
+            romantic: ['#C66CFF', '#FF4F8B', 'rgba(255, 79, 139, 0.45)', '#FFF7F8', 'rgba(255, 191, 205, 0.45)', 'rgba(255, 221, 194, 0.48)', 0],
+            light: ['#38BDF8', '#4263EB', 'rgba(66, 99, 235, 0.4)', '#F7F9FC', 'rgba(56, 189, 248, 0.25)', 'rgba(66, 99, 235, 0.2)', 0],
+            dark: ['#54C1FF', '#B69CFF', 'rgba(182, 156, 255, 0.45)', '#0E0F18', 'rgba(84, 193, 255, 0.16)', 'rgba(182, 156, 255, 0.18)', 1],
+            lavender: ['#C2A7FF', '#8062C7', 'rgba(128, 98, 199, 0.4)', '#F7F3FF', 'rgba(194, 167, 255, 0.35)', 'rgba(232, 223, 255, 0.5)', 0],
+            ocean: ['#00D2D3', '#247C86', 'rgba(0, 210, 211, 0.4)', '#EDF8F8', 'rgba(0, 210, 211, 0.25)', 'rgba(36, 124, 134, 0.22)', 0],
+            sunset: ['#FFA07A', '#CD6C58', 'rgba(205, 108, 88, 0.4)', '#FFF5EC', 'rgba(255, 160, 122, 0.32)', 'rgba(205, 108, 88, 0.25)', 0],
+            doodle: ['#FF6B6B', '#2878B5', 'rgba(255, 107, 107, 0.4)', '#FFFBE7', 'rgba(255, 217, 61, 0.35)', 'rgba(77, 150, 255, 0.25)', 0],
+            noir: ['#FFE082', '#E0B85C', 'rgba(224, 184, 92, 0.45)', '#141414', 'rgba(255, 224, 130, 0.15)', 'rgba(224, 184, 92, 0.12)', 1],
+            forest: ['#C9E265', '#10B981', 'rgba(201, 226, 101, 0.45)', '#0B1F19', 'rgba(201, 226, 101, 0.18)', 'rgba(16, 185, 129, 0.16)', 1],
+            cyber: ['#73F7FF', '#FF3CAC', 'rgba(115, 247, 255, 0.5)', '#080717', 'rgba(115, 247, 255, 0.22)', 'rgba(255, 60, 172, 0.22)', 1],
+            aurora: ['#26C6A0', '#8B5CF6', 'rgba(139, 92, 246, 0.4)', '#EAF8F7', 'rgba(38, 198, 160, 0.3)', 'rgba(139, 92, 246, 0.25)', 0],
+            anime: ['#00D2D3', '#FF4757', 'rgba(255, 71, 87, 0.45)', '#FFFDF2', 'rgba(0, 210, 211, 0.28)', 'rgba(255, 71, 87, 0.22)', 0],
+            pokemon: ['#FFCB05', '#EE3B3B', 'rgba(255, 203, 5, 0.5)', '#0C1118', 'rgba(255, 203, 5, 0.2)', 'rgba(238, 59, 59, 0.22)', 1],
+            akatsuki: ['#FF4D4D', '#B91C1C', 'rgba(239, 68, 68, 0.55)', '#08080D', 'rgba(239, 68, 68, 0.22)', 'rgba(185, 28, 28, 0.24)', 1],
+            neural: ['#A855F7', '#E63366', 'rgba(230, 51, 102, 0.5)', '#0A060A', 'rgba(168, 85, 247, 0.22)', 'rgba(230, 51, 102, 0.24)', 1]
+          };
+          var dt = DUAL_TONE_MAP[tName] || DUAL_TONE_MAP[baseName] || DUAL_TONE_MAP.dark;
+          root.style.setProperty('--theme-dual-color-1', dt[0]);
+          root.style.setProperty('--theme-dual-color-2', dt[1]);
+          root.style.setProperty('--theme-dual-glow', dt[2]);
+          root.style.setProperty('--ou-main', dt[1]);
+          root.style.setProperty('--ou-main2', dt[0]);
+          root.style.setProperty('--ou-drop-shadow', dt[2]);
+          root.style.setProperty('--ou-bg', dt[3]);
+          root.style.setProperty('--ou-bg-glow-1', dt[4]);
+          root.style.setProperty('--ou-bg-glow-2', dt[5]);
+          root.style.setProperty('--ou-is-dark', dt[6] ? '1' : '0');
+
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', t.accent);
 
@@ -80,13 +140,13 @@
         } catch(e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-CcnEqHg4.js"></script>
+    <script type="module" crossorigin src="/assets/index-DVn5FGLD.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-supabase-BGuEoYk_.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-ui-CNy3fBq3.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-ui-BuEFVlfi.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-capacitor-YFvjeUnX.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-DjFK5aRz.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-BhqubfI4.css">
   </head>
-  <body style="background-color: var(--theme-bg, #FFF7F8); color: var(--theme-text, #1a1a1a); font-family: var(--theme-font, system-ui, sans-serif);">
+  <body style="background-color: var(--ou-bg, var(--theme-bg, #0E0F18)); color: var(--theme-text, #F6F4FF); font-family: var(--theme-font, system-ui, sans-serif);">
     <div id="root"></div>
   </body>
 </html>

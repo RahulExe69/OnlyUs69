@@ -3,9 +3,10 @@
 /**
  * OnlyUs Android APK CI/CD Build Failure Diagnostic Engine
  * 
- * Automatically analyzes GitHub Actions build logs, extracts root causes,
- * eliminates noisy Gradle output, and generates an actionable fix report
- * as both an artifact and a GitHub Step Summary.
+ * Automatically analyzes GitHub Actions workflow step execution,
+ * identifies the exact failed step, extracts real compiler & runner error logs,
+ * generates an actionable fix guide, uploads to an instant web viewer URL,
+ * and writes to GitHub Step Summary.
  */
 
 import fs from 'fs';
@@ -24,186 +25,348 @@ function readLogSafely(filePath) {
       return stripAnsi(fs.readFileSync(filePath, 'utf8'));
     }
   } catch (err) {
-    console.error(`Failed to read log at ${filePath}:`, err.message);
+    // Ignore read errors
   }
   return null;
 }
 
-function analyzeLogs() {
-  const rootDir = process.cwd();
-  
-  const gradleLog = readLogSafely(path.join(rootDir, 'gradle-build.log'));
-  const viteLog = readLogSafely(path.join(rootDir, 'vite-build.log'));
-  const capLog = readLogSafely(path.join(rootDir, 'cap-sync.log'));
-  const npmLog = readLogSafely(path.join(rootDir, 'npm-install.log'));
+// Map of step IDs to human-readable step descriptions
+const STEP_TITLES = {
+  step_checkout: 'Repository Source Checkout',
+  step_vars: 'Build Versioning & Variables Resolution',
+  step_setup_node: 'Node.js 22 Runtime Environment Setup',
+  step_install_deps: 'npm Dependencies Installation (npm ci / npm install)',
+  step_build_web: 'Web Application Compilation (Vite / TypeScript)',
+  step_icons: 'Android Flavor App Icons Generation',
+  step_setup_java: 'Java JDK 21 Environment Setup',
+  step_setup_gradle: 'Gradle Daemon & Build Cache Setup',
+  step_setup_android: 'Android SDK Platform 36 & Licenses Configuration',
+  step_cap_sync: 'Capacitor Android Assets & Plugin Sync',
+  step_chmod_gradlew: 'Gradle Wrapper Execution Permissions',
+  step_build_apks: 'Native Android Compilation (Gradle assembleNusrat & assembleRahul)',
+  step_organize_apks: 'APK Verification & File Renaming',
+  step_upload_artifacts: 'APK Workflow Artifact Upload',
+  step_publish_release: 'GitHub Releases Publishing'
+};
 
-  let failedStage = 'Unknown Stage';
-  let primaryError = '';
+async function uploadToPasteViewer(content) {
+  try {
+    // Try dpaste.org (7-day temporary paste)
+    const response = await fetch('https://dpaste.org/api/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        content,
+        format: 'url',
+        expiry_days: '7',
+        title: 'OnlyUs APK Build Failure Diagnostic'
+      }),
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (response.ok) {
+      const url = (await response.text()).trim();
+      if (url.startsWith('http')) {
+        return url;
+      }
+    }
+  } catch (e) {
+    // Fallback paste service if dpaste fails
+    try {
+      const response2 = await fetch('https://paste.rs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: content,
+        signal: AbortSignal.timeout(4000)
+      });
+      if (response2.ok) {
+        const url2 = (await response2.text()).trim();
+        if (url2.startsWith('http')) {
+          return url2;
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function runDiagnostic() {
+  const rootDir = process.cwd();
+  const logsDir = path.join(rootDir, 'logs');
+
+  let failedStepId = null;
+  let failedStepTitle = 'Unknown Workflow Step';
+
+  // 1. Inspect GitHub Actions step outcomes via STEPS_CONTEXT
+  if (process.env.STEPS_CONTEXT) {
+    try {
+      const steps = JSON.parse(process.env.STEPS_CONTEXT);
+      for (const [stepId, stepData] of Object.entries(steps)) {
+        if (stepData && (stepData.conclusion === 'failure' || stepData.outcome === 'failure')) {
+          failedStepId = stepId;
+          failedStepTitle = STEP_TITLES[stepId] || stepId;
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not parse STEPS_CONTEXT:', e.message);
+    }
+  }
+
+  // Fallback: If STEPS_CONTEXT didn't identify a failed step, look for the newest non-empty error log
+  if (!failedStepId && fs.existsSync(logsDir)) {
+    const logFiles = fs.readdirSync(logsDir).filter(f => f.endsWith('.log')).sort().reverse();
+    for (const logFile of logFiles) {
+      const content = readLogSafely(path.join(logsDir, logFile));
+      if (content && (content.includes('error') || content.includes('ERROR') || content.includes('FAILED') || content.includes('FAILURE'))) {
+        failedStepId = logFile.replace('.log', '');
+        failedStepTitle = STEP_TITLES[failedStepId] || failedStepId;
+        break;
+      }
+    }
+  }
+
+  // 2. Read log file for the failed step or check general logs
+  let stepLog = '';
+  if (failedStepId) {
+    const candidatePath = path.join(logsDir, `${failedStepId}.log`);
+    stepLog = readLogSafely(candidatePath) || '';
+  }
+
+  // If still empty, check legacy root log files
+  if (!stepLog) {
+    stepLog = readLogSafely(path.join(rootDir, 'gradle-build.log'))
+      || readLogSafely(path.join(rootDir, 'vite-build.log'))
+      || readLogSafely(path.join(rootDir, 'cap-sync.log'))
+      || readLogSafely(path.join(rootDir, 'npm-install.log'))
+      || '';
+  }
+
+  let errorCategory = 'Build Pipeline Error';
+  let rootCauseSummary = '';
   let extractedSnippet = '';
   let suggestedFixes = [];
-  let errorCategory = 'General';
 
-  // 1. Check Web App Build (Vite / TypeScript)
-  if (viteLog && (viteLog.includes('error TS') || viteLog.includes('Rollup failed') || viteLog.includes('Build failed'))) {
-    failedStage = 'Web Application Compilation (Vite / TypeScript)';
-    errorCategory = 'TypeScript / Vite Build Error';
-    
-    // Extract TypeScript errors
-    const tsErrors = viteLog
-      .split('\n')
-      .filter(line => line.includes('error TS') || line.includes('[vite]') || line.includes('Failed to compile'))
-      .slice(0, 10);
-    
-    extractedSnippet = tsErrors.join('\n') || viteLog.slice(-1500);
-    primaryError = tsErrors[0] || 'TypeScript compilation or Vite bundling failed.';
-    
+  // 3. Analyze specific error based on step & log content
+  if (failedStepId === 'step_build_web' || stepLog.includes('error TS') || stepLog.includes('Rollup failed') || stepLog.includes('vite: not found')) {
+    failedStepTitle = STEP_TITLES.step_build_web;
+    errorCategory = 'TypeScript / Web Compilation Failure';
+    rootCauseSummary = 'Vite or TypeScript compiler failed while building the web application assets.';
+
+    const lines = stepLog.split('\n');
+    const tsErrors = lines.filter(l => l.includes('error TS') || l.includes('[vite]') || l.includes('Failed to compile') || l.includes('Error:')).slice(0, 15);
+    extractedSnippet = tsErrors.join('\n') || lines.slice(-35).join('\n');
+
     suggestedFixes = [
-      'Run `npm run lint` locally to see all TypeScript type mismatches and syntax issues.',
-      'Check the files mentioned in the extracted snippet above and fix invalid imports or property accesses.',
-      'Run `npm run build` locally in the terminal to verify the web build before triggering the GitHub APK workflow.'
+      'Run `npm run lint` locally to identify and fix TypeScript type mismatches or broken imports.',
+      'Run `npm run build` locally to ensure Vite can bundle the web project into `dist/` without errors.',
+      'Check the files and line numbers highlighted in the error log snippet below.'
     ];
   }
+  else if (failedStepId === 'step_install_deps' || stepLog.includes('npm ERR!') || stepLog.includes('ERESOLVE')) {
+    failedStepTitle = STEP_TITLES.step_install_deps;
+    errorCategory = 'npm Package Installation Failure';
+    rootCauseSummary = 'npm failed to resolve dependencies or package-lock.json integrity check failed.';
 
-  // 2. Check Node Dependencies (npm install / ci)
-  else if (npmLog && (npmLog.includes('npm ERR!') || npmLog.includes('ERESOLVE'))) {
-    failedStage = 'Node Dependencies Installation (npm ci)';
-    errorCategory = 'npm Dependency Resolution Failure';
-    
-    const errLines = npmLog
-      .split('\n')
-      .filter(line => line.includes('npm ERR!'))
-      .slice(0, 15);
-      
-    extractedSnippet = errLines.join('\n') || npmLog.slice(-1000);
-    primaryError = 'npm failed to resolve or install dependencies listed in package.json.';
-    
+    const lines = stepLog.split('\n');
+    const npmErrors = lines.filter(l => l.includes('npm ERR!')).slice(0, 15);
+    extractedSnippet = npmErrors.join('\n') || lines.slice(-30).join('\n');
+
     suggestedFixes = [
-      'Check `package.json` for invalid package versions or conflicts.',
-      'Run `npm install --package-lock-only` locally to regenerate a clean `package-lock.json`.',
-      'Ensure all required private npm tokens (if any) are configured in GitHub Secrets.'
+      'Run `npm install` locally and commit the updated `package-lock.json` to the repository.',
+      'Check `package.json` for invalid package versions or conflicting peer dependencies.',
+      'Ensure any required private npm registry tokens are defined in repository secrets.'
     ];
   }
+  else if (failedStepId === 'step_icons' || stepLog.includes('generate-flavor-icons')) {
+    failedStepTitle = STEP_TITLES.step_icons;
+    errorCategory = 'Android Flavor Icon Generator Failure';
+    rootCauseSummary = 'The custom icon generator script (`scripts/generate-flavor-icons.js`) encountered an error.';
 
-  // 3. Check Capacitor Sync
-  else if (capLog && (capLog.includes('[error]') || capLog.includes('Capacitor: Error') || capLog.includes('ERR_'))) {
-    failedStage = 'Capacitor Android Sync (npx cap sync android)';
-    errorCategory = 'Capacitor Asset / Plugin Sync Error';
-    
-    const capErrors = capLog
-      .split('\n')
-      .filter(line => line.toLowerCase().includes('error') || line.includes('Failed'))
-      .slice(0, 10);
-      
-    extractedSnippet = capErrors.join('\n') || capLog.slice(-1000);
-    primaryError = 'Capacitor encountered an error copying web assets or syncing Android plugins.';
-    
+    const lines = stepLog.split('\n');
+    extractedSnippet = lines.slice(-30).join('\n');
+
     suggestedFixes = [
-      'Ensure `npm run build` generated a valid `dist/` directory with `index.html`.',
-      'Verify that all Capacitor plugins in `package.json` match `@capacitor/core` and `@capacitor/android` versions.',
-      'Run `npx cap sync android` locally to inspect the detailed native sync output.'
+      'Run `npm run icons` locally to test generating launcher and notification icons.',
+      'Check that `sharp` is installed in `node_modules` and that `android/app/src/main/res/` directories are writable.',
+      'Verify that SVG icon definitions in `scripts/generate-flavor-icons.js` have valid syntax.'
     ];
   }
+  else if (failedStepId === 'step_setup_android' || stepLog.includes('sdkmanager') || stepLog.includes('platforms;android-36')) {
+    failedStepTitle = STEP_TITLES.step_setup_android;
+    errorCategory = 'Android SDK / Platform 36 Setup Failure';
+    rootCauseSummary = 'Failed to configure Android SDK, accept licenses, or install SDK Platform 36.';
 
-  // 4. Check Android Gradle Build
-  else if (gradleLog && (gradleLog.includes('FAILURE: Build failed') || gradleLog.includes('BUILD FAILED'))) {
-    failedStage = 'Android Gradle Compilation & Packaging';
-    
-    // Check specific Gradle sub-categories
-    if (gradleLog.includes('Keystore file') || gradleLog.includes('keystore') || gradleLog.includes('signingConfig') || gradleLog.includes('Password verification failed') || gradleLog.includes('Cannot find key in keystore')) {
-      errorCategory = 'APK Keystore / Digital Signing Failure';
-      primaryError = 'Gradle could not sign the release APK with `onlyus.keystore`.';
+    const lines = stepLog.split('\n');
+    extractedSnippet = lines.slice(-30).join('\n');
+
+    suggestedFixes = [
+      'Ensure Android SDK licenses are accepted using `yes | sdkmanager --licenses`.',
+      'Verify that `$ANDROID_HOME` points to a valid Android SDK installation in the GitHub runner.',
+      'Verify that Gradle has `android.builder.sdkDownload=true` enabled so it can auto-download missing platforms.'
+    ];
+  }
+  else if (failedStepId === 'step_cap_sync' || stepLog.includes('Capacitor') || stepLog.includes('npx cap sync')) {
+    failedStepTitle = STEP_TITLES.step_cap_sync;
+    errorCategory = 'Capacitor Android Sync Failure';
+    rootCauseSummary = 'Capacitor failed to copy web assets to `android/app/src/main/assets/public` or sync native plugins.';
+
+    const lines = stepLog.split('\n');
+    const capErrors = lines.filter(l => l.toLowerCase().includes('error') || l.includes('ERR_') || l.includes('Failed')).slice(0, 15);
+    extractedSnippet = capErrors.join('\n') || lines.slice(-30).join('\n');
+
+    suggestedFixes = [
+      'Ensure `dist/index.html` exists and was properly generated by `npm run build`.',
+      'Run `npx cap sync android` locally to verify Android plugin compatibility.',
+      'Check `android/capacitor.settings.gradle` and native Capacitor dependencies in `package.json`.'
+    ];
+  }
+  else if (failedStepId === 'step_build_apks' || stepLog.includes('FAILURE: Build failed') || stepLog.includes('BUILD FAILED')) {
+    failedStepTitle = STEP_TITLES.step_build_apks;
+
+    if (stepLog.includes('keystore') || stepLog.includes('signingConfig') || stepLog.includes('Cannot find key in keystore') || stepLog.includes('Password verification failed')) {
+      errorCategory = 'Android Release Keystore / Digital Signing Failure';
+      rootCauseSummary = 'Gradle could not load or verify the release keystore `onlyus.keystore`.';
       suggestedFixes = [
-        'Check GitHub Repository Secrets: Ensure `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` are set correctly.',
-        'Verify that `android/app/onlyus.keystore` exists in the repository.',
-        'If building a development test, you can select `build_type = debug` in the GitHub Actions dispatch input to bypass production release signing.'
+        'Check GitHub Repository Secrets: Verify that `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD` match `android/app/onlyus.keystore`.',
+        'Verify that `android/app/onlyus.keystore` is committed and not corrupted.',
+        'If testing in CI, trigger the workflow with input `build_type: debug` to test compilation without release signing.'
       ];
-    } else if (gradleLog.includes('AAPT: error:') || gradleLog.includes('resource not found') || gradleLog.includes('AndroidManifest.xml')) {
-      errorCategory = 'AAPT2 Android Resource or Manifest Failure';
-      primaryError = 'Android Asset Packaging Tool (AAPT2) failed to link XML layouts, drawables, or manifest entries.';
+    } else if (stepLog.includes('AAPT: error:') || stepLog.includes('resource not found') || stepLog.includes('AAPT2 process')) {
+      errorCategory = 'Android AAPT2 XML Resource Linking Failure';
+      rootCauseSummary = 'AAPT2 encountered invalid XML syntax, missing drawables, or duplicate resource IDs.';
       suggestedFixes = [
-        'Check `android/app/src/main/AndroidManifest.xml` or product flavor manifests (`nusrat` & `rahul`) for XML typos.',
-        'Verify that custom app icons were generated correctly: run `npm run icons`.',
-        'Check any newly added resource IDs or drawables in `android/app/src/main/res/`.'
+        'Inspect XML files in `android/app/src/main/res/` and `android/app/src/main/AndroidManifest.xml` for syntax errors.',
+        'Check product flavor manifests (`nusrat` and `rahul`) for conflicting attribute declarations.',
+        'Run `./gradlew assembleDebug` locally to get detailed AAPT2 file and line numbers.'
       ];
-    } else if (gradleLog.includes('CompilationFailedException') || gradleLog.includes('compiler error') || gradleLog.includes(':app:compile')) {
-      errorCategory = 'Java / Kotlin Android Compilation Error';
-      primaryError = 'Native Android Java/Kotlin source code failed to compile.';
+    } else if (stepLog.includes('CompilationFailedException') || stepLog.includes('compileDebugJavaWithJavac') || stepLog.includes('compileReleaseJavaWithJavac')) {
+      errorCategory = 'Java / Kotlin Native Code Compilation Failure';
+      rootCauseSummary = 'Native Java/Kotlin Android code failed to compile.';
       suggestedFixes = [
-        'Inspect the Java/Kotlin compile error in the snippet below for exact class and line numbers.',
-        'Check custom plugins in `android/app/src/main/java/` (e.g. `OnlyUsNotificationPlugin` or `StealthNotepadActivity`).',
-        'Ensure Android SDK 36 and Java 21 compatibility across all native files.'
-      ];
-    } else if (gradleLog.includes('OutOfMemoryError') || gradleLog.includes('heap space') || gradleLog.includes('Metaspace')) {
-      errorCategory = 'Gradle JVM Out of Memory';
-      primaryError = 'The Gradle build daemon ran out of allocated heap memory.';
-      suggestedFixes = [
-        'Increase Gradle daemon heap in `android/gradle.properties` (e.g. `org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m`).',
-        'Disable parallel execution or daemon caching for low-memory environments.'
+        'Review custom Java classes in `android/app/src/main/java/com/onlyus/` (e.g. `OnlyUsNotificationPlugin`, `StealthNotepadActivity`).',
+        'Ensure compatibility with Java 21 and Android API 36.',
+        'Check for missing imports or method signature mismatches.'
       ];
     } else {
-      errorCategory = 'Gradle Build Task Failure';
-      primaryError = 'A Gradle task execution terminated with an exception.';
+      errorCategory = 'Android Gradle Task Execution Failure';
+      rootCauseSummary = 'A Gradle compilation or packaging task terminated with an error.';
       suggestedFixes = [
-        'Review the exact Gradle task failure in the snippet below.',
-        'Run `./gradlew assembleNusratRelease assembleRahulRelease --stacktrace` in the `android/` directory to inspect stack trace.',
-        'Ensure Android SDK platform 36 and build-tools are fully synced.'
+        'Review the exact Gradle task failure in the log snippet below.',
+        'Run `./gradlew assembleNusratRelease assembleRahulRelease --stacktrace` locally.',
+        'Check Gradle daemon and JVM heap memory in `android/gradle.properties`.'
       ];
     }
 
-    // Extract "* What went wrong:" block from Gradle log
-    const whatWentWrongIdx = gradleLog.indexOf('* What went wrong:');
+    // Extract "* What went wrong:" block if available
+    const whatWentWrongIdx = stepLog.indexOf('* What went wrong:');
     if (whatWentWrongIdx !== -1) {
-      const whatWentWrongBlock = gradleLog.substring(whatWentWrongIdx, whatWentWrongIdx + 2000);
-      const endOfBlock = whatWentWrongBlock.indexOf('* Try:') !== -1 ? whatWentWrongBlock.indexOf('* Try:') : whatWentWrongBlock.length;
-      extractedSnippet = whatWentWrongBlock.substring(0, endOfBlock).trim();
+      const block = stepLog.substring(whatWentWrongIdx, whatWentWrongIdx + 2500);
+      const tryIdx = block.indexOf('* Try:');
+      extractedSnippet = (tryIdx !== -1 ? block.substring(0, tryIdx) : block).trim();
     } else {
-      // Fallback: extract lines containing ERROR or FAILED
-      const errorLines = gradleLog
-        .split('\n')
-        .filter(l => l.includes('FAILED') || l.includes('error:') || l.includes('AAPT: error:') || l.includes('Exception:'))
-        .slice(-15);
-      extractedSnippet = errorLines.join('\n') || gradleLog.slice(-1500);
+      const lines = stepLog.split('\n');
+      const errLines = lines.filter(l => l.includes('FAILED') || l.includes('error:') || l.includes('Exception:') || l.includes('Error:'));
+      extractedSnippet = errLines.slice(-20).join('\n') || lines.slice(-40).join('\n');
     }
   }
+  else if (failedStepId === 'step_organize_apks') {
+    failedStepTitle = STEP_TITLES.step_organize_apks;
+    errorCategory = 'APK Packaging & Verification Failure';
+    rootCauseSummary = 'Gradle completed, but the expected APK files were not found in the output directory.';
 
-  // 5. Fallback if no specific log matched
-  else {
-    failedStage = 'APK Assembly or File Organization';
-    errorCategory = 'Pipeline Step Failure';
-    primaryError = 'A workflow step terminated unexpectedly before completing APK generation.';
-    
-    // Check if APK artifacts step failed
+    const lines = stepLog ? stepLog.split('\n') : [];
+    extractedSnippet = lines.slice(-25).join('\n') || 'Nusrat or Rahul APK was not found at android/app/build/outputs/apk/.';
+
     suggestedFixes = [
-      'Check the GitHub Actions step that has a red ❌ icon in the workflow run view.',
-      'If the error was "Nusrat APK not found" or "Rahul APK not found", Gradle may have produced APKs in an unexpected directory.',
-      'Inspect the raw runner logs for runner environment issues or canceled jobs.'
+      'Check if the build flavor names match `nusrat` and `rahul` in `android/app/build.gradle`.',
+      'Verify if Gradle generated APKs in a different subdirectory (e.g. debug vs release).',
+      'Check the preceding Gradle build step logs to confirm whether APK assembly finished cleanly.'
     ];
-    extractedSnippet = 'No error output found in captured build logs. The failure occurred during step setup, artifact collection, or runner environment configuration.';
+  }
+  else {
+    // General fallback: grab the literal tail of whatever log exists
+    errorCategory = 'Workflow Execution Error';
+    rootCauseSummary = failedStepTitle !== 'Unknown Workflow Step'
+      ? `Step "${failedStepTitle}" terminated with a non-zero exit code.`
+      : 'A workflow step terminated with an error before APK artifacts could be collected.';
+
+    if (stepLog) {
+      const lines = stepLog.split('\n');
+      extractedSnippet = lines.slice(-35).join('\n');
+    } else {
+      extractedSnippet = `Failed Step ID: ${failedStepId || 'unknown'}\nCheck the GitHub Actions step with a red ❌ icon in the workflow run.`;
+    }
+
+    suggestedFixes = [
+      `Check the step titled "${failedStepTitle}" in the GitHub Actions run timeline.`,
+      'Examine the runner error message in the console for missing dependencies or permissions.',
+      'Download the complete diagnostic log artifact below for the unedited console stream.'
+    ];
   }
 
-  // Generate Markdown report
+  // Ensure snippet is not empty
+  if (!extractedSnippet || !extractedSnippet.trim()) {
+    extractedSnippet = stepLog ? stepLog.slice(-1500) : `Step [${failedStepTitle}] failed with no captured terminal output.`;
+  }
+
+  // Generate plain text report
   const nowUtc = new Date().toISOString();
   const runId = process.env.GITHUB_RUN_ID || 'local';
-  const repoName = process.env.GITHUB_REPOSITORY || 'OnlyUs';
+  const repoName = process.env.GITHUB_REPOSITORY || 'RahulExe69/OnlyUs69';
   const workflowUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-    : '#';
+    : `https://github.com/${repoName}/actions/runs/${runId}`;
 
+  const textReport = `
+======================================================================
+🚨 ONLYUS ANDROID COMPANION APK - BUILD FAILURE DIAGNOSTIC REPORT
+======================================================================
+Timestamp:  ${nowUtc}
+Run ID:     ${runId}
+Repository: ${repoName}
+Failed Step:${failedStepTitle} (${failedStepId || 'N/A'})
+Category:   ${errorCategory}
+======================================================================
+
+[ROOT CAUSE SUMMARY]
+${rootCauseSummary}
+
+[EXACT EXTRACTED ERROR LOG]
+----------------------------------------------------------------------
+${extractedSnippet.trim()}
+----------------------------------------------------------------------
+
+[ACTIONABLE FIX STEPS]
+${suggestedFixes.map((fix, idx) => `${idx + 1}. ${fix}`).join('\n')}
+
+======================================================================
+Workflow Run URL: ${workflowUrl}
+======================================================================
+`.trim();
+
+  // Try uploading to online paste service for direct web link
+  let webViewerUrl = await uploadToPasteViewer(textReport);
+
+  // Generate Markdown report
   const markdownReport = `
 # 🚨 OnlyUs Android Companion APK - Build Failure Diagnostic Report
 
 > **Run ID:** [${runId}](${workflowUrl})  
 > **Timestamp:** \`${nowUtc}\`  
 > **Repository:** \`${repoName}\`  
+> **Failed Step:** **${failedStepTitle}** (\`${failedStepId || 'N/A'}\`)  
 > **Primary Failure Category:** **${errorCategory}**
+
+${webViewerUrl ? `\n> 🌐 **[👉 Click Here to Open Raw Fix Log in Browser Tab](${webViewerUrl})**\n` : ''}
 
 ---
 
 ### ❌ Failed Workflow Stage
-**${failedStage}**
+**${failedStepTitle}**
 
 ### 🔍 Root Cause Summary
-${primaryError}
+${rootCauseSummary}
 
 ---
 
@@ -219,51 +382,26 @@ ${suggestedFixes.map((fix, idx) => `${idx + 1}. ${fix}`).join('\n')}
 
 ---
 
-### 📦 Diagnostic Artifact Download
-- You can download the complete diagnostic bundle (containing this report, full Gradle output, and Vite bundling traces) directly from the **Artifacts** section at the bottom of the GitHub Actions run page: **\`OnlyUs-Build-Failure-Diagnostic-Log\`**.
-- Workflow URL: ${workflowUrl}
+### 🔗 Direct Access & Artifacts
+${webViewerUrl ? `- **Direct Web Viewer URL:** [${webViewerUrl}](${webViewerUrl})` : ''}
+- **GitHub Actions Run URL:** [${workflowUrl}](${workflowUrl})
+- **Complete Diagnostic Artifact:** Download **\`OnlyUs-Build-Failure-Diagnostic-Log\`** from the Artifacts section below for all raw logs.
 `.trim();
 
-  // Generate Plain Text report
-  const textReport = `
-======================================================================
-🚨 ONLYUS ANDROID COMPANION APK - BUILD FAILURE DIAGNOSTIC REPORT
-======================================================================
-Timestamp: ${nowUtc}
-Run ID:    ${runId}
-Repository:${repoName}
-Stage:     ${failedStage}
-Category:  ${errorCategory}
-======================================================================
-
-[ROOT CAUSE SUMMARY]
-${primaryError}
-
-[EXACT EXTRACTED ERROR LOG]
-----------------------------------------------------------------------
-${extractedSnippet.trim()}
-----------------------------------------------------------------------
-
-[ACTIONABLE FIX STEPS]
-${suggestedFixes.map((fix, idx) => `${idx + 1}. ${fix}`).join('\n')}
-
-======================================================================
-Artifact: OnlyUs-Build-Failure-Diagnostic-Log
-View full run: ${workflowUrl}
-======================================================================
-`.trim();
-
-  // Write reports to disk
+  // Save reports to root dir
   fs.writeFileSync(path.join(rootDir, 'OnlyUs-Build-Failure-Diagnostic.md'), markdownReport, 'utf8');
   fs.writeFileSync(path.join(rootDir, 'OnlyUs-Build-Failure-Diagnostic.txt'), textReport, 'utf8');
 
   console.log('\n======================================================================');
-  console.log('✅ Generated OnlyUs-Build-Failure-Diagnostic.md & .txt');
-  console.log('======================================================================\n');
+  console.log(`🚨 BUILD FAILURE DIAGNOSTIC COMPLETED [${failedStepTitle}]`);
+  console.log('======================================================================');
+  if (webViewerUrl) {
+    console.log(`\n🌐 ONLINE FIX LOG URL: ${webViewerUrl}\n`);
+  }
   console.log(textReport);
-  console.log('\n======================================================================\n');
+  console.log('======================================================================\n');
 
-  // Write to GitHub Step Summary if available
+  // Append to GitHub Step Summary
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
   if (summaryFile && fs.existsSync(path.dirname(summaryFile))) {
     try {
@@ -275,9 +413,7 @@ View full run: ${workflowUrl}
   }
 }
 
-try {
-  analyzeLogs();
-} catch (error) {
-  console.error('Fatal error while diagnosing build failure:', error);
-  process.exit(0); // Exit 0 so failure reporting itself never masks the original failure
-}
+runDiagnostic().catch(err => {
+  console.error('Diagnostic engine crashed:', err);
+  process.exit(0);
+});

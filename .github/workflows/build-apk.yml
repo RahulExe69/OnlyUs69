@@ -75,54 +75,78 @@ jobs:
           echo "version_tag=${RAW_TAG}" >> $GITHUB_OUTPUT
           echo "✅ Building [${BUILD_TYPE}] with versionName=${CLEAN_NAME}, versionCode=${RAW_CODE}, releaseTag=${RAW_TAG}"
 
+      - name: Initialize Log Environment
+        id: step_init_logs
+        run: mkdir -p logs
+
       - name: Setup Node.js 22
+        id: step_setup_node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'npm'
 
       - name: Install Node Dependencies
+        id: step_install_deps
         run: |
           set -o pipefail
-          (npm ci || npm install) 2>&1 | tee npm-install.log
+          (npm ci || npm install) 2>&1 | tee logs/step_install_deps.log
 
       - name: Build Web Application
+        id: step_build_web
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
-          npm run build 2>&1 | tee vite-build.log
+          npm run build 2>&1 | tee logs/step_build_web.log
 
       - name: Generate Custom Android Flavor Icons
-        run: npm run icons
+        id: step_icons
+        run: |
+          set -o pipefail
+          npm run icons 2>&1 | tee logs/step_icons.log
 
       - name: Set up Java JDK 21
+        id: step_setup_java
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '21'
 
       - name: Setup Gradle Cache
+        id: step_setup_gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses & Install Platform 36
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" || true
-
-      - name: Sync Capacitor Web Assets
+      - name: Configure Android SDK & Licenses
+        id: step_setup_android
         run: |
           set -o pipefail
-          npx cap sync android 2>&1 | tee cap-sync.log
+          {
+            echo "Configuring runner Android SDK..."
+            export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "Accepting Android SDK licenses..."
+            yes | sdkmanager --licenses || true
+            echo "Ensuring platforms;android-36 and build-tools;36.0.0..."
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+            echo "Android SDK configuration completed."
+          } 2>&1 | tee logs/step_setup_android.log
+
+      - name: Sync Capacitor Web Assets
+        id: step_cap_sync
+        run: |
+          set -o pipefail
+          npx cap sync android 2>&1 | tee logs/step_cap_sync.log
 
       - name: Make Gradle Wrapper Executable
-        run: chmod +x ./android/gradlew
+        id: step_chmod_gradlew
+        run: |
+          chmod +x ./android/gradlew 2>&1 | tee logs/step_chmod_gradlew.log
 
       - name: Build Dual Android APKs (Nusrat Stealth + Rahul Direct)
+        id: step_build_apks
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'onlyuspassword' }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS || 'onlyus' }}
@@ -135,39 +159,43 @@ jobs:
           ./gradlew "assembleNusrat${TASK_SUFFIX}" "assembleRahul${TASK_SUFFIX}" \
             -PversionCode=${{ steps.vars.outputs.version_code }} \
             -PversionName=${{ steps.vars.outputs.version_name }} \
-            --no-daemon --build-cache --parallel --stacktrace 2>&1 | tee ../gradle-build.log
+            --no-daemon --build-cache --parallel --stacktrace 2>&1 | tee ../logs/step_build_apks.log
 
       - name: Organize APK Artifacts
+        id: step_organize_apks
         run: |
-          VER="${{ steps.vars.outputs.version_name }}"
-          BTYPE="${{ steps.vars.outputs.build_type }}"
-          
-          NUSRAT_APK=$(find "android/app/build/outputs/apk/nusrat/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
-          if [ -z "$NUSRAT_APK" ]; then
-            NUSRAT_APK=$(find android/app/build/outputs/apk/nusrat -name "*.apk" | head -n 1)
-          fi
-          
-          RAHUL_APK=$(find "android/app/build/outputs/apk/rahul/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
-          if [ -z "$RAHUL_APK" ]; then
-            RAHUL_APK=$(find android/app/build/outputs/apk/rahul -name "*.apk" | head -n 1)
-          fi
-          
-          echo "Selected Nusrat APK (${BTYPE}): $NUSRAT_APK"
-          echo "Selected Rahul APK (${BTYPE}): $RAHUL_APK"
-          if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
-            cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
-            cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
-          else
-            echo "::error::Nusrat APK not found"
-            exit 1
-          fi
-          if [ -n "$RAHUL_APK" ] && [ -f "$RAHUL_APK" ]; then
-            cp "$RAHUL_APK" OnlyUs-Rahul-Direct.apk
-            cp "$RAHUL_APK" "OnlyUs-Rahul-Direct-v${VER}.apk"
-          else
-            echo "::error::Rahul APK not found"
-            exit 1
-          fi
+          set -o pipefail
+          {
+            VER="${{ steps.vars.outputs.version_name }}"
+            BTYPE="${{ steps.vars.outputs.build_type }}"
+            
+            NUSRAT_APK=$(find "android/app/build/outputs/apk/nusrat/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
+            if [ -z "$NUSRAT_APK" ]; then
+              NUSRAT_APK=$(find android/app/build/outputs/apk/nusrat -name "*.apk" | head -n 1)
+            fi
+            
+            RAHUL_APK=$(find "android/app/build/outputs/apk/rahul/${BTYPE}" -name "*.apk" 2>/dev/null | head -n 1)
+            if [ -z "$RAHUL_APK" ]; then
+              RAHUL_APK=$(find android/app/build/outputs/apk/rahul -name "*.apk" | head -n 1)
+            fi
+            
+            echo "Selected Nusrat APK (${BTYPE}): $NUSRAT_APK"
+            echo "Selected Rahul APK (${BTYPE}): $RAHUL_APK"
+            if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
+              cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
+              cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
+            else
+              echo "::error::Nusrat APK not found"
+              exit 1
+            fi
+            if [ -n "$RAHUL_APK" ] && [ -f "$RAHUL_APK" ]; then
+              cp "$RAHUL_APK" OnlyUs-Rahul-Direct.apk
+              cp "$RAHUL_APK" "OnlyUs-Rahul-Direct-v${VER}.apk"
+            else
+              echo "::error::Rahul APK not found"
+              exit 1
+            fi
+          } 2>&1 | tee logs/step_organize_apks.log
 
       - name: Upload Nusrat Stealth APK to Artifacts
         uses: actions/upload-artifact@v4
@@ -234,6 +262,9 @@ jobs:
 
       - name: Diagnose Build Failure & Generate Fix Report
         if: failure()
+        env:
+          STEPS_CONTEXT: ${{ toJSON(steps) }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node .github/scripts/diagnose-build-failure.js
 
@@ -245,8 +276,5 @@ jobs:
           path: |
             OnlyUs-Build-Failure-Diagnostic.md
             OnlyUs-Build-Failure-Diagnostic.txt
-            gradle-build.log
-            vite-build.log
-            cap-sync.log
-            npm-install.log
+            logs/
           retention-days: 14

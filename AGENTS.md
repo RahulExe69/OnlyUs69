@@ -23,7 +23,7 @@ Unified codebase serving both the web app and two Android APK variants via Capac
   - Google OAuth uses custom scheme `com.onlyus.app://auth/callback` via `@capacitor/browser` and `CapApp.addListener('appUrlOpen')`.
 - **Build Workflow (`.github/workflows/build-apk.yml`)**:
   - Manual trigger (`workflow_dispatch`). Compiles `assembleNusratRelease/Debug` and `assembleRahulRelease/Debug` and publishes APKs to GitHub Releases.
-  - Automated failure diagnostic engine (`.github/scripts/diagnose-build-failure.js`) parses Gradle/Vite logs on error, rendering root cause + fix steps to `$GITHUB_STEP_SUMMARY` and uploading `OnlyUs-Build-Failure-Diagnostic-Log` artifact.
+  - Automated failure diagnostic engine (`.github/scripts/diagnose-build-failure.js`): Analyzes `STEPS_CONTEXT` and individual step logs (`logs/*.log`), identifies the exact failed step, extracts real compiler & runner errors, generates an actionable fix guide, uploads to an instant online web viewer link (`dpaste.org`), renders the report in `$GITHUB_STEP_SUMMARY`, and uploads the `OnlyUs-Build-Failure-Diagnostic-Log` artifact.
 
 ---
 
