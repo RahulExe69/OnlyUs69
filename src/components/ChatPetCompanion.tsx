@@ -154,6 +154,13 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const particlesRef = useRef<Particle[]>([]);
   const speechBubbleRef = useRef<{ text: string; timer: number; isThought?: boolean } | null>(null);
 
+  // Element and platform caching for zero-flicker sub-millisecond tracking
+  const attachedElementRef = useRef<HTMLElement | null>(null);
+  const platformsCacheRef = useRef<Platform[]>([]);
+  const lastScanTimeRef = useRef<number>(0);
+  const lastEscapeJumpTimeRef = useRef<number>(0);
+  const hasInitializedRef = useRef<boolean>(false);
+
   // Sound & Haptic
   const triggerHaptic = useCallback((duration: number = 25) => {
     if (typeof window !== 'undefined' && window.navigator?.vibrate) {
@@ -186,6 +193,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   }, []);
 
   // Helper to resolve live physical position of any platform in unified chat-view-container space
+  // Enhanced with connected-element caching to completely eliminate DOM lookups and layout thrashing during scroll
   const getPlatformRect = useCallback((platformId: string): Platform | null => {
     const chatView = document.getElementById('chat-view-container') || document.body;
     const chatRect = chatView.getBoundingClientRect();
@@ -195,8 +203,19 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     let isInputBar = false;
     let isReplyQuote = false;
 
+    // Fast path: cached attached element if still connected in DOM
+    if (
+      attachedElementRef.current &&
+      attachedElementRef.current.isConnected &&
+      platformId === attachedPlatformIdRef.current
+    ) {
+      el = attachedElementRef.current;
+      isInputBar = el.id === CHAT_INPUT_PLATFORM_ID || el.id === 'chat-input-capsule' || el.classList.contains('chat-input-perch');
+      isReplyQuote = el.classList.contains('chat-reply-perch') || el.classList.contains('theme-reply-context') || Boolean(el.dataset?.replyQuoteId);
+    }
+
     // 1. Chat Input Bar capsule perch (user typing box)
-    if (platformId === CHAT_INPUT_PLATFORM_ID || platformId === 'chat-input-capsule') {
+    if (!el && (platformId === CHAT_INPUT_PLATFORM_ID || platformId === 'chat-input-capsule')) {
       el = (document.querySelector('.chat-input-perch') as HTMLElement) || document.getElementById('chat-input-capsule');
       if (el) isInputBar = true;
     }
@@ -211,14 +230,17 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       if (el) isReplyQuote = true;
     }
 
-    // 3. Direct message bubble by msgId
+    // 3. Direct message bubble by msgId (clean any msg- prefix or match both)
     if (!el && container) {
-      el = container.querySelector(`[data-msg-id="${platformId}"]`) as HTMLElement;
+      const cleanId = platformId.replace(/^msg-/, '');
+      el = (container.querySelector(`[data-msg-id="${cleanId}"]`) ||
+            container.querySelector(`[data-msg-id="${platformId}"]`)) as HTMLElement;
     }
 
-    // 4. Message row wrapper
+    // 4. Message row wrapper (check both id and msg-${id})
     if (!el && container) {
-      const row = document.getElementById(platformId);
+      const cleanId = platformId.replace(/^msg-/, '');
+      const row = document.getElementById(platformId) || document.getElementById(`msg-${cleanId}`);
       if (row) {
         el = row.querySelector('.chat-bubble-owner, .chat-bubble-partner') as HTMLElement;
       }
@@ -227,9 +249,17 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     // 5. Fallback scan through bubbles
     if (!el && container) {
       const bubbles = container.querySelectorAll('.chat-bubble-owner, .chat-bubble-partner');
+      const cleanId = platformId.replace(/^msg-/, '');
       for (let i = 0; i < bubbles.length; i++) {
         const b = bubbles[i] as HTMLElement;
-        if (b.dataset?.msgId === platformId || b.closest('.chat-message-row')?.id === platformId) {
+        const bMsgId = b.dataset?.msgId;
+        const rowId = b.closest('.chat-message-row')?.id;
+        if (
+          bMsgId === cleanId ||
+          bMsgId === platformId ||
+          rowId === platformId ||
+          rowId === `msg-${cleanId}`
+        ) {
           el = b;
           break;
         }
@@ -238,6 +268,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
     if (!el) {
       return null;
+    }
+
+    if (platformId === attachedPlatformIdRef.current) {
+      attachedElementRef.current = el;
     }
 
     const rect = el.getBoundingClientRect();
@@ -268,7 +302,14 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   }, []);
 
   // Scan visible DOM platforms (Strictly: Message bubbles, Replied card bottom rims, Typing box)
-  const scanPlatforms = useCallback((): Platform[] => {
+  // Throttled with platform cache to eliminate 60fps layout thrashing & scroll stuttering
+  const scanPlatforms = useCallback((force: boolean = false): Platform[] => {
+    const now = Date.now();
+    if (!force && platformsCacheRef.current.length > 0 && now - lastScanTimeRef.current < 280) {
+      return platformsCacheRef.current;
+    }
+    lastScanTimeRef.current = now;
+
     const chatView = document.getElementById('chat-view-container') || document.body;
     const chatRect = chatView.getBoundingClientRect();
     const container = document.getElementById('message-container');
@@ -365,6 +406,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
     // Sort platforms strictly by physical top coordinate (top of chat history down to typing box)
     platforms.sort((a, b) => a.top - b.top);
+    platformsCacheRef.current = platforms;
     return platforms;
   }, []);
 
@@ -467,6 +509,86 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     addParticle('✨', 3);
   };
 
+  // Checks if Mochi (perched on a message) approaches or hits the typing box during scrolling,
+  // triggering a startled escape jump to a safe message bubble above!
+  const checkTypingBoxCollision = useCallback(() => {
+    // Only applies if Mochi is on a message bubble (not the typing box itself) and not already jumping
+    if (
+      attachedPlatformIdRef.current === CHAT_INPUT_PLATFORM_ID ||
+      stateRef.current === 'jumping' ||
+      stateRef.current === 'pre_jump'
+    ) {
+      return;
+    }
+
+    // Debounce escape jumps so scrolling doesn't re-trigger during jump
+    if (Date.now() - lastEscapeJumpTimeRef.current < 1200) {
+      return;
+    }
+
+    const inputPlat = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
+    if (!inputPlat) return;
+
+    // Collision boundary: paws sit at posRef.current.y.
+    // If the message bubble has scrolled down to where Mochi hits or nears the typing box:
+    const collisionY = inputPlat.top - 24;
+
+    if (posRef.current.y >= collisionY) {
+      lastEscapeJumpTimeRef.current = Date.now();
+
+      // Find a safe message bubble situated comfortably above the typing box
+      const platforms = scanPlatforms(true);
+      const safeBubbles = platforms.filter(
+        (p) =>
+          p.isBubble &&
+          p.id !== attachedPlatformIdRef.current &&
+          p.top >= 35 &&
+          p.top <= inputPlat.top - 65
+      );
+
+      let targetPlatform: Platform | null = null;
+      if (safeBubbles.length > 0) {
+        // Nearest safe bubble directly above Mochi
+        safeBubbles.sort((a, b) => b.top - a.top);
+        targetPlatform = safeBubbles[0];
+      } else {
+        // Fallback: any visible bubble with clearance
+        const fallbackBubbles = platforms.filter(
+          (p) =>
+            p.isBubble &&
+            p.id !== attachedPlatformIdRef.current &&
+            p.top >= 15 &&
+            p.top <= inputPlat.top - 45
+        );
+        if (fallbackBubbles.length > 0) {
+          targetPlatform = fallbackBubbles[fallbackBubbles.length - 1];
+        } else {
+          // If no message bubble is safe, safely perch on top of the typing box itself!
+          targetPlatform = inputPlat;
+        }
+      }
+
+      if (targetPlatform) {
+        // Funny startled cat reaction!
+        const funnyPhrases = [
+          'Oof! Almost squished! 🙀',
+          'Watch out! Safe jump! 🐾',
+          'Eeek! Safe message hop! 💨',
+          'Too close! Phew! 😹',
+          'Saved my paws! ✨'
+        ];
+        const phrase = funnyPhrases[Math.floor(Math.random() * funnyPhrases.length)];
+        showSpeech(phrase, 100, false);
+        squashRef.current = { sx: 0.82, sy: 1.34 };
+        triggerHaptic(28);
+        addParticle('💨', 3);
+        addParticle('✨', 2);
+
+        startJump(targetPlatform, false);
+      }
+    }
+  }, [getPlatformRect, scanPlatforms, startJump, showSpeech, triggerHaptic, addParticle]);
+
   // Main animation loop, physics simulation, zero-flicker scroll & keyboard decoupling
   useEffect(() => {
     if (!settings.enabled) return;
@@ -488,27 +610,30 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     canvas.style.height = `${CANVAS_HEIGHT}px`;
     ctx.scale(dpr, dpr);
 
-    // Initial placement: Start perched on latest visible message bubble or typing box
-    const platforms = scanPlatforms();
-    const visibleBubbles = platforms.filter((p) => p.isBubble);
-    if (visibleBubbles.length > 0) {
-      const lastB = visibleBubbles[visibleBubbles.length - 1];
-      attachedPlatformIdRef.current = lastB.id;
-      platformOffsetRatioRef.current = 0.5;
-      const inset = lastB.isBubble ? BUBBLE_EDGE_INSET : 16;
-      const minW = lastB.left + inset;
-      const maxW = lastB.right - inset;
-      posRef.current = {
-        x: maxW > minW ? (minW + maxW) / 2 : (lastB.left + lastB.right) / 2,
-        y: lastB.top,
-      };
-    } else {
-      attachedPlatformIdRef.current = CHAT_INPUT_PLATFORM_ID;
-      const inputP = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
-      posRef.current = {
-        x: inputP ? (inputP.left + inputP.right) / 2 : 160,
-        y: inputP ? inputP.top : 300,
-      };
+    // Initial placement: Start perched on latest visible message bubble or typing box (once)
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      const platforms = scanPlatforms(true);
+      const visibleBubbles = platforms.filter((p) => p.isBubble);
+      if (visibleBubbles.length > 0) {
+        const lastB = visibleBubbles[visibleBubbles.length - 1];
+        attachedPlatformIdRef.current = lastB.id;
+        platformOffsetRatioRef.current = 0.5;
+        const inset = lastB.isBubble ? BUBBLE_EDGE_INSET : 16;
+        const minW = lastB.left + inset;
+        const maxW = lastB.right - inset;
+        posRef.current = {
+          x: maxW > minW ? (minW + maxW) / 2 : (lastB.left + lastB.right) / 2,
+          y: lastB.top,
+        };
+      } else {
+        attachedPlatformIdRef.current = CHAT_INPUT_PLATFORM_ID;
+        const inputP = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
+        posRef.current = {
+          x: inputP ? (inputP.left + inputP.right) / 2 : 160,
+          y: inputP ? inputP.top : 300,
+        };
+      }
     }
 
     // Pointer & Touch listener for curious gaze tracking
@@ -531,15 +656,17 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       pointerPosRef.current.active = false;
     };
 
-    // Real-time synchronous scroll listener so Mochi moves 1:1 with messages without 1-frame lag
+    // Real-time synchronous scroll listener so Mochi moves 1:1 with messages without 1-frame lag or flicker
     const handleScroll = () => {
       if (attachedPlatformIdRef.current !== CHAT_INPUT_PLATFORM_ID && stateRef.current !== 'jumping') {
         const livePlat = getPlatformRect(attachedPlatformIdRef.current);
         if (livePlat) {
           posRef.current.y = livePlat.top;
           if (containerRef.current) {
-            containerRef.current.style.transform = `translate3d(${Math.round(posRef.current.x - PET_OFFSET_X)}px, ${Math.round(posRef.current.y - PET_OFFSET_Y)}px, 0)`;
+            containerRef.current.style.transform = `translate3d(${(posRef.current.x - PET_OFFSET_X).toFixed(1)}px, ${(posRef.current.y - PET_OFFSET_Y).toFixed(1)}px, 0)`;
           }
+          // Immediate collision detection when scrolling hits typing box
+          checkTypingBoxCollision();
         }
       }
     };
@@ -562,7 +689,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
       const chatView = document.getElementById('chat-view-container') || document.body;
       const chatHeight = chatView.clientHeight || 600;
-      const scrollPlatforms = scanPlatforms();
+      const scrollPlatforms = scanPlatforms(false);
 
       // 1. Continuous Real-time Platform Anchor Sync
       const isAirborne = stateRef.current === 'jumping';
@@ -597,6 +724,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             const targetPx = minWalk + (maxWalk - minWalk) * platformOffsetRatioRef.current;
             posRef.current.x = Math.max(minWalk, Math.min(maxWalk, targetPx));
           }
+
+          // Check typing box collision in animation loop as well (catches inertia scrolls)
+          checkTypingBoxCollision();
         }
 
         // Off-screen recovery: If user scrolled far away and Mochi has been off-screen for > 3 seconds,
@@ -628,9 +758,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         }
       }
 
-      // 2. Update 160x116 container position via GPU translate3d
+      // 2. Update 160x116 container position via subpixel GPU translate3d (eliminates 1px rounding flicker)
       if (containerRef.current) {
-        containerRef.current.style.transform = `translate3d(${Math.round(posRef.current.x - PET_OFFSET_X)}px, ${Math.round(posRef.current.y - PET_OFFSET_Y)}px, 0)`;
+        containerRef.current.style.transform = `translate3d(${(posRef.current.x - PET_OFFSET_X).toFixed(1)}px, ${(posRef.current.y - PET_OFFSET_Y).toFixed(1)}px, 0)`;
       }
 
       // 3. Decrement state timers
@@ -1127,7 +1257,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       window.removeEventListener('touchcancel', handlePointerEnd);
       window.removeEventListener('mouseleave', handlePointerEnd);
     };
-  }, [settings.enabled, settings.breed, settings.accessory, getPlatformRect, scanPlatforms, startJump, addParticle]);
+  }, [settings.enabled, settings.breed, settings.accessory, getPlatformRect, scanPlatforms, startJump, checkTypingBoxCollision, addParticle]);
 
   if (!settings.enabled) return null;
 
@@ -1142,6 +1272,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         willChange: 'transform',
         transform: 'translate3d(-9999px, -9999px, 0)',
         overflowAnchor: 'none',
+        WebkitBackfaceVisibility: 'hidden',
+        backfaceVisibility: 'hidden',
+        transformStyle: 'preserve-3d',
+        transition: 'opacity 0.14s ease-out',
       }}
     >
       <canvas
