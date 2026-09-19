@@ -54,7 +54,7 @@ High-priority Firebase Cloud Messaging (FCM v1) for zero-latency background/lock
   - When the user selects a theme (`selectTheme`), write immediately to `localStorage` (`onlyus_chat_theme`, `onlyus_partner_theme`, `onlyus_cached_profile`) and update the `users` table via `updateSettings`.
   - On page reload, `fetchProfile` must honor `localStorage.getItem('onlyus_chat_theme')` as the primary truth. Never overwrite local selection with a stale database entry; instead, sync the local theme back to Supabase.
 - **3D & Shader Registry (`/src/components/ShaderThemesThreeD/`)**:
-  - Modular WebGL shaders (`OnlyUsShader`, `NebulaShader`, `LavenderShader`, `AkatsukiShader`, `NeonArcadeShader`).
+  - Modular WebGL shaders (`OnlyUsShader`, `NebulaShader`, `LavenderShader`, `AkatsukiShader`, `NeonArcadeShader`, `CleanSlateShader`, `MoonlightShader`).
   - WebGL context uses `powerPreference: 'low-power'` and DPR capped at 1.0. Animation loops freeze automatically when backgrounded or when modals are open.
 
 ---

@@ -69,10 +69,9 @@ const PURR_SPEECHES = [
 ];
 
 const CANVAS_WIDTH = 160;
-const CANVAS_HEIGHT = 140;
+const CANVAS_HEIGHT = 116;
 const PET_OFFSET_X = 80;
 const PET_OFFSET_Y = 100;
-const GROUND_PLATFORM_ID = 'chat-messages-bottom-anchor';
 const CHAT_INPUT_PLATFORM_ID = 'chat-input-capsule';
 const BUBBLE_EDGE_INSET = 26; // Safe margin preventing paws hanging off rounded corners
 
@@ -104,14 +103,14 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hitButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Position and Physics in #message-container content space
+  // Position and Physics in unified chat-view-container space
   const posRef = useRef<{ x: number; y: number }>({ x: 160, y: 300 });
   const facingRightRef = useRef<boolean>(true);
   const stateRef = useRef<CatState>('idle');
   const stateTimerRef = useRef<number>(0);
 
-  // Platform Anchor (persists on message or bottom anchor, unaffected by keyboard)
-  const attachedPlatformIdRef = useRef<string>(GROUND_PLATFORM_ID);
+  // Platform Anchor (Strictly 3 allowed platforms: Message bubbles, Replied card bottom rim, Typing box)
+  const attachedPlatformIdRef = useRef<string>(CHAT_INPUT_PLATFORM_ID);
   const platformOffsetRatioRef = useRef<number>(0.5);
   const offscreenTimerRef = useRef<number>(0);
   // Sequential navigation destination goal (e.g. latest message to jump to one-by-one)
@@ -186,32 +185,24 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     }
   }, []);
 
-  // Helper to resolve live physical position of any platform in #message-container content space
+  // Helper to resolve live physical position of any platform in unified chat-view-container space
   const getPlatformRect = useCallback((platformId: string): Platform | null => {
+    const chatView = document.getElementById('chat-view-container') || document.body;
+    const chatRect = chatView.getBoundingClientRect();
     const container = document.getElementById('message-container');
-    if (!container) return null;
-
-    const containerRect = container.getBoundingClientRect();
-    const scrollLeft = container.scrollLeft;
-    const scrollTop = container.scrollTop;
 
     let el: HTMLElement | null = null;
     let isInputBar = false;
     let isReplyQuote = false;
 
-    // 1. Bottom anchor
-    if (platformId === GROUND_PLATFORM_ID || platformId === 'chat-messages-bottom-anchor') {
-      el = document.getElementById('chat-messages-bottom-anchor');
-    }
-
-    // 2. Chat Input Bar capsule perch (user typing box)
-    if (!el && (platformId === CHAT_INPUT_PLATFORM_ID || platformId === 'chat-input-capsule')) {
+    // 1. Chat Input Bar capsule perch (user typing box)
+    if (platformId === CHAT_INPUT_PLATFORM_ID || platformId === 'chat-input-capsule') {
       el = (document.querySelector('.chat-input-perch') as HTMLElement) || document.getElementById('chat-input-capsule');
       if (el) isInputBar = true;
     }
 
-    // 3. Reply Quote card perch inside a message bubble
-    if (!el && platformId.startsWith('chat-reply-quote-')) {
+    // 2. Reply Quote card perch inside a message bubble
+    if (!el && container && platformId.startsWith('chat-reply-quote-')) {
       el = document.getElementById(platformId);
       if (!el) {
         const quoteId = platformId.replace('chat-reply-quote-', '');
@@ -220,21 +211,21 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       if (el) isReplyQuote = true;
     }
 
-    // 4. Direct message bubble by msgId
-    if (!el) {
+    // 3. Direct message bubble by msgId
+    if (!el && container) {
       el = container.querySelector(`[data-msg-id="${platformId}"]`) as HTMLElement;
     }
 
-    // 5. Message row wrapper
-    if (!el) {
+    // 4. Message row wrapper
+    if (!el && container) {
       const row = document.getElementById(platformId);
       if (row) {
         el = row.querySelector('.chat-bubble-owner, .chat-bubble-partner') as HTMLElement;
       }
     }
 
-    // 6. Fallback scan through bubbles
-    if (!el) {
+    // 5. Fallback scan through bubbles
+    if (!el && container) {
       const bubbles = container.querySelectorAll('.chat-bubble-owner, .chat-bubble-partner');
       for (let i = 0; i < bubbles.length; i++) {
         const b = bubbles[i] as HTMLElement;
@@ -246,41 +237,29 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     }
 
     if (!el) {
-      if (platformId === GROUND_PLATFORM_ID) {
-        const groundTop = container.scrollHeight - 24;
-        return {
-          id: GROUND_PLATFORM_ID,
-          left: 16,
-          right: Math.max(100, container.clientWidth - 16),
-          top: groundTop,
-          bottom: groundTop + 20,
-          width: Math.max(100, container.clientWidth - 32),
-          height: 20,
-          isBubble: false,
-          isReplyQuote: false,
-          isInputBar: false,
-        };
-      }
       return null;
     }
 
     const rect = el.getBoundingClientRect();
-    const isBottomAnchor = el.id === 'chat-messages-bottom-anchor';
-    const left = rect.left - containerRect.left + scrollLeft;
-    // For input bar: align top rim right at container bottom so paws rest directly on top edge of typing capsule
-    const top = isInputBar
-      ? Math.min(containerRect.bottom - 4, rect.top) - containerRect.top + scrollTop
-      : rect.top - containerRect.top + scrollTop;
+    const left = rect.left - chatRect.left;
+    // For replied quotes: paws rest on the BOTTOM rim of the card!
+    // For message bubbles and typing box: paws rest on top
+    let top = rect.top - chatRect.top;
+    if (isReplyQuote) {
+      top = rect.bottom - chatRect.top;
+    } else if (isInputBar) {
+      top = rect.top - chatRect.top;
+    }
 
     return {
       id: platformId,
       left,
       right: left + rect.width,
       top,
-      bottom: top + rect.height,
+      bottom: isReplyQuote ? top + 16 : top + rect.height,
       width: rect.width,
       height: rect.height,
-      isBubble: !isBottomAnchor && !isInputBar,
+      isBubble: !isInputBar,
       isReplyQuote,
       isInputBar,
       isOwner: el.classList.contains('chat-bubble-owner') || el.classList.contains('theme-reply-context-owner'),
@@ -288,82 +267,82 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     };
   }, []);
 
-  // Scan visible DOM platforms (Message bubbles, Reply quotes, Typing box, and Bottom anchor)
+  // Scan visible DOM platforms (Strictly: Message bubbles, Replied card bottom rims, Typing box)
   const scanPlatforms = useCallback((): Platform[] => {
+    const chatView = document.getElementById('chat-view-container') || document.body;
+    const chatRect = chatView.getBoundingClientRect();
     const container = document.getElementById('message-container');
-    if (!container) return [];
-
-    const containerRect = container.getBoundingClientRect();
-    const scrollLeft = container.scrollLeft;
-    const scrollTop = container.scrollTop;
     const platforms: Platform[] = [];
 
-    // 1. Message bubbles as jumping obstacles and play platforms
-    const bubbles = container.querySelectorAll('.chat-bubble-owner, .chat-bubble-partner');
-    bubbles.forEach((b, idx) => {
-      const el = b as HTMLElement;
-      const bRect = el.getBoundingClientRect();
-      const left = bRect.left - containerRect.left + scrollLeft;
-      const top = bRect.top - containerRect.top + scrollTop;
-      const width = bRect.width;
-      const height = bRect.height;
-      const isOwner = el.classList.contains('chat-bubble-owner');
-      const msgId = el.dataset?.msgId || el.closest('.chat-message-row')?.id || `bubble-${idx}`;
+    if (container) {
+      // 1. Message bubbles as jumping obstacles and play platforms
+      const bubbles = container.querySelectorAll('.chat-bubble-owner, .chat-bubble-partner');
+      bubbles.forEach((b, idx) => {
+        const el = b as HTMLElement;
+        const bRect = el.getBoundingClientRect();
+        const left = bRect.left - chatRect.left;
+        const top = bRect.top - chatRect.top;
+        const width = bRect.width;
+        const height = bRect.height;
+        const isOwner = el.classList.contains('chat-bubble-owner');
+        const msgId = el.dataset?.msgId || el.closest('.chat-message-row')?.id || `bubble-${idx}`;
 
-      if (width >= 40 && height >= 18) {
-        platforms.push({
-          id: msgId,
-          left: Math.max(8, left),
-          right: left + width,
-          top,
-          bottom: top + height,
-          width,
-          height,
-          isBubble: true,
-          isReplyQuote: false,
-          isInputBar: false,
-          isOwner,
-          element: el,
-        });
-      }
-    });
+        if (width >= 40 && height >= 18) {
+          platforms.push({
+            id: msgId,
+            left: Math.max(8, left),
+            right: left + width,
+            top,
+            bottom: top + height,
+            width,
+            height,
+            isBubble: true,
+            isReplyQuote: false,
+            isInputBar: false,
+            isOwner,
+            element: el,
+          });
+        }
+      });
 
-    // 2. Replied message quotes inside bubbles as elevated perches
-    const replyQuotes = container.querySelectorAll('.chat-reply-perch, .theme-reply-context');
-    replyQuotes.forEach((q, idx) => {
-      const el = q as HTMLElement;
-      const qRect = el.getBoundingClientRect();
-      const left = qRect.left - containerRect.left + scrollLeft;
-      const top = qRect.top - containerRect.top + scrollTop;
-      const width = qRect.width;
-      const height = qRect.height;
-      const isOwner = el.classList.contains('theme-reply-context-owner');
-      const quoteId = el.id || `chat-reply-quote-${el.dataset?.replyQuoteId || idx}`;
+      // 2. Replied message quotes inside bubbles as elevated perches (sitting on bottom rim!)
+      const replyQuotes = container.querySelectorAll('.chat-reply-perch, .theme-reply-context');
+      replyQuotes.forEach((q, idx) => {
+        const el = q as HTMLElement;
+        const qRect = el.getBoundingClientRect();
+        const left = qRect.left - chatRect.left;
+        // Position Mochi on the BOTTOM rim of the replied card!
+        const top = qRect.bottom - chatRect.top;
+        const width = qRect.width;
+        const height = qRect.height;
+        const isOwner = el.classList.contains('theme-reply-context-owner');
+        const quoteId = el.id || `chat-reply-quote-${el.dataset?.replyQuoteId || idx}`;
 
-      if (width >= 60 && height >= 20) {
-        platforms.push({
-          id: quoteId,
-          left: Math.max(8, left),
-          right: left + width,
-          top,
-          bottom: top + height,
-          width,
-          height,
-          isBubble: true,
-          isReplyQuote: true,
-          isInputBar: false,
-          isOwner,
-          element: el,
-        });
-      }
-    });
+        if (width >= 60 && height >= 20) {
+          platforms.push({
+            id: quoteId,
+            left: Math.max(8, left),
+            right: left + width,
+            top,
+            bottom: top + 16,
+            width,
+            height,
+            isBubble: true,
+            isReplyQuote: true,
+            isInputBar: false,
+            isOwner,
+            element: el,
+          });
+        }
+      });
+    }
 
     // 3. Top rim of the typing box (Chat Input Bar Capsule)
     const inputCapsule = (document.querySelector('.chat-input-perch') as HTMLElement) || document.getElementById('chat-input-capsule');
     if (inputCapsule) {
       const iRect = inputCapsule.getBoundingClientRect();
-      const left = iRect.left - containerRect.left + scrollLeft;
-      const top = Math.min(containerRect.bottom - 4, iRect.top) - containerRect.top + scrollTop;
+      const left = iRect.left - chatRect.left;
+      const top = iRect.top - chatRect.top;
       const width = iRect.width;
       const height = iRect.height;
 
@@ -384,48 +363,12 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       }
     }
 
-    // 4. Chat messages bottom anchor (inside #message-container)
-    const bottomAnchor = document.getElementById('chat-messages-bottom-anchor');
-    if (bottomAnchor) {
-      const aRect = bottomAnchor.getBoundingClientRect();
-      const top = aRect.top - containerRect.top + scrollTop;
-      platforms.push({
-        id: GROUND_PLATFORM_ID,
-        left: 16,
-        right: Math.max(100, container.clientWidth - 16),
-        top,
-        bottom: top + 20,
-        width: Math.max(100, container.clientWidth - 32),
-        height: 20,
-        isBubble: false,
-        isReplyQuote: false,
-        isInputBar: false,
-        element: bottomAnchor,
-      });
-    } else {
-      const groundTop = container.scrollHeight - 24;
-      platforms.push({
-        id: GROUND_PLATFORM_ID,
-        left: 16,
-        right: Math.max(100, container.clientWidth - 16),
-        top: groundTop,
-        bottom: groundTop + 20,
-        width: Math.max(100, container.clientWidth - 32),
-        height: 20,
-        isBubble: false,
-        isReplyQuote: false,
-        isInputBar: false,
-      });
-    }
-
-    // Sort platforms strictly by physical top coordinate!
-    // Creates a natural ladder from top of chat history down to the typing box!
+    // Sort platforms strictly by physical top coordinate (top of chat history down to typing box)
     platforms.sort((a, b) => a.top - b.top);
-
     return platforms;
   }, []);
 
-  // Helper to plan and launch a jump with seamless Hermite/cosine arc and ZERO teleport on landing
+  // Helper to plan and launch a jump with seamless cosine arc and ZERO teleport on landing
   // isSkipJump is ONLY true when Mochi is off-screen (skipping directly across long distances)
   const startJump = useCallback((targetPlatform: Platform, isSkipJump: boolean = false) => {
     const inset = getPlatformInset(targetPlatform);
@@ -545,7 +488,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     canvas.style.height = `${CANVAS_HEIGHT}px`;
     ctx.scale(dpr, dpr);
 
-    // Initial placement: Start perched on the latest visible message bubble or bottom anchor
+    // Initial placement: Start perched on latest visible message bubble or typing box
     const platforms = scanPlatforms();
     const visibleBubbles = platforms.filter((p) => p.isBubble);
     if (visibleBubbles.length > 0) {
@@ -560,25 +503,24 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         y: lastB.top,
       };
     } else {
-      attachedPlatformIdRef.current = GROUND_PLATFORM_ID;
-      const ground = getPlatformRect(GROUND_PLATFORM_ID);
+      attachedPlatformIdRef.current = CHAT_INPUT_PLATFORM_ID;
+      const inputP = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
       posRef.current = {
-        x: ground ? (ground.left + ground.right) / 2 : 160,
-        y: ground ? ground.top : 300,
+        x: inputP ? (inputP.left + inputP.right) / 2 : 160,
+        y: inputP ? inputP.top : 300,
       };
     }
 
     // Pointer & Touch listener for curious gaze tracking
     const handlePointerMove = (e: MouseEvent | TouchEvent) => {
-      const msgCont = document.getElementById('message-container');
-      if (!msgCont) return;
-      const rect = msgCont.getBoundingClientRect();
+      const chatView = document.getElementById('chat-view-container') || document.body;
+      const rect = chatView.getBoundingClientRect();
       const clientX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as MouseEvent).clientX;
       const clientY = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientY : (e as MouseEvent).clientY;
       if (clientX !== undefined && clientY !== undefined) {
         pointerPosRef.current = {
-          x: clientX - rect.left + msgCont.scrollLeft,
-          y: clientY - rect.top + msgCont.scrollTop,
+          x: clientX - rect.left,
+          y: clientY - rect.top,
           active: true,
         };
         pointerLastActiveRef.current = Date.now();
@@ -588,6 +530,24 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     const handlePointerEnd = () => {
       pointerPosRef.current.active = false;
     };
+
+    // Real-time synchronous scroll listener so Mochi moves 1:1 with messages without 1-frame lag
+    const handleScroll = () => {
+      if (attachedPlatformIdRef.current !== CHAT_INPUT_PLATFORM_ID && stateRef.current !== 'jumping') {
+        const livePlat = getPlatformRect(attachedPlatformIdRef.current);
+        if (livePlat) {
+          posRef.current.y = livePlat.top;
+          if (containerRef.current) {
+            containerRef.current.style.transform = `translate3d(${Math.round(posRef.current.x - PET_OFFSET_X)}px, ${Math.round(posRef.current.y - PET_OFFSET_Y)}px, 0)`;
+          }
+        }
+      }
+    };
+
+    const msgContEl = document.getElementById('message-container');
+    if (msgContEl) {
+      msgContEl.addEventListener('scroll', handleScroll, { passive: true });
+    }
 
     window.addEventListener('mousemove', handlePointerMove, { passive: true });
     window.addEventListener('touchstart', handlePointerMove, { passive: true });
@@ -600,39 +560,32 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     const tick = () => {
       if (isDestroyed) return;
 
-      const msgCont = document.getElementById('message-container');
-      if (!msgCont) {
-        animFrameId = requestAnimationFrame(tick);
-        return;
-      }
-
-      const scrollTop = msgCont.scrollTop;
-      const clientHeight = msgCont.clientHeight;
+      const chatView = document.getElementById('chat-view-container') || document.body;
+      const chatHeight = chatView.clientHeight || 600;
       const scrollPlatforms = scanPlatforms();
 
       // 1. Continuous Real-time Platform Anchor Sync
       const isAirborne = stateRef.current === 'jumping';
+      const isAttachedToInputBar = attachedPlatformIdRef.current === CHAT_INPUT_PLATFORM_ID;
+
       if (!isAirborne) {
         let livePlat = getPlatformRect(attachedPlatformIdRef.current);
 
         // If current platform is missing (e.g. deleted message or initial load):
         if (!livePlat) {
-          const visibleBubbles = scrollPlatforms.filter(
-            (p) => p.isBubble && p.top >= scrollTop + 20 && p.top <= scrollTop + clientHeight - 30
-          );
+          const visibleBubbles = scrollPlatforms.filter((p) => p.isBubble);
           if (visibleBubbles.length > 0) {
             const nearest = visibleBubbles[visibleBubbles.length - 1];
             attachedPlatformIdRef.current = nearest.id;
             platformOffsetRatioRef.current = 0.5;
             livePlat = getPlatformRect(nearest.id);
           } else {
-            attachedPlatformIdRef.current = GROUND_PLATFORM_ID;
-            livePlat = getPlatformRect(GROUND_PLATFORM_ID);
+            attachedPlatformIdRef.current = CHAT_INPUT_PLATFORM_ID;
+            livePlat = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
           }
         }
 
         if (livePlat) {
-          // Mochi sits directly on top of the message bubble in content space
           posRef.current.y = livePlat.top;
           const inset = getPlatformInset(livePlat);
           const minWalk = livePlat.left + inset;
@@ -646,28 +599,36 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           }
         }
 
-        // Off-screen recovery: If user scrolled far away and Mochi has been off-screen for > 3.5 seconds,
+        // Off-screen recovery: If user scrolled far away and Mochi has been off-screen for > 3 seconds,
         // softly skip-jump to a currently visible bubble or typing box
-        const isMochiInView = posRef.current.y >= scrollTop - 80 && posRef.current.y <= scrollTop + clientHeight + 80;
+        const isMochiInView = isAttachedToInputBar || (posRef.current.y >= -20 && posRef.current.y <= chatHeight + 10);
+
+        if (containerRef.current) {
+          containerRef.current.style.opacity = (!isAttachedToInputBar && posRef.current.y < -25) ? '0' : '1';
+        }
+
         if (!isMochiInView) {
           offscreenTimerRef.current++;
-          if (offscreenTimerRef.current > 210) {
+          if (offscreenTimerRef.current > 180) {
             const visiblePlatforms = scrollPlatforms.filter(
-              (p) => (p.isBubble || p.isInputBar) && p.top >= scrollTop + 40 && p.top <= scrollTop + clientHeight - 40
+              (p) => p.top >= 20 && p.top <= chatHeight - 40
             );
             if (visiblePlatforms.length > 0) {
               const target = visiblePlatforms[Math.floor(Math.random() * visiblePlatforms.length)];
               startJump(target, true /* isSkipJump */);
               showSpeech('Here I am! 🐾', 80);
-              offscreenTimerRef.current = 0;
+            } else {
+              const inputP = getPlatformRect(CHAT_INPUT_PLATFORM_ID);
+              if (inputP) startJump(inputP, true);
             }
+            offscreenTimerRef.current = 0;
           }
         } else {
           offscreenTimerRef.current = 0;
         }
       }
 
-      // 2. Update 160x140 container position in content coordinates via GPU translate3d
+      // 2. Update 160x116 container position via GPU translate3d
       if (containerRef.current) {
         containerRef.current.style.transform = `translate3d(${Math.round(posRef.current.x - PET_OFFSET_X)}px, ${Math.round(posRef.current.y - PET_OFFSET_Y)}px, 0)`;
       }
@@ -715,8 +676,13 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       let desiredEyeY = 0;
 
       if (pointerPosRef.current.active) {
-        const dx = pointerPosRef.current.x - posRef.current.x;
-        const dy = pointerPosRef.current.y - (posRef.current.y - 20);
+        const curX = posRef.current.x;
+        const curY = posRef.current.y - 20;
+        const pX = pointerPosRef.current.x;
+        const pY = pointerPosRef.current.y;
+
+        const dx = pX - curX;
+        const dy = pY - curY;
         const dist = Math.hypot(dx, dy);
 
         if (dist < 380 && dist > 1) {
@@ -809,7 +775,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             squashRef.current = { sx: 0.9, sy: 1.2 };
             addParticle('❤️', 2);
           } else {
-            const isMochiInView = posRef.current.y >= scrollTop - 60 && posRef.current.y <= scrollTop + clientHeight + 60;
+            const isMochiInView = posRef.current.y >= -20 && posRef.current.y <= chatHeight + 20;
 
             if (!isMochiInView) {
               // Mochi is out of the screen!
@@ -861,7 +827,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
               if (currentIdx < scrollPlatforms.length - 1) neighbors.push(scrollPlatforms[currentIdx + 1]);
 
               const visibleNeighbors = neighbors.filter(
-                (p) => p.top >= scrollTop - 40 && p.top <= scrollTop + clientHeight + 40
+                (p) => p.top >= -20 && p.top <= chatHeight + 20
               );
 
               if (visibleNeighbors.length > 0) {
@@ -951,7 +917,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           const liveTarget = getPlatformRect(plan.targetPlatformId);
           if (liveTarget) {
             plan.targetY = liveTarget.top;
-            const inset = liveTarget.isBubble ? BUBBLE_EDGE_INSET : 16;
+            const inset = getPlatformInset(liveTarget);
             const minW = liveTarget.left + inset;
             const maxW = liveTarget.right - inset;
             if (maxW > minW) {
@@ -1151,6 +1117,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     return () => {
       isDestroyed = true;
       cancelAnimationFrame(animFrameId);
+      if (msgContEl) {
+        msgContEl.removeEventListener('scroll', handleScroll);
+      }
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('touchstart', handlePointerMove);
       window.removeEventListener('touchmove', handlePointerMove);
@@ -1166,12 +1135,13 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     <div
       ref={containerRef}
       id="chat-pet-companion-layer"
-      className="absolute top-0 left-0 pointer-events-none z-20 select-none"
+      className="absolute top-0 left-0 pointer-events-none z-30 select-none"
       style={{
         width: `${CANVAS_WIDTH}px`,
         height: `${CANVAS_HEIGHT}px`,
         willChange: 'transform',
         transform: 'translate3d(-9999px, -9999px, 0)',
+        overflowAnchor: 'none',
       }}
     >
       <canvas

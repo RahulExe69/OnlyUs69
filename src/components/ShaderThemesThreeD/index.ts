@@ -5,6 +5,8 @@ import { LavenderHaze } from './LavenderHaze';
 import { LavenderShader } from './LavenderShader';
 import { AkatsukiShader } from './AkatsukiShader';
 import { NeonArcadeShader } from './NeonArcadeShader';
+import { CleanSlateShader } from './CleanSlateShader';
+import { MoonlightShader } from './MoonlightShader';
 import { ShaderThemeProps } from './types';
 
 export * from './types';
@@ -14,6 +16,8 @@ export { LavenderHaze } from './LavenderHaze';
 export { LavenderShader } from './LavenderShader';
 export { AkatsukiShader } from './AkatsukiShader';
 export { NeonArcadeShader } from './NeonArcadeShader';
+export { CleanSlateShader } from './CleanSlateShader';
+export { MoonlightShader } from './MoonlightShader';
 
 /**
  * Registry mapping theme identifiers to their dedicated WebGL shader components.
@@ -24,6 +28,15 @@ export const SHADER_THEME_REGISTRY: Record<string, React.FC<ShaderThemeProps>> =
   '3d-romantic': OnlyUsShader,
   'romantic': OnlyUsShader,
   '3d-cherry': OnlyUsShader,
+
+  // Moonlight (Cinematic Procedural Moon, God-Rays & Deep Water Reflection Shader)
+  '3d-dark': MoonlightShader,
+  'dark': MoonlightShader,
+  '3d-cosmos': MoonlightShader,
+
+  // Clean Slate (Architectural Liquid Quartz & Prismatic Caustic WebGL Shader)
+  '3d-light': CleanSlateShader,
+  'light': CleanSlateShader,
 
   // Nebula (Neural Noise Procedural Cosmic Filament WebGL Shader)
   '3d-neural': NebulaShader,
