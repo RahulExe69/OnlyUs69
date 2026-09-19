@@ -304,11 +304,31 @@ export default function App() {
     return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
   });
 
-  const handleUpdatePetSettings = useCallback((updated: PetSettings) => {
+  const handleUpdatePetSettings = useCallback(async (updated: PetSettings) => {
     setPetSettings(updated);
     try {
       localStorage.setItem('onlyus_pet_settings', JSON.stringify(updated));
     } catch (_) {}
+
+    // 1. Instant broadcast to partner for zero-latency live sync
+    if (mainChannelRef.current) {
+      try {
+        mainChannelRef.current.send({
+          type: 'broadcast',
+          event: 'pet_settings_changed',
+          payload: { settings: updated },
+        });
+      } catch (err) {
+        console.warn("Notice: pet settings broadcast", err);
+      }
+    }
+
+    // 2. Persist to Supabase app_config so both partners share Mochi's name and look permanently
+    try {
+      await supabase.from('app_config').update({ pet_config: updated }).eq('id', 'main');
+    } catch (err) {
+      console.warn("Notice: pet settings app_config update", err);
+    }
   }, []);
   const [showE2EEModal, setShowE2EEModal] = useState(false);
   const [isE2EEActive, setIsE2EEActive] = useState(isE2EEReady());
@@ -954,6 +974,13 @@ export default function App() {
         if (data) {
           setAppConfig(data as AppConfig);
           verifyPasscodeSession(data as AppConfig);
+          if (data.pet_config) {
+            setPetSettings((prev) => {
+              const merged = { ...prev, ...data.pet_config };
+              try { localStorage.setItem('onlyus_pet_settings', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
+          }
         } else if (user?.email === OWNER_EMAIL && (!error || error.code === 'PGRST116')) {
           await supabase.from('app_config').insert([{ id: 'main', owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' }]);
           setAppConfig({ owner_email: OWNER_EMAIL, partner_allowed_emails: [], partner_passcode: '123456' } as AppConfig);
@@ -970,6 +997,13 @@ export default function App() {
           const newCfg = payload.new as AppConfig;
           setAppConfig(newCfg);
           verifyPasscodeSession(newCfg);
+          if (newCfg.pet_config) {
+            setPetSettings((prev) => {
+              const merged = { ...prev, ...newCfg.pet_config };
+              try { localStorage.setItem('onlyus_pet_settings', JSON.stringify(merged)); } catch (_) {}
+              return merged;
+            });
+          }
         }
       }).subscribe();
 
@@ -1009,15 +1043,20 @@ export default function App() {
           const profile = { ...data, uid: user.id, username: defaultHandle } as UserProfile;
 
           const cachedTheme = (typeof window !== 'undefined' ? localStorage.getItem('onlyus_chat_theme') : null) as ThemeName | null;
-          // Determine the user's intended theme:
-          // If the user has a custom active theme in localStorage that differs from a default database entry, preserve user's choice and sync it
-          const resolvedTheme = (cachedTheme && isValidTheme(cachedTheme) && cachedTheme !== 'romantic' && cachedTheme !== '3d-romantic' && (profile.theme === 'romantic' || profile.theme === '3d-romantic' || !profile.theme))
+          // Determine the active theme:
+          // The user's explicit local device selection (cachedTheme) takes top priority.
+          // If no local theme is set, fall back to the remote database profile theme, or '3d-dark'.
+          const resolvedTheme: ThemeName = (cachedTheme && isValidTheme(cachedTheme))
             ? cachedTheme
-            : ((profile.theme as ThemeName) || cachedTheme || 'romantic');
+            : ((profile.theme && isValidTheme(profile.theme as ThemeName)) ? (profile.theme as ThemeName) : '3d-dark');
 
+          // Keep remote database and local storage in complete sync
           if (profile.theme !== resolvedTheme) {
             profile.theme = resolvedTheme;
-            supabase.from('users').update({ theme: resolvedTheme }).eq('id', user.id).then(undefined, () => {});
+            const targetId = user.id || profile.id || profile.uid;
+            if (targetId) {
+              supabase.from('users').update({ theme: resolvedTheme }).eq('id', targetId).then(undefined, () => {});
+            }
           }
 
           setUserProfile(profile);
@@ -1025,6 +1064,9 @@ export default function App() {
             try {
               localStorage.setItem('onlyus_cached_profile', JSON.stringify(profile));
               localStorage.setItem('onlyus_chat_theme', resolvedTheme);
+              if (profile.role === 'partner' || isPartner) {
+                localStorage.setItem('onlyus_partner_theme', resolvedTheme);
+              }
             } catch(e) {}
           }
 
@@ -1226,6 +1268,15 @@ export default function App() {
           if (typeof window !== 'undefined' && window.navigator?.vibrate) {
             try { window.navigator.vibrate([60, 80, 60, 160, 60, 80, 60]); } catch (_) {}
           }
+        }
+      })
+      .on('broadcast', { event: 'pet_settings_changed' }, ({ payload }) => {
+        if (payload?.settings) {
+          setPetSettings((prev) => {
+            const merged = { ...prev, ...payload.settings };
+            try { localStorage.setItem('onlyus_pet_settings', JSON.stringify(merged)); } catch (_) {}
+            return merged;
+          });
         }
       })
       .subscribe(async (status) => {
@@ -1525,14 +1576,32 @@ export default function App() {
 
   const updateSettings = async (updates: Partial<UserProfile>) => {
     if (!userProfile) return;
+    const targetId = userProfile.uid || userProfile.id || user?.id;
     const previousProfile = userProfile;
-    setUserProfile(prev => prev ? { ...prev, ...updates } : null);
+    const updatedProfile = { ...userProfile, ...updates };
+    setUserProfile(updatedProfile);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('onlyus_cached_profile', JSON.stringify(updatedProfile));
+        if (updates.theme && isValidTheme(updates.theme as ThemeName)) {
+          localStorage.setItem('onlyus_chat_theme', updates.theme);
+          if (userProfile.role === 'partner' || isPartner) {
+            localStorage.setItem('onlyus_partner_theme', updates.theme);
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!targetId) return;
     try {
-      const { error: settingsError } = await supabase.from('users').update(updates).eq('id', userProfile.uid);
+      const { error: settingsError } = await supabase.from('users').update(updates).eq('id', targetId);
       if (settingsError) throw settingsError;
     } catch (err) {
       console.error("Error updating settings:", err);
-      setUserProfile(previousProfile);
+      if (!updates.theme) {
+        setUserProfile(previousProfile);
+      }
     }
   };
 
@@ -1549,9 +1618,27 @@ export default function App() {
   };
 
   const selectTheme = async (theme: ThemeName) => {
-    if (!userProfile || userProfile.theme === theme || isThemeSaving) return;
+    if (!userProfile || isThemeSaving) return;
     const requestId = ++themeUpdateRequestRef.current;
+    
+    // 1. Immediately apply to DOM and persist locally across all storage keys
     applyTheme(theme);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('onlyus_chat_theme', theme);
+        if (userProfile.role === 'partner' || isPartner) {
+          localStorage.setItem('onlyus_partner_theme', theme);
+        }
+        const cached = localStorage.getItem('onlyus_cached_profile');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.theme = theme;
+          localStorage.setItem('onlyus_cached_profile', JSON.stringify(parsed));
+        }
+      } catch (e) {}
+    }
+
+    // 2. Persist to database profile
     setIsThemeSaving(true);
     await updateSettings({ theme });
     if (requestId === themeUpdateRequestRef.current) setIsThemeSaving(false);
@@ -2179,7 +2266,7 @@ export default function App() {
               onMyProfileUpdated={(newMe) => setUserProfile(newMe)}
               messages={messages}
               isPartnerOnline={formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid) === 'Online'}
-              currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+              currentTheme={(userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') as ThemeName) : null) || '3d-dark'}
               onThemeSelect={selectTheme}
               isThemeSaving={isThemeSaving}
               petSettings={petSettings}
@@ -2193,6 +2280,8 @@ export default function App() {
           onClose={() => setShowPetModal(false)}
           settings={petSettings}
           onSaveSettings={handleUpdatePetSettings}
+          partnerName={partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul')}
+          isOwner={isOwner}
         />
 
         <AnimatePresence>
@@ -2214,7 +2303,7 @@ export default function App() {
         <ThemeCustomizeSheet
           isOpen={showCustomizeModal}
           onClose={() => setShowCustomizeModal(false)}
-          currentTheme={(userProfile?.theme as ThemeName) || 'romantic'}
+          currentTheme={(userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') as ThemeName) : null) || '3d-dark'}
           onThemeSelect={selectTheme}
           isThemeSaving={isThemeSaving}
           partnerProfile={partnerProfile}

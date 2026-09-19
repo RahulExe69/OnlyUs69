@@ -33,7 +33,7 @@ interface Platform {
   element?: Element;
 }
 
-type CatState = 
+export type CatState = 
   | 'idle' 
   | 'walking' 
   | 'running' 
@@ -884,7 +884,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 // -------------------------------------------------------------
 // 🎨 HAND-CRAFTED 2D VECTOR KITTEN RENDERER (Studio Ghibli / Chibi)
 // -------------------------------------------------------------
-function drawCuteKitten(
+export function drawCuteKitten(
   ctx: CanvasRenderingContext2D,
   state: CatState,
   breed: PetBreed,

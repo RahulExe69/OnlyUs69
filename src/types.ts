@@ -7,6 +7,7 @@ export interface AppConfig {
   partner_allowed_emails: string[];
   partner_id?: string;
   partner_passcode?: string;
+  pet_config?: PetSettings;
 }
 
 export interface UserProfile {
