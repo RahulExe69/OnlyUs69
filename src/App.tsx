@@ -264,6 +264,7 @@ export default function App() {
     remoteStream,
     isMicMuted,
     isCameraOff,
+    facingMode,
     callDuration,
     callErrorMessage,
     startCall,
@@ -2463,6 +2464,7 @@ export default function App() {
         remoteStream={remoteStream}
         isMicMuted={isMicMuted}
         isCameraOff={isCameraOff}
+        facingMode={facingMode}
         callDuration={callDuration}
         callErrorMessage={callErrorMessage}
         onAccept={acceptCall}

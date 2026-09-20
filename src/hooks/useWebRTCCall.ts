@@ -3,14 +3,34 @@ import { supabase } from '../lib/supabase';
 import { UserRole, CallType, CallStatus, CallSession, CallSignalPayload } from '../types';
 import { callAudio } from '../lib/callAudio';
 
-// Free high-availability public STUN servers provided by Google
+// Free high-availability public STUN and TURN relay servers
 const ICE_SERVERS: RTCIceServer[] = [
+  // Google Global STUN
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
+  // OpenRelay Public TURN & STUN (Enables NAT traversal across 4G/5G mobile cellular CGNAT)
+  { urls: 'stun:openrelay.metered.ca:80' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
+
+const OUTGOING_CALL_TIMEOUT_MS = 38000; // 38 seconds timeout for unanswered outgoing calls
 
 interface UseWebRTCCallProps {
   currentRole: UserRole | null;
@@ -35,6 +55,7 @@ export function useWebRTCCall({
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [callErrorMessage, setCallErrorMessage] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
   // References
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -42,12 +63,56 @@ export function useWebRTCCall({
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<any>(null);
   const callTimerRef = useRef<any>(null);
+  const outgoingTimeoutRef = useRef<any>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const wakeLockSentinelRef = useRef<any>(null);
+  const facingModeRef = useRef<'user' | 'environment'>('user');
+
+  // Synchronized state refs to avoid effect re-subscriptions and stale closures
+  const activeCallRef = useRef<CallSession | null>(null);
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  const isStealthUnlockedRef = useRef(isStealthUnlocked);
+  useEffect(() => {
+    isStealthUnlockedRef.current = isStealthUnlocked;
+  }, [isStealthUnlocked]);
+
+  // Screen Wake Lock Management (keeps mobile display and WebRTC thread alive)
+  const acquireWakeLock = useCallback(async () => {
+    try {
+      if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLockSentinelRef.current) {
+        wakeLockSentinelRef.current = await (navigator as any).wakeLock.request('screen');
+        wakeLockSentinelRef.current.addEventListener('release', () => {
+          wakeLockSentinelRef.current = null;
+        });
+      }
+    } catch (err) {
+      console.warn('[WebRTC] Screen Wake Lock not available or rejected:', err);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockSentinelRef.current) {
+      try {
+        await wakeLockSentinelRef.current.release();
+      } catch {}
+      wakeLockSentinelRef.current = null;
+    }
+  }, []);
 
   // Cleanup helper
   const cleanUpCall = useCallback(() => {
     callAudio.stopRingtone();
+    releaseWakeLock();
+
+    if (outgoingTimeoutRef.current) {
+      clearTimeout(outgoingTimeoutRef.current);
+      outgoingTimeoutRef.current = null;
+    }
+
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
@@ -74,11 +139,19 @@ export function useWebRTCCall({
     remoteStreamRef.current = null;
     iceCandidatesQueue.current = [];
     pendingOfferRef.current = null;
+    activeCallRef.current = null;
     setActiveCall(null);
     setCallDuration(0);
     setIsMicMuted(false);
     setIsCameraOff(false);
-  }, []);
+    setFacingMode('user');
+    facingModeRef.current = 'user';
+  }, [releaseWakeLock]);
+
+  const cleanUpCallRef = useRef(cleanUpCall);
+  useEffect(() => {
+    cleanUpCallRef.current = cleanUpCall;
+  }, [cleanUpCall]);
 
   // Send a signaling message over Supabase Realtime broadcast
   const sendSignal = useCallback(
@@ -129,15 +202,27 @@ export function useWebRTCCall({
       };
 
       pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          remoteStreamRef.current = event.streams[0];
-          setRemoteStream(event.streams[0]);
+        let stream = event.streams && event.streams[0];
+        if (!stream) {
+          if (!remoteStreamRef.current) {
+            remoteStreamRef.current = new MediaStream();
+          }
+          remoteStreamRef.current.addTrack(event.track);
+          stream = remoteStreamRef.current;
+        } else {
+          remoteStreamRef.current = stream;
         }
+        setRemoteStream(new MediaStream(stream.getTracks()));
       };
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
           callAudio.playConnectedTone();
+          if (outgoingTimeoutRef.current) {
+            clearTimeout(outgoingTimeoutRef.current);
+            outgoingTimeoutRef.current = null;
+          }
+          acquireWakeLock();
           setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
 
           // Start duration timer
@@ -152,9 +237,9 @@ export function useWebRTCCall({
           pc.connectionState === 'failed' ||
           pc.connectionState === 'closed'
         ) {
-          if (activeCall?.status === 'connected') {
+          if (activeCallRef.current?.status === 'connected') {
             callAudio.playEndTone();
-            cleanUpCall();
+            cleanUpCallRef.current();
           }
         }
       };
@@ -162,7 +247,7 @@ export function useWebRTCCall({
       peerConnectionRef.current = pc;
       return pc;
     },
-    [activeCall?.status, cleanUpCall, sendSignal]
+    [acquireWakeLock, sendSignal]
   );
 
   // Initialize Media Stream (Camera / Mic)
@@ -179,8 +264,9 @@ export function useWebRTCCall({
           type === 'video'
             ? {
                 facingMode: 'user',
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
+                width: { ideal: 640, max: 1280 },
+                height: { ideal: 480, max: 720 },
+                frameRate: { ideal: 24, max: 30 },
               }
             : false,
       };
@@ -188,6 +274,8 @@ export function useWebRTCCall({
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
       setLocalStream(stream);
+      setFacingMode('user');
+      facingModeRef.current = 'user';
       return stream;
     } catch (err: any) {
       console.error('[WebRTC] Media access error:', err);
@@ -209,27 +297,64 @@ export function useWebRTCCall({
       cleanUpCall();
 
       const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      setActiveCall({
+      const newSession: CallSession = {
         callId,
         type,
         callerRole: currentRole,
         receiverRole: partnerRole,
         status: 'calling',
         startedAt: Date.now(),
-      });
+      };
+      activeCallRef.current = newSession;
+      setActiveCall(newSession);
 
       callAudio.startOutgoingRingtone();
+
+      // Point 5: 38-second outgoing ring timeout to avoid infinite battery drain
+      if (outgoingTimeoutRef.current) {
+        clearTimeout(outgoingTimeoutRef.current);
+      }
+      outgoingTimeoutRef.current = setTimeout(async () => {
+        if (activeCallRef.current?.status === 'calling') {
+          callAudio.stopRingtone();
+          callAudio.playEndTone();
+          setCallErrorMessage('No answer');
+          await sendSignal({
+            callId,
+            type,
+            action: 'end',
+          });
+          setTimeout(() => {
+            cleanUpCallRef.current();
+          }, 2000);
+        }
+      }, OUTGOING_CALL_TIMEOUT_MS);
 
       const stream = await acquireMedia(type);
       if (!stream) {
         callAudio.stopRingtone();
+        if (outgoingTimeoutRef.current) {
+          clearTimeout(outgoingTimeoutRef.current);
+          outgoingTimeoutRef.current = null;
+        }
+        activeCallRef.current = null;
         setActiveCall(null);
         return;
       }
 
       const pc = createPeerConnection(callId, type);
       stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === 'video' && sender.getParameters) {
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 750000;
+            sender.setParameters(params).catch(() => {});
+          } catch {}
+        }
       });
 
       try {
@@ -255,18 +380,29 @@ export function useWebRTCCall({
 
   // Accept an Incoming Call
   const acceptCall = useCallback(async () => {
-    if (!activeCall || activeCall.status !== 'ringing') return;
+    const curCall = activeCallRef.current;
+    if (!curCall || curCall.status !== 'ringing') return;
     callAudio.stopRingtone();
 
-    const stream = await acquireMedia(activeCall.type);
+    const stream = await acquireMedia(curCall.type);
     if (!stream) {
       cleanUpCall();
       return;
     }
 
-    const pc = createPeerConnection(activeCall.callId, activeCall.type);
+    const pc = createPeerConnection(curCall.callId, curCall.type);
     stream.getTracks().forEach((track) => {
-      pc.addTrack(track, stream);
+      const sender = pc.addTrack(track, stream);
+      if (track.kind === 'video' && sender.getParameters) {
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 750000;
+          sender.setParameters(params).catch(() => {});
+        } catch {}
+      }
     });
 
     try {
@@ -287,44 +423,55 @@ export function useWebRTCCall({
       await pc.setLocalDescription(answer);
 
       await sendSignal({
-        callId: activeCall.callId,
-        type: activeCall.type,
+        callId: curCall.callId,
+        type: curCall.type,
         action: 'answer',
         sdp: answer,
       });
 
+      activeCallRef.current = { ...curCall, status: 'connected' };
       setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
     } catch (err) {
       console.error('[WebRTC] Error answering call:', err);
       cleanUpCall();
     }
-  }, [acquireMedia, activeCall, cleanUpCall, createPeerConnection, sendSignal]);
+  }, [acquireMedia, cleanUpCall, createPeerConnection, sendSignal]);
 
   // Reject an Incoming Call
   const rejectCall = useCallback(async () => {
-    if (activeCall) {
+    const curCall = activeCallRef.current;
+    if (curCall) {
       callAudio.stopRingtone();
+      if (outgoingTimeoutRef.current) {
+        clearTimeout(outgoingTimeoutRef.current);
+        outgoingTimeoutRef.current = null;
+      }
       await sendSignal({
-        callId: activeCall.callId,
-        type: activeCall.type,
+        callId: curCall.callId,
+        type: curCall.type,
         action: 'reject',
       });
     }
     cleanUpCall();
-  }, [activeCall, cleanUpCall, sendSignal]);
+  }, [cleanUpCall, sendSignal]);
 
   // End an Active or Outgoing Call
   const endCall = useCallback(async () => {
-    if (activeCall) {
+    const curCall = activeCallRef.current;
+    if (curCall) {
       callAudio.playEndTone();
+      if (outgoingTimeoutRef.current) {
+        clearTimeout(outgoingTimeoutRef.current);
+        outgoingTimeoutRef.current = null;
+      }
       await sendSignal({
-        callId: activeCall.callId,
-        type: activeCall.type,
+        callId: curCall.callId,
+        type: curCall.type,
         action: 'end',
       });
     }
     cleanUpCall();
-  }, [activeCall, cleanUpCall, sendSignal]);
+  }, [cleanUpCall, sendSignal]);
 
   // Toggle Mute Audio
   const toggleMute = useCallback(() => {
@@ -351,20 +498,29 @@ export function useWebRTCCall({
   }, []);
 
   // Flip Camera (User <-> Environment)
+  // Maintains explicit deterministic state without relying on Android WebView's undefined facingMode setting
   const flipCamera = useCallback(async () => {
     if (!localStreamRef.current || !peerConnectionRef.current) return;
     const currentVideoTrack = localStreamRef.current.getVideoTracks()[0];
     if (!currentVideoTrack) return;
 
     try {
-      // Find current facing mode
-      const settings = currentVideoTrack.getSettings();
-      const nextFacing = settings.facingMode === 'environment' ? 'user' : 'environment';
+      const nextFacing: 'user' | 'environment' = facingModeRef.current === 'user' ? 'environment' : 'user';
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
+      let newStream: MediaStream;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch {
+        // Fallback without exact constraint if device driver doesn't support 'exact'
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      }
+
       const newVideoTrack = newStream.getVideoTracks()[0];
+      if (!newVideoTrack) return;
 
       // Replace track on RTCPeerConnection
       const sender = peerConnectionRef.current
@@ -381,12 +537,43 @@ export function useWebRTCCall({
       localStreamRef.current.addTrack(newVideoTrack);
 
       setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      setFacingMode(nextFacing);
+      facingModeRef.current = nextFacing;
     } catch (err) {
       console.warn('[WebRTC] Camera flip not supported or failed:', err);
     }
   }, []);
 
-  // Listen for Supabase Realtime Call Broadcasts
+  // Point 8: Nusrat Stealth Lock Cleanup Guard
+  // If Nusrat triggers panic lock or the stealth vault closes while in an active call, terminate call immediately
+  useEffect(() => {
+    if (!isStealthUnlocked && activeCallRef.current) {
+      const curCall = activeCallRef.current;
+      sendSignal({
+        callId: curCall.callId,
+        type: curCall.type,
+        action: 'end',
+      });
+      cleanUpCall();
+    }
+  }, [isStealthUnlocked, cleanUpCall, sendSignal]);
+
+  // Point 7: Visibility change wake lock re-acquisition
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && activeCallRef.current?.status === 'connected') {
+        acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [acquireWakeLock]);
+
+  // Point 1: Persistent Supabase Realtime Signaling Channel
+  // Removed activeCall, cleanUpCall, and isStealthUnlocked from dependency array so the WebSocket channel
+  // is NEVER torn down and rebuilt across call state transitions.
   useEffect(() => {
     if (!currentRole) return;
 
@@ -399,14 +586,14 @@ export function useWebRTCCall({
         if (!payload || payload.targetRole !== currentRole) return;
 
         // In Nusrat's stealth mode: If the vault is locked (#6969# not entered), do not show OnlyUs call UI
-        if (!isStealthUnlocked) {
-          // Can auto-reject or ignore to preserve stealth cover
+        if (!isStealthUnlockedRef.current) {
           return;
         }
 
         switch (payload.action) {
           case 'offer': {
-            if (activeCall && activeCall.status !== 'idle' && activeCall.status !== 'ended') {
+            const curCall = activeCallRef.current;
+            if (curCall && curCall.status !== 'idle' && curCall.status !== 'ended') {
               // We are busy
               await channel.send({
                 type: 'broadcast',
@@ -424,14 +611,16 @@ export function useWebRTCCall({
             }
 
             pendingOfferRef.current = payload.sdp || null;
-            setActiveCall({
+            const newSession: CallSession = {
               callId: payload.callId,
               type: payload.type,
               callerRole: payload.senderRole,
               receiverRole: currentRole,
               status: 'ringing',
               startedAt: Date.now(),
-            });
+            };
+            activeCallRef.current = newSession;
+            setActiveCall(newSession);
 
             callAudio.startIncomingRingtone();
             break;
@@ -444,6 +633,18 @@ export function useWebRTCCall({
                   new RTCSessionDescription(payload.sdp)
                 );
                 callAudio.stopRingtone();
+                if (outgoingTimeoutRef.current) {
+                  clearTimeout(outgoingTimeoutRef.current);
+                  outgoingTimeoutRef.current = null;
+                }
+
+                // Point 2: Drain queued candidates on caller side once remote description is ready
+                while (iceCandidatesQueue.current.length > 0) {
+                  const candidate = iceCandidatesQueue.current.shift();
+                  if (candidate) {
+                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                  }
+                }
               } catch (err) {
                 console.error('[WebRTC] Error setting remote description from answer:', err);
               }
@@ -469,21 +670,33 @@ export function useWebRTCCall({
 
           case 'reject': {
             callAudio.stopRingtone();
+            if (outgoingTimeoutRef.current) {
+              clearTimeout(outgoingTimeoutRef.current);
+              outgoingTimeoutRef.current = null;
+            }
             setCallErrorMessage('Call declined');
-            setTimeout(() => cleanUpCall(), 1500);
+            setTimeout(() => cleanUpCallRef.current(), 1500);
             break;
           }
 
           case 'busy': {
             callAudio.stopRingtone();
+            if (outgoingTimeoutRef.current) {
+              clearTimeout(outgoingTimeoutRef.current);
+              outgoingTimeoutRef.current = null;
+            }
             setCallErrorMessage('User is currently in another call');
-            setTimeout(() => cleanUpCall(), 1800);
+            setTimeout(() => cleanUpCallRef.current(), 1800);
             break;
           }
 
           case 'end': {
             callAudio.playEndTone();
-            cleanUpCall();
+            if (outgoingTimeoutRef.current) {
+              clearTimeout(outgoingTimeoutRef.current);
+              outgoingTimeoutRef.current = null;
+            }
+            cleanUpCallRef.current();
             break;
           }
         }
@@ -498,7 +711,7 @@ export function useWebRTCCall({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [activeCall, cleanUpCall, currentRole, isStealthUnlocked]);
+  }, [currentRole]);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -516,6 +729,7 @@ export function useWebRTCCall({
     isSpeakerOn,
     callDuration,
     callErrorMessage,
+    facingMode,
     startCall,
     acceptCall,
     rejectCall,

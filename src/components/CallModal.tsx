@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Phone,
@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { CallSession, UserProfile } from '../types';
+import { useOverlayBack } from '../lib/overlayManager';
 
 interface CallModalProps {
   activeCall: CallSession | null;
@@ -24,6 +25,7 @@ interface CallModalProps {
   remoteStream: MediaStream | null;
   isMicMuted: boolean;
   isCameraOff: boolean;
+  facingMode?: 'user' | 'environment';
   callDuration: number;
   callErrorMessage: string | null;
   onAccept: () => void;
@@ -42,6 +44,7 @@ export const CallModal: React.FC<CallModalProps> = ({
   remoteStream,
   isMicMuted,
   isCameraOff,
+  facingMode = 'user',
   callDuration,
   callErrorMessage,
   onAccept,
@@ -51,42 +54,99 @@ export const CallModal: React.FC<CallModalProps> = ({
   onToggleCamera,
   onFlipCamera,
 }) => {
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isPipMinimized, setIsPipMinimized] = useState(false);
 
-  // Bind local stream to video element
+  const isConnected = activeCall?.status === 'connected';
+  const isIncoming = activeCall?.status === 'ringing';
+  const isCalling = activeCall?.status === 'calling';
+
+  // Point 6: Hardware / Mobile Back Button Integration
+  const handleOverlayBack = () => {
+    if (isConnected) {
+      if (!isPipMinimized) {
+        // First back gesture minimizes full-screen call to PiP floating widget
+        setIsPipMinimized(true);
+      } else {
+        // Second back gesture hangs up the call
+        onEnd();
+      }
+    } else if (isIncoming) {
+      onReject();
+    } else if (isCalling) {
+      onEnd();
+    }
+  };
+
+  useOverlayBack(Boolean(activeCall), handleOverlayBack, 'active-call-modal');
+
+  // Robust Callback Ref for Remote Video element attachment
+  const setRemoteVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      remoteVideoRef.current = node;
+      if (node && remoteStream) {
+        node.srcObject = remoteStream;
+        node.play().catch((err) => console.warn('[CallModal] Remote video play error:', err));
+      }
+    },
+    [remoteStream]
+  );
+
+  // Robust Callback Ref for Local Video element attachment
+  const setLocalVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      localVideoRef.current = node;
+      if (node && localStream) {
+        node.srcObject = localStream;
+        node.play().catch((err) => console.warn('[CallModal] Local video play error:', err));
+      }
+    },
+    [localStream]
+  );
+
+  // Robust Callback Ref for Dedicated Audio element
+  const setRemoteAudioRef = useCallback(
+    (node: HTMLAudioElement | null) => {
+      remoteAudioRef.current = node;
+      if (node && remoteStream) {
+        node.srcObject = remoteStream;
+        node.play().catch((err) => console.warn('[CallModal] Remote audio play error:', err));
+      }
+    },
+    [remoteStream]
+  );
+
+  // Synchronize local stream to video element on state/mode changes
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
-  }, [localStream]);
+  }, [localStream, isConnected, isCameraOff]);
 
-  // Bind remote stream to video element
+  // Synchronize remote stream to video element on state/mode changes
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(() => {});
     }
-  }, [remoteStream]);
+  }, [remoteStream, isConnected, isPipMinimized]);
 
-  // Hidden audio fallback to ensure sound is always played even in voice-only calls
+  // Point 3: Single, dedicated DOM audio element to completely eliminate hollow audio and dual-playback echo
   useEffect(() => {
-    if (remoteStream) {
-      const audioEl = new Audio();
-      audioEl.srcObject = remoteStream;
-      audioEl.play().catch(() => {});
-      return () => {
-        audioEl.srcObject = null;
-      };
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch((err) => {
+        console.warn('[CallModal] Remote audio play policy warning:', err);
+      });
     }
-  }, [remoteStream]);
+  }, [remoteStream, isConnected]);
 
   if (!activeCall) return null;
 
   const isVideo = activeCall.type === 'video';
-  const isIncoming = activeCall.status === 'ringing';
-  const isCalling = activeCall.status === 'calling';
-  const isConnected = activeCall.status === 'connected';
 
   const displayName =
     partnerNickname || partnerProfile?.display_name || (activeCall.callerRole === 'owner' ? 'Rahul' : 'Nusrat');
@@ -102,70 +162,80 @@ export const CallModal: React.FC<CallModalProps> = ({
   // If minimized to PiP floating widget during active call
   if (isPipMinimized && isConnected) {
     return (
-      <motion.div
-        drag
-        dragConstraints={{ left: 10, right: 300, top: 10, bottom: 600 }}
-        className="fixed bottom-24 right-4 z-[999] w-40 h-56 rounded-2xl overflow-hidden shadow-2xl bg-neutral-900 border-2 border-[var(--theme-accent)] flex flex-col cursor-grab active:cursor-grabbing"
-      >
-        {isVideo && remoteStream ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-neutral-950 text-white">
-            <div className="w-12 h-12 rounded-full overflow-hidden mb-2 ring-2 ring-[var(--theme-accent)]">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-neutral-800 flex items-center justify-center font-bold">
-                  {displayName[0]}
-                </div>
-              )}
+      <>
+        {/* Dedicated audio element persists across PiP and Fullscreen modes */}
+        <audio ref={setRemoteAudioRef} autoPlay playsInline className="hidden" />
+
+        <motion.div
+          drag
+          dragConstraints={{ left: 10, right: 300, top: 10, bottom: 600 }}
+          className="fixed bottom-24 right-4 z-[999] w-40 h-56 rounded-2xl overflow-hidden shadow-2xl bg-neutral-900 border-2 border-[var(--theme-accent)] flex flex-col cursor-grab active:cursor-grabbing"
+        >
+          {isVideo && remoteStream ? (
+            <video
+              ref={setRemoteVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-neutral-950 text-white">
+              <div className="w-12 h-12 rounded-full overflow-hidden mb-2 ring-2 ring-[var(--theme-accent)]">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-neutral-800 flex items-center justify-center font-bold">
+                    {displayName[0]}
+                  </div>
+                )}
+              </div>
+              <span className="text-xs font-semibold truncate w-full">{displayName}</span>
+              <span className="text-[10px] text-neutral-400 mt-0.5">{formatTime(callDuration)}</span>
             </div>
-            <span className="text-xs font-semibold truncate w-full">{displayName}</span>
-            <span className="text-[10px] text-neutral-400 mt-0.5">{formatTime(callDuration)}</span>
+          )}
+
+          <div className="absolute top-2 right-2 flex gap-1">
+            <button
+              onClick={() => setIsPipMinimized(false)}
+              className="p-1 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-xs"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-        )}
 
-        <div className="absolute top-2 right-2 flex gap-1">
-          <button
-            onClick={() => setIsPipMinimized(false)}
-            className="p-1 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-xs"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2">
-          <button
-            onClick={onEnd}
-            className="p-2 rounded-full bg-rose-600 text-white shadow-lg active:scale-95"
-          >
-            <PhoneOff className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </motion.div>
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2">
+            <button
+              onClick={onEnd}
+              className="p-2 rounded-full bg-rose-600 text-white shadow-lg active:scale-95"
+            >
+              <PhoneOff className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </motion.div>
+      </>
     );
   }
 
   return (
     <AnimatePresence>
+      {/* Dedicated audio element handles sound without double-output through video element */}
+      <audio ref={setRemoteAudioRef} autoPlay playsInline className="hidden" />
+
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-lg overflow-hidden select-none"
       >
-        {/* Remote Video Background (if connected in video mode) */}
+        {/* Remote Video Background (if connected in video mode) - muted to prevent flanging with dedicated audio */}
         {isVideo && isConnected && remoteStream ? (
           <div className="absolute inset-0 w-full h-full overflow-hidden">
             <video
-              ref={remoteVideoRef}
+              ref={setRemoteVideoRef}
               autoPlay
               playsInline
+              muted
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none" />
@@ -279,12 +349,13 @@ export const CallModal: React.FC<CallModalProps> = ({
             {isCameraOff ? (
               <VideoOff className="w-8 h-8 text-neutral-500" />
             ) : (
+              /* Point 4: Only mirror front-facing camera. Rear camera preview is unmirrored */
               <video
-                ref={localVideoRef}
+                ref={setLocalVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover scale-x-[-1]"
+                className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
               />
             )}
             <span className="absolute bottom-1.5 left-2 text-[10px] text-white/80 font-medium bg-black/50 px-1.5 py-0.5 rounded-md backdrop-blur-xs">
