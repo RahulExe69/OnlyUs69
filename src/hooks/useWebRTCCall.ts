@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { UserRole, CallType, CallStatus, CallSession, CallSignalPayload } from '../types';
 import { callAudio } from '../lib/callAudio';
+import { recordCallCompletion } from '../lib/callLogService';
 
 // Free high-availability public STUN and TURN relay servers
 const ICE_SERVERS: RTCIceServer[] = [
@@ -63,11 +64,14 @@ export function useWebRTCCall({
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<any>(null);
   const callTimerRef = useRef<any>(null);
+  const callDurationRef = useRef<number>(0);
   const outgoingTimeoutRef = useRef<any>(null);
+  const disconnectTimerRef = useRef<any>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
   const wakeLockSentinelRef = useRef<any>(null);
   const facingModeRef = useRef<'user' | 'environment'>('user');
+  const hasLoggedCallRef = useRef<boolean>(false);
 
   // Synchronized state refs to avoid effect re-subscriptions and stale closures
   const activeCallRef = useRef<CallSession | null>(null);
@@ -103,10 +107,42 @@ export function useWebRTCCall({
     }
   }, []);
 
+  /**
+   * Authoritative Call Logger
+   * Only the caller logs the call to prevent duplicate records in Supabase and chat feed
+   */
+  const finalizeCallAndLog = useCallback(
+    (status: 'completed' | 'missed' | 'rejected' | 'busy') => {
+      if (hasLoggedCallRef.current) return;
+      const curCall = activeCallRef.current;
+      if (!curCall) return;
+
+      if (curCall.callerRole === currentRole) {
+        hasLoggedCallRef.current = true;
+        const finalDuration = status === 'completed' ? callDurationRef.current || 0 : 0;
+        recordCallCompletion({
+          callId: curCall.callId,
+          caller_role: curCall.callerRole,
+          receiver_role: curCall.receiverRole,
+          call_type: curCall.type,
+          status,
+          duration: finalDuration,
+          started_at: curCall.startedAt,
+        }).catch((err) => console.warn('[WebRTC] Error writing call log:', err));
+      }
+    },
+    [currentRole]
+  );
+
   // Cleanup helper
   const cleanUpCall = useCallback(() => {
     callAudio.stopRingtone();
     releaseWakeLock();
+
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
 
     if (outgoingTimeoutRef.current) {
       clearTimeout(outgoingTimeoutRef.current);
@@ -142,6 +178,8 @@ export function useWebRTCCall({
     activeCallRef.current = null;
     setActiveCall(null);
     setCallDuration(0);
+    callDurationRef.current = 0;
+    hasLoggedCallRef.current = false;
     setIsMicMuted(false);
     setIsCameraOff(false);
     setFacingMode('user');
@@ -176,7 +214,7 @@ export function useWebRTCCall({
     [currentRole, partnerRole]
   );
 
-  // Create PeerConnection instance
+  // Create PeerConnection instance with cellular 4G/5G handoff resilience
   const createPeerConnection = useCallback(
     (callId: string, type: CallType): RTCPeerConnection => {
       if (peerConnectionRef.current) {
@@ -217,6 +255,11 @@ export function useWebRTCCall({
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
+          // Clear any disconnect grace timer if connection restored after 5G/4G switch
+          if (disconnectTimerRef.current) {
+            clearTimeout(disconnectTimerRef.current);
+            disconnectTimerRef.current = null;
+          }
           callAudio.playConnectedTone();
           if (outgoingTimeoutRef.current) {
             clearTimeout(outgoingTimeoutRef.current);
@@ -229,16 +272,41 @@ export function useWebRTCCall({
           if (!callTimerRef.current) {
             const start = Date.now();
             callTimerRef.current = setInterval(() => {
-              setCallDuration(Math.floor((Date.now() - start) / 1000));
+              const secs = Math.floor((Date.now() - start) / 1000);
+              callDurationRef.current = secs;
+              setCallDuration(secs);
             }, 1000);
           }
-        } else if (
-          pc.connectionState === 'disconnected' ||
-          pc.connectionState === 'failed' ||
-          pc.connectionState === 'closed'
-        ) {
+        } else if (pc.connectionState === 'disconnected') {
+          // Cellular network drop (e.g. 5G to 4G handover or momentary packet loss)
+          // Attempt ICE restart
+          if ('restartIce' in pc && typeof (pc as any).restartIce === 'function') {
+            try {
+              (pc as any).restartIce();
+            } catch (_) {}
+          }
+
+          // Do NOT terminate immediately! Provide a 12-second grace period for cell handover
+          if (!disconnectTimerRef.current && activeCallRef.current?.status === 'connected') {
+            disconnectTimerRef.current = setTimeout(() => {
+              if (
+                peerConnectionRef.current?.connectionState === 'disconnected' ||
+                peerConnectionRef.current?.connectionState === 'failed'
+              ) {
+                callAudio.playEndTone();
+                finalizeCallAndLog('completed');
+                cleanUpCallRef.current();
+              }
+            }, 12000);
+          }
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          if (disconnectTimerRef.current) {
+            clearTimeout(disconnectTimerRef.current);
+            disconnectTimerRef.current = null;
+          }
           if (activeCallRef.current?.status === 'connected') {
             callAudio.playEndTone();
+            finalizeCallAndLog('completed');
             cleanUpCallRef.current();
           }
         }
@@ -247,10 +315,10 @@ export function useWebRTCCall({
       peerConnectionRef.current = pc;
       return pc;
     },
-    [acquireWakeLock, sendSignal]
+    [acquireWakeLock, finalizeCallAndLog, sendSignal]
   );
 
-  // Initialize Media Stream (Camera / Mic)
+  // Initialize Media Stream (Camera / Mic) with mobile-optimized constraints
   const acquireMedia = useCallback(async (type: CallType): Promise<MediaStream | null> => {
     try {
       setCallErrorMessage(null);
@@ -310,7 +378,7 @@ export function useWebRTCCall({
 
       callAudio.startOutgoingRingtone();
 
-      // Point 5: 38-second outgoing ring timeout to avoid infinite battery drain
+      // 38-second outgoing ring timeout to avoid infinite battery drain
       if (outgoingTimeoutRef.current) {
         clearTimeout(outgoingTimeoutRef.current);
       }
@@ -319,6 +387,7 @@ export function useWebRTCCall({
           callAudio.stopRingtone();
           callAudio.playEndTone();
           setCallErrorMessage('No answer');
+          finalizeCallAndLog('missed');
           await sendSignal({
             callId,
             type,
@@ -352,6 +421,8 @@ export function useWebRTCCall({
               params.encodings = [{}];
             }
             params.encodings[0].maxBitrate = 750000;
+            // Maintain smooth framerate over lower resolution when bandwidth drops
+            params.degradationPreference = 'maintain-framerate';
             sender.setParameters(params).catch(() => {});
           } catch {}
         }
@@ -375,7 +446,7 @@ export function useWebRTCCall({
         cleanUpCall();
       }
     },
-    [acquireMedia, cleanUpCall, createPeerConnection, currentRole, partnerRole, sendSignal]
+    [acquireMedia, cleanUpCall, createPeerConnection, currentRole, finalizeCallAndLog, partnerRole, sendSignal]
   );
 
   // Accept an Incoming Call
@@ -400,6 +471,7 @@ export function useWebRTCCall({
             params.encodings = [{}];
           }
           params.encodings[0].maxBitrate = 750000;
+          params.degradationPreference = 'maintain-framerate';
           sender.setParameters(params).catch(() => {});
         } catch {}
       }
@@ -464,6 +536,11 @@ export function useWebRTCCall({
         clearTimeout(outgoingTimeoutRef.current);
         outgoingTimeoutRef.current = null;
       }
+      if (curCall.status === 'connected') {
+        finalizeCallAndLog('completed');
+      } else if (curCall.status === 'calling') {
+        finalizeCallAndLog('missed');
+      }
       await sendSignal({
         callId: curCall.callId,
         type: curCall.type,
@@ -471,7 +548,7 @@ export function useWebRTCCall({
       });
     }
     cleanUpCall();
-  }, [cleanUpCall, sendSignal]);
+  }, [cleanUpCall, finalizeCallAndLog, sendSignal]);
 
   // Toggle Mute Audio
   const toggleMute = useCallback(() => {
@@ -498,7 +575,6 @@ export function useWebRTCCall({
   }, []);
 
   // Flip Camera (User <-> Environment)
-  // Maintains explicit deterministic state without relying on Android WebView's undefined facingMode setting
   const flipCamera = useCallback(async () => {
     if (!localStreamRef.current || !peerConnectionRef.current) return;
     const currentVideoTrack = localStreamRef.current.getVideoTracks()[0];
@@ -513,7 +589,6 @@ export function useWebRTCCall({
           video: { facingMode: { exact: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
       } catch {
-        // Fallback without exact constraint if device driver doesn't support 'exact'
         newStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
@@ -544,8 +619,7 @@ export function useWebRTCCall({
     }
   }, []);
 
-  // Point 8: Nusrat Stealth Lock Cleanup Guard
-  // If Nusrat triggers panic lock or the stealth vault closes while in an active call, terminate call immediately
+  // Nusrat Stealth Lock Cleanup Guard
   useEffect(() => {
     if (!isStealthUnlocked && activeCallRef.current) {
       const curCall = activeCallRef.current;
@@ -558,7 +632,7 @@ export function useWebRTCCall({
     }
   }, [isStealthUnlocked, cleanUpCall, sendSignal]);
 
-  // Point 7: Visibility change wake lock re-acquisition
+  // Visibility change wake lock re-acquisition
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && activeCallRef.current?.status === 'connected') {
@@ -571,9 +645,7 @@ export function useWebRTCCall({
     };
   }, [acquireWakeLock]);
 
-  // Point 1: Persistent Supabase Realtime Signaling Channel
-  // Removed activeCall, cleanUpCall, and isStealthUnlocked from dependency array so the WebSocket channel
-  // is NEVER torn down and rebuilt across call state transitions.
+  // Persistent Supabase Realtime Signaling Channel with Glare Collision Resolution
   useEffect(() => {
     if (!currentRole) return;
 
@@ -585,7 +657,7 @@ export function useWebRTCCall({
       .on('broadcast', { event: 'call_signal' }, async ({ payload }: { payload: CallSignalPayload }) => {
         if (!payload || payload.targetRole !== currentRole) return;
 
-        // In Nusrat's stealth mode: If the vault is locked (#6969# not entered), do not show OnlyUs call UI
+        // In Nusrat's stealth mode: If vault is locked (#6969# not entered), do not show OnlyUs call UI
         if (!isStealthUnlockedRef.current) {
           return;
         }
@@ -593,8 +665,90 @@ export function useWebRTCCall({
         switch (payload.action) {
           case 'offer': {
             const curCall = activeCallRef.current;
+
+            // SIMULTANEOUS CALL COLLISION RESOLUTION ("GLARE")
+            // When both Rahul and Nusrat tap call at the exact same moment
+            if (curCall && curCall.status === 'calling') {
+              console.log('[WebRTC] Simultaneous call collision detected!');
+              const myStart = curCall.startedAt || 0;
+              const theirStart = payload.timestamp || 0;
+              // Deterministic tie-breaker: Rahul (owner) wins, or whoever called >2s earlier
+              const isMyOfferWinning =
+                Math.abs(myStart - theirStart) < 4000
+                  ? currentRole === 'owner'
+                  : myStart < theirStart;
+
+              if (isMyOfferWinning) {
+                // My offer wins tie-break: I remain caller, awaiting their answer
+                console.log('[WebRTC] Collision: My offer wins tie-break.');
+                return;
+              }
+
+              // Partner won tie-break: Concede gracefully and answer partner's call immediately
+              console.log('[WebRTC] Collision: Partner offer wins. Conceding and connecting.');
+              callAudio.stopRingtone();
+              if (outgoingTimeoutRef.current) {
+                clearTimeout(outgoingTimeoutRef.current);
+                outgoingTimeoutRef.current = null;
+              }
+
+              const stream = localStreamRef.current || (await acquireMedia(payload.type));
+              const pc = createPeerConnection(payload.callId, payload.type);
+
+              if (stream) {
+                stream.getTracks().forEach((track) => {
+                  const sender = pc.addTrack(track, stream!);
+                  if (track.kind === 'video' && sender.getParameters) {
+                    try {
+                      const params = sender.getParameters();
+                      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+                      params.encodings[0].maxBitrate = 750000;
+                      params.degradationPreference = 'maintain-framerate';
+                      sender.setParameters(params).catch(() => {});
+                    } catch {}
+                  }
+                });
+              }
+
+              try {
+                if (payload.sdp) {
+                  await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+                }
+                while (iceCandidatesQueue.current.length > 0) {
+                  const candidate = iceCandidatesQueue.current.shift();
+                  if (candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                  }
+                }
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                await sendSignal({
+                  callId: payload.callId,
+                  type: payload.type,
+                  action: 'answer',
+                  sdp: answer,
+                });
+
+                const connectedSession: CallSession = {
+                  callId: payload.callId,
+                  type: payload.type,
+                  callerRole: payload.senderRole,
+                  receiverRole: currentRole,
+                  status: 'connected',
+                  startedAt: Date.now(),
+                };
+                activeCallRef.current = connectedSession;
+                setActiveCall(connectedSession);
+              } catch (err) {
+                console.error('[WebRTC] Error handling simultaneous call answer:', err);
+                cleanUpCallRef.current();
+              }
+              return;
+            }
+
+            // Normal busy condition if in another active call
             if (curCall && curCall.status !== 'idle' && curCall.status !== 'ended') {
-              // We are busy
               await channel.send({
                 type: 'broadcast',
                 event: 'call_signal',
@@ -638,7 +792,7 @@ export function useWebRTCCall({
                   outgoingTimeoutRef.current = null;
                 }
 
-                // Point 2: Drain queued candidates on caller side once remote description is ready
+                // Drain queued ICE candidates on caller side once remote description is set
                 while (iceCandidatesQueue.current.length > 0) {
                   const candidate = iceCandidatesQueue.current.shift();
                   if (candidate) {
@@ -675,6 +829,7 @@ export function useWebRTCCall({
               outgoingTimeoutRef.current = null;
             }
             setCallErrorMessage('Call declined');
+            finalizeCallAndLog('rejected');
             setTimeout(() => cleanUpCallRef.current(), 1500);
             break;
           }
@@ -685,7 +840,8 @@ export function useWebRTCCall({
               clearTimeout(outgoingTimeoutRef.current);
               outgoingTimeoutRef.current = null;
             }
-            setCallErrorMessage('User is currently in another call');
+            setCallErrorMessage('User is currently on another call');
+            finalizeCallAndLog('busy');
             setTimeout(() => cleanUpCallRef.current(), 1800);
             break;
           }
@@ -696,6 +852,7 @@ export function useWebRTCCall({
               clearTimeout(outgoingTimeoutRef.current);
               outgoingTimeoutRef.current = null;
             }
+            finalizeCallAndLog('completed');
             cleanUpCallRef.current();
             break;
           }
@@ -711,7 +868,7 @@ export function useWebRTCCall({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [currentRole]);
+  }, [acquireMedia, createPeerConnection, currentRole, finalizeCallAndLog, sendSignal]);
 
   // Clean up on component unmount
   useEffect(() => {

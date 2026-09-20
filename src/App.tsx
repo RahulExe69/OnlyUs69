@@ -5,7 +5,7 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { AppConfig, UserRole, UserProfile, Message, MediaAttachment, PetSettings } from './types';
-import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone, Cat } from 'lucide-react';
+import { LogOut, Send, Settings as SettingsIcon, MessageSquare, ShieldCheck, Heart, User as UserIcon, Plus, X, Trash2, Smile, MoreVertical, Copy, RotateCcw, Reply, CornerUpLeft, Pencil, Camera, Image as ImageIcon, Check, CheckCheck, Clock3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, UserPlus, Gamepad2, Music, Headphones, Wifi, WifiOff, ListChecks, Wind, Laugh, Star, KeyRound, Lock, Sparkles, RefreshCw, LayoutGrid, Instagram, MessageSquareCode, ArrowLeft, UserCheck, Repeat, Film, Link2, Video, FileVideo, Ban, Play, Mic, BookOpen, EyeOff, Phone, PhoneCall, Cat } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { MultiHubDashboard } from './components/MultiHubDashboard';
 import { ExternalHubView } from './components/ExternalHubView';
@@ -35,6 +35,7 @@ import { GameOverlayManager } from './components/GameOverlayManager';
 import { useMessageSync } from './hooks/useMessageSync';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { CallModal } from './components/CallModal';
+import { CallHistoryModal } from './components/CallHistoryModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
@@ -284,6 +285,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
+  const [showCallHistoryModal, setShowCallHistoryModal] = useState(false);
   const [showPetModal, setShowPetModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [galleryMediaViewer, setGalleryMediaViewer] = useState<MediaAttachment | null>(null);
@@ -2218,6 +2220,14 @@ export default function App() {
                               )}
                               <button 
                                 onPointerDown={(e) => e.preventDefault()}
+                                onClick={() => { setShowCallHistoryModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
+                              >
+                                <PhoneCall className="w-4 h-4 text-[var(--theme-accent)]" />
+                                Call Logs
+                              </button>
+                              <button 
+                                onPointerDown={(e) => e.preventDefault()}
                                 onClick={() => { setShowCustomizeModal(true); setShowMenu(false); }}
                                 className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
                               >
@@ -2277,7 +2287,7 @@ export default function App() {
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
                 onViewImage={(url) => setShowFullImage(url)}
-                isOverlayOpen={showProfileModal || showPartnerInfo || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
+                isOverlayOpen={showProfileModal || showPartnerInfo || showCallHistoryModal || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
                 showAttachmentMenu={showAttachmentMenu}
                 onSetShowAttachmentMenu={setShowAttachmentMenu}
                 showGamesMenu={showGamesMenu}
@@ -2306,6 +2316,7 @@ export default function App() {
                 onSetShowNudgeMenu={setShowNudgeMenu}
                 activeNudge={activeNudge}
                 onDismissNudge={() => setActiveNudge(null)}
+                onStartCall={startCall}
               />
             </div>
           </div>
@@ -2475,6 +2486,16 @@ export default function App() {
         onFlipCamera={flipCamera}
       />
 
+      {/* Real-time Call History & Call Logs Modal */}
+      <CallHistoryModal
+        isOpen={showCallHistoryModal}
+        onClose={() => setShowCallHistoryModal(false)}
+        currentRole={userProfile?.role || (isOwner ? 'owner' : 'partner')}
+        partnerProfile={partnerProfile}
+        partnerNickname={userProfile?.partnerNicknames?.[partnerProfile?.uid || '']}
+        onStartCall={startCall}
+      />
+
       {/* Real-time Feeling / Nudge Overlay with Edge-Lighting Shader & Romantic Capsule */}
       <AnimatePresence>
         {activeNudge && (
@@ -2526,7 +2547,8 @@ const ChatView = React.memo(function ChatView({
   activeNudge,
   onDismissNudge,
   petSettings,
-  onUpdatePetSettings
+  onUpdatePetSettings,
+  onStartCall,
 }: { 
   role: UserRole, 
   messages: Message[],
@@ -2564,7 +2586,8 @@ const ChatView = React.memo(function ChatView({
   activeNudge?: { type: string, sender: string } | null,
   onDismissNudge?: () => void,
   petSettings?: PetSettings,
-  onUpdatePetSettings?: (settings: PetSettings) => void
+  onUpdatePetSettings?: (settings: PetSettings) => void,
+  onStartCall?: (type: 'voice' | 'video') => void
 }) {
   const [selectedMediaFiles, setSelectedMediaFiles] = useState<SelectedMediaFile[]>([]);
   const [activeMediaViewer, setActiveMediaViewer] = useState<MediaAttachment | null>(null);
@@ -3484,6 +3507,7 @@ const ChatView = React.memo(function ChatView({
                   onJoinGame={handleJoinGame}
                   onTriggerNudge={onSendNudge}
                   onOpenReel={setActiveReel}
+                  onStartCall={onStartCall}
                 />
               );
             })

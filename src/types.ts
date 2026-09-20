@@ -90,6 +90,22 @@ export interface Message {
     sessionId: string;
     status: 'pending' | 'active' | 'finished' | 'closed';
   };
+  callLog?: {
+    callId?: string;
+    type: CallType;
+    status: 'completed' | 'missed' | 'rejected' | 'declined' | 'busy';
+    duration: number;
+    caller_role: UserRole;
+    receiver_role: UserRole;
+  };
+  call_log?: {
+    callId?: string;
+    type: CallType;
+    status: 'completed' | 'missed' | 'rejected' | 'declined' | 'busy';
+    duration: number;
+    caller_role: UserRole;
+    receiver_role: UserRole;
+  };
 }
 
 export interface InGameChatMessage {
@@ -128,6 +144,18 @@ export interface CallSignalPayload {
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
   timestamp: number;
+}
+
+export interface CallLogRecord {
+  id: string;
+  caller_role: UserRole;
+  receiver_role: UserRole;
+  call_type: CallType;
+  status: 'completed' | 'missed' | 'rejected' | 'declined' | 'busy';
+  duration: number; // Duration in seconds
+  started_at?: string;
+  ended_at?: string;
+  created_at?: string;
 }
 
 export type PetBreed =

@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { CornerUpLeft, Clock3, Check, Ban, Gamepad2, Archive } from 'lucide-react';
-import { Message, UserRole, UserProfile, MediaAttachment } from '../types';
+import { CornerUpLeft, Clock3, Check, Ban, Gamepad2, Archive, Phone, Video, PhoneMissed, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import { Message, UserRole, UserProfile, MediaAttachment, CallType } from '../types';
 import { getMillis, parseDate } from '../lib/dateUtils';
 import { useOverlayBack } from '../lib/overlayManager';
 import { WhatsAppMediaBubble } from './WhatsAppMediaBubble';
 import { parseInstagramReel, extractTextWithoutInstagramUrl, InstagramReelInfo } from '../lib/instagram';
 import { InstagramReelCard } from './InstagramReelCard';
+import { formatCallDuration } from '../lib/callLogService';
 
 interface MessageItemProps {
   msg: Message;
@@ -32,6 +33,7 @@ interface MessageItemProps {
   onTriggerNudge?: (type: string) => void;
   onFocusInput?: () => void;
   onOpenReel?: (reel: InstagramReelInfo) => void;
+  onStartCall?: (type: CallType) => void;
   showAvatar?: boolean;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
@@ -61,6 +63,7 @@ function MessageItemComponent({
   onTriggerNudge,
   onFocusInput,
   onOpenReel,
+  onStartCall,
   showAvatar,
   isFirstInGroup = true,
   isLastInGroup = true,
@@ -745,6 +748,73 @@ function MessageItemComponent({
                         selectionActive={checkSelectionActive() || isSelected}
                       />
                     </div>
+                  ) : (msg.callLog || (msg as any).call_log) ? (
+                    (() => {
+                      const callLog = msg.callLog || (msg as any).call_log;
+                      const isMissed = callLog.status === 'missed';
+                      const isRejected = callLog.status === 'rejected' || callLog.status === 'declined' || callLog.status === 'busy';
+                      const isCompleted = callLog.status === 'completed';
+                      const isVideo = callLog.type === 'video';
+
+                      return (
+                        <div className="flex items-center gap-3 py-1 pr-1 select-none min-w-[200px] sm:min-w-[220px]">
+                          <div
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                              isMissed
+                                ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                                : isRejected
+                                ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
+                                : 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
+                            }`}
+                          >
+                            {isMissed ? (
+                              <PhoneMissed className="w-5 h-5" />
+                            ) : isVideo ? (
+                              <Video className="w-5 h-5" />
+                            ) : isOwn ? (
+                              <PhoneOutgoing className="w-5 h-5" />
+                            ) : (
+                              <PhoneIncoming className="w-5 h-5" />
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[13.5px] font-bold tracking-tight text-[var(--theme-text)] truncate">
+                                {isMissed
+                                  ? `Missed ${isVideo ? 'video' : 'voice'} call`
+                                  : isRejected
+                                  ? `Declined ${isVideo ? 'video' : 'voice'} call`
+                                  : `${isOwn ? 'Outgoing' : 'Incoming'} ${isVideo ? 'video' : 'voice'} call`}
+                              </span>
+                            </div>
+                            <div className="text-[11.5px] font-medium mt-0.5 opacity-75">
+                              {isCompleted ? (
+                                <span>{formatCallDuration(callLog.duration)}</span>
+                              ) : (
+                                <span className={isMissed ? 'text-rose-500 font-semibold' : 'text-amber-500 font-semibold'}>
+                                  {isMissed ? (isOwn ? 'No answer' : 'Missed') : 'Declined'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {onStartCall && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStartCall(callLog.type);
+                              }}
+                              className="p-2 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] hover:bg-[var(--theme-accent)] hover:text-white active:scale-95 transition-all ml-1 shrink-0 cursor-pointer"
+                              title={`Call back (${isVideo ? 'video' : 'voice'})`}
+                            >
+                              {isVideo ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()
                   ) : msg.text ? (
                     <span
                       className="whitespace-pre-wrap flex-1 break-words select-none"

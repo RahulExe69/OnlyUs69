@@ -115,6 +115,7 @@ export function useMessageSync({
       const hydrated = m.deleted ? undefined : hydrateMessageMedia(m);
       return {
         ...m,
+        callLog: m.call_log || m.callLog,
         media: hydrated,
         mediaList: hydrated?.mediaList,
         timestamp: m.created_at || m.timestamp || new Date().toISOString(),
@@ -322,6 +323,7 @@ export function useMessageSync({
                   : hydrateMessageMedia(raw);
                 const msg: Message = {
                   ...raw,
+                  callLog: raw.call_log || raw.callLog,
                   media: hydrated,
                   mediaList: hydrated?.mediaList,
                   timestamp:
