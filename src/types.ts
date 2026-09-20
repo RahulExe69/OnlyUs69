@@ -8,6 +8,7 @@ export interface AppConfig {
   partner_id?: string;
   partner_passcode?: string;
   pet_config?: PetSettings;
+  cloudinary_config?: any;
 }
 
 export interface UserProfile {

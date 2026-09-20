@@ -13,7 +13,7 @@ import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
 import { MediaSendPreviewModal, SelectedMediaFile } from './components/MediaSendPreviewModal';
 import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/mediaStore';
-import { uploadToCloudinary } from './lib/cloudinary';
+import { uploadToCloudinary, syncCloudinaryFromAppConfig } from './lib/cloudinary';
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
@@ -999,6 +999,9 @@ export default function App() {
         if (data) {
           setAppConfig(data as AppConfig);
           verifyPasscodeSession(data as AppConfig);
+          if (data.cloudinary_config) {
+            syncCloudinaryFromAppConfig(data.cloudinary_config);
+          }
           if (data.pet_config) {
             setPetSettings((prev) => {
               const merged = { ...prev, ...data.pet_config };
@@ -1022,6 +1025,9 @@ export default function App() {
           const newCfg = payload.new as AppConfig;
           setAppConfig(newCfg);
           verifyPasscodeSession(newCfg);
+          if (newCfg.cloudinary_config) {
+            syncCloudinaryFromAppConfig(newCfg.cloudinary_config);
+          }
           if (newCfg.pet_config) {
             setPetSettings((prev) => {
               const merged = { ...prev, ...newCfg.pet_config };

@@ -226,7 +226,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             }`}
           >
             <Cloud className="w-3.5 h-3.5" />
-            <span>Cloud (25GB)</span>
+            <span>Cloud</span>
           </button>
         </div>
       )}
