@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone } from 'lucide-react';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig, APP_VERSION } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { ImageCropperModal } from './ImageCropperModal';
+import { CloudinarySettingsSection } from './CloudinarySettingsModal';
 
 interface ProfileModalProps {
   profile: UserProfile;
@@ -28,7 +29,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onLockVault,
   isNotesFlavor = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'me' | 'access'>('me');
+  const [activeTab, setActiveTab] = useState<'me' | 'access' | 'cloud'>('me');
   const [stealthEnabled, setStealthEnabled] = useState<boolean>(() => {
     return localStorage.getItem('onlyus_stealth_mode') === 'true';
   });
@@ -215,6 +216,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             }`}
           >
             PIN Access
+          </button>
+          <button
+            onClick={() => setActiveTab('cloud')}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+              activeTab === 'cloud'
+                ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
+                : 'border-transparent text-[var(--theme-text)]/50'
+            }`}
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            <span>Cloud (25GB)</span>
           </button>
         </div>
       )}
@@ -489,6 +501,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             >
               {isSaving ? 'Saving Settings...' : 'Save Passcode & Settings'}
             </button>
+          </div>
+        )}
+
+        {activeTab === 'cloud' && (
+          <div className="max-w-md mx-auto py-2">
+            <CloudinarySettingsSection />
           </div>
         )}
       </div>

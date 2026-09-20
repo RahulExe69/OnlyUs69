@@ -13,6 +13,7 @@ import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
 import { MediaSendPreviewModal, SelectedMediaFile } from './components/MediaSendPreviewModal';
 import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/mediaStore';
+import { uploadToCloudinary } from './lib/cloudinary';
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
@@ -2682,24 +2683,38 @@ const ChatView = React.memo(function ChatView({
           // Save full-res media in local device-first IndexedDB
           await saveLocalMedia(mediaId, finalBlob);
 
-          // Upload to temporary cloud bridge in Supabase Storage if available
-          const extension = isVideo ? 'mp4' : 'jpg';
-          const storagePath = `${mediaId}.${extension}`;
           let cloudUrl = '';
+          let cldThumb: string | undefined = undefined;
 
+          // 1. Primary: Upload directly to permanent Cloudinary Cloud (25 GB free tier, multi-account pool)
           try {
-            const { error: uploadError } = await supabase.storage
-              .from('chat-media')
-              .upload(storagePath, finalBlob, { contentType: finalBlob.type, upsert: true });
-
-            if (!uploadError) {
-              const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
-              if (publicUrlData?.publicUrl) {
-                cloudUrl = publicUrlData.publicUrl;
-              }
+            const cldRes = await uploadToCloudinary(finalBlob, isVideo ? 'video' : 'image', `${mediaId}.${isVideo ? 'mp4' : 'jpg'}`);
+            if (cldRes?.secureUrl) {
+              cloudUrl = cldRes.secureUrl;
+              cldThumb = cldRes.thumbnailUrl;
             }
-          } catch (storageErr) {
-            console.warn('Supabase storage upload error:', storageErr);
+          } catch (cldErr) {
+            console.warn('Cloudinary upload attempt failed, falling back to Supabase:', cldErr);
+          }
+
+          // 2. Secondary Fallback: Supabase Storage bridge if Cloudinary unconfigured or failed
+          if (!cloudUrl) {
+            const extension = isVideo ? 'mp4' : 'jpg';
+            const storagePath = `${mediaId}.${extension}`;
+            try {
+              const { error: uploadError } = await supabase.storage
+                .from('chat-media')
+                .upload(storagePath, finalBlob, { contentType: finalBlob.type, upsert: true });
+
+              if (!uploadError) {
+                const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+                if (publicUrlData?.publicUrl) {
+                  cloudUrl = publicUrlData.publicUrl;
+                }
+              }
+            } catch (storageErr) {
+              console.warn('Supabase storage upload error:', storageErr);
+            }
           }
 
           // If cloudUrl is available use it, otherwise use direct high-quality base64DataUrl
@@ -2709,7 +2724,7 @@ const ChatView = React.memo(function ChatView({
             id: mediaId,
             type: isVideo ? 'video' : 'image',
             url: finalUrl,
-            thumbnailUrl: previewThumbUrl || (finalUrl.length < 50000 ? finalUrl : undefined),
+            thumbnailUrl: cldThumb || previewThumbUrl || (finalUrl.length < 50000 ? finalUrl : undefined),
             fileName: item.file.name,
             fileSize: finalBlob.size,
             mimeType: finalBlob.type
@@ -2997,19 +3012,33 @@ const ChatView = React.memo(function ChatView({
         const ext = extMatch ? extMatch[1].toLowerCase() : (audioBlob.type?.includes('mp3') ? 'mp3' : 'webm');
         const storagePath = `${mediaId}.${ext}`;
         let cloudUrl = '';
-        try {
-          const { error: uploadError } = await supabase.storage
-            .from('chat-media')
-            .upload(storagePath, audioBlob, { contentType: audioBlob.type || 'audio/webm', upsert: true });
 
-          if (!uploadError) {
-            const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
-            if (publicUrlData?.publicUrl) {
-              cloudUrl = publicUrlData.publicUrl;
-            }
+        // 1. Primary: Upload voice note directly to Cloudinary permanent cloud
+        try {
+          const cldRes = await uploadToCloudinary(audioBlob, 'audio', `${mediaId}.${ext}`);
+          if (cldRes?.secureUrl) {
+            cloudUrl = cldRes.secureUrl;
           }
-        } catch (storageErr) {
-          console.warn('Supabase audio upload warning:', storageErr);
+        } catch (cldErr) {
+          console.warn('Cloudinary audio upload failed, falling back to Supabase:', cldErr);
+        }
+
+        // 2. Secondary Fallback: Supabase Storage
+        if (!cloudUrl) {
+          try {
+            const { error: uploadError } = await supabase.storage
+              .from('chat-media')
+              .upload(storagePath, audioBlob, { contentType: audioBlob.type || 'audio/webm', upsert: true });
+
+            if (!uploadError) {
+              const { data: publicUrlData } = supabase.storage.from('chat-media').getPublicUrl(storagePath);
+              if (publicUrlData?.publicUrl) {
+                cloudUrl = publicUrlData.publicUrl;
+              }
+            }
+          } catch (storageErr) {
+            console.warn('Supabase audio upload warning:', storageErr);
+          }
         }
 
         const finalUrl = (cloudUrl && cloudUrl.startsWith('http')) ? cloudUrl : base64DataUrl;
