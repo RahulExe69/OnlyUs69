@@ -2395,7 +2395,7 @@ export default function App() {
               myProfile={userProfile}
               partnerProfile={partnerProfile}
               onViewMedia={handleOpenGalleryMedia}
-              onUpdateMessages={(updatedMsgs) => {
+              onUpdateMessages={(updatedMsgs: Message[]) => {
                 setMessages(prev => {
                   const map = new Map(updatedMsgs.map(u => [u.id, u]));
                   const next = prev.map(m => {
@@ -3399,6 +3399,18 @@ const ChatView = React.memo(function ChatView({
           style={{ touchAction: 'pan-y' }}
           className="flex-1 overflow-y-auto pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
         >
+          {petSettings && (
+            <ChatPetCompanion 
+              settings={petSettings} 
+              onUpdateSettings={onUpdatePetSettings}
+              lastMessageId={messages[messages.length - 1]?.id} 
+              lastMessageText={messages[messages.length - 1]?.text}
+              lastMessageSender={messages[messages.length - 1]?.sender_role === 'owner' ? 'Rahul' : partnerName}
+              isTyping={socketTypingUsers.length > 0} 
+              partnerName={partnerName}
+              currentUserRole={role}
+            />
+          )}
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
             <span className="text-[9px] font-bold text-[var(--theme-accent)] uppercase tracking-[0.4em] bg-[var(--theme-surface)]/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[var(--theme-border)]">Our Story Begins Here</span>
@@ -3543,19 +3555,6 @@ const ChatView = React.memo(function ChatView({
         externalTriggerVoiceRecord={triggerVoiceRecord}
         onClearExternalVoiceRecordTrigger={() => setTriggerVoiceRecord(false)}
       />
-
-      {petSettings && (
-        <ChatPetCompanion 
-          settings={petSettings} 
-          onUpdateSettings={onUpdatePetSettings}
-          lastMessageId={messages[messages.length - 1]?.id} 
-          lastMessageText={messages[messages.length - 1]?.text}
-          lastMessageSender={messages[messages.length - 1]?.sender_role === 'owner' ? 'Rahul' : partnerName}
-          isTyping={socketTypingUsers.length > 0} 
-          partnerName={partnerName}
-          currentUserRole={role}
-        />
-      )}
 
       {/* Hidden file inputs for Camera, Gallery, and Audio */}
       <input 

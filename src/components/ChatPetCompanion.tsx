@@ -237,8 +237,18 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     const contRect = container.getBoundingClientRect();
     // Content-space coordinates (solidly anchored inside message-container scroll stream)
     const left = rect.left - contRect.left + container.scrollLeft;
-    // Paws rest cleanly on top rim of message bubble (+1px)
-    const top = rect.top - contRect.top + container.scrollTop + 1;
+
+    // Check if message bubble contains a replied message quote card
+    const replyQuote = el.querySelector('.chat-reply-perch, [id^="chat-reply-quote-"]') as HTMLElement | null;
+    let top = rect.top - contRect.top + container.scrollTop + 1;
+    let isReplyQuote = false;
+
+    if (replyQuote) {
+      const rqRect = replyQuote.getBoundingClientRect();
+      // Land at the bottom of the replied message card (just below it, on the message body)
+      top = rqRect.bottom - contRect.top + container.scrollTop + 2;
+      isReplyQuote = true;
+    }
 
     return {
       id: cleanId,
@@ -249,7 +259,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       width: rect.width,
       height: rect.height,
       isBubble: el.id !== 'chat-messages-bottom-anchor',
-      isReplyQuote: false,
+      isReplyQuote,
       isOwner: el.classList.contains('chat-bubble-owner'),
       element: el,
     };
@@ -271,14 +281,24 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       const el = b as HTMLElement;
       const bRect = el.getBoundingClientRect();
       const left = bRect.left - contRect.left + scrollLeft;
-      const top = bRect.top - contRect.top + scrollTop + 1;
+
+      const replyQuote = el.querySelector('.chat-reply-perch, [id^="chat-reply-quote-"]') as HTMLElement | null;
+      let top = bRect.top - contRect.top + scrollTop + 1;
+      let isReplyQuote = false;
+
+      if (replyQuote) {
+        const rqRect = replyQuote.getBoundingClientRect();
+        // Land at the bottom rim of the replied message card so Mochi sits below it without obscuring it
+        top = rqRect.bottom - contRect.top + scrollTop + 2;
+        isReplyQuote = true;
+      }
+
       const width = bRect.width;
       const height = bRect.height;
       const isOwner = el.classList.contains('chat-bubble-owner');
       const rowId = el.closest('.chat-message-row')?.id?.replace(/^msg-/, '');
       const rawMsgId = el.dataset?.msgId || rowId || `bubble-${idx}`;
       const msgId = rawMsgId.replace(/^msg-/, '');
-      el.dataset.msgId = msgId;
 
       if (width >= 40 && height >= 18) {
         platforms.push({
@@ -290,7 +310,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           width,
           height,
           isBubble: true,
-          isReplyQuote: false,
+          isReplyQuote,
           isOwner,
           element: el,
         });
@@ -332,10 +352,13 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         return;
       }
 
-      // Any active navigation or escape is consumed by this jump
-      targetGoalIdRef.current = null;
-
       const cleanTargetId = targetPlatform.id.replace(/^msg-/, '');
+
+      // Only clear navigation goal if reaching destination or emergency escaping
+      if (isEscapeJump || isSkipJump || cleanTargetId === targetGoalIdRef.current) {
+        targetGoalIdRef.current = null;
+      }
+
       const inset = getPlatformInset(targetPlatform);
       const targetRatio = getPlatformTargetRatio(targetPlatform);
       const minX = targetPlatform.left + inset;
@@ -401,7 +424,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     [addParticle]
   );
 
-  // React to new message: perk up and take one friendly step towards the new message
+  // React to new message: perk up and navigate one-by-one towards the new message
   const prevMsgRef = useRef<string | undefined>(lastMessageId);
   useEffect(() => {
     if (lastMessageId && lastMessageId !== prevMsgRef.current) {
@@ -412,11 +435,13 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       showSpeech('New whisper! 🐾', 80, false);
       addParticle('✨', 2);
 
-      // If Mochi is perched on an older message, perk up and take ONE hop towards the new message
+      const goalIdClean = lastMessageId.replace(/^msg-/, '');
+      targetGoalIdRef.current = goalIdClean;
+
+      // Start the sequential one-by-one journey towards the new message
       const timer = setTimeout(() => {
         const platforms = scanPlatforms(true);
         const curIdClean = (attachedPlatformIdRef.current || '').replace(/^msg-/, '');
-        const goalIdClean = lastMessageId.replace(/^msg-/, '');
         if (curIdClean !== goalIdClean) {
           const currentIdx = platforms.findIndex((p) => p.id === curIdClean);
           const goalIdx = platforms.findIndex((p) => p.id === goalIdClean);
@@ -427,6 +452,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
               startJump(nextPlat, false);
             }
           }
+        } else {
+          targetGoalIdRef.current = null;
         }
       }, 450);
       return () => clearTimeout(timer);
@@ -509,31 +536,19 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       const platforms = scanPlatforms(true);
       const curIdClean = (attachedPlatformIdRef.current || '').replace(/^msg-/, '');
 
-      // Find candidate message bubbles positioned safely above Mochi within the visible viewport
-      const safeBubbles = platforms.filter(
-        (p) =>
-          p.isBubble &&
-          p.id.replace(/^msg-/, '') !== curIdClean &&
-          p.top < posRef.current.y - 45 &&
-          p.top >= msgCont.scrollTop + 30
-      );
-
+      // Pick strictly the immediate message bubble directly above (no skipping!)
+      const currentIdx = platforms.findIndex((p) => p.id === curIdClean);
       let targetPlatform: Platform | null = null;
-      if (safeBubbles.length > 0) {
-        // Sort from lowest (closest above Mochi) to highest
-        safeBubbles.sort((a, b) => b.top - a.top);
-        const pickIdx = Math.min(safeBubbles.length - 1, Math.floor(Math.random() * Math.min(2, safeBubbles.length)));
-        targetPlatform = safeBubbles[pickIdx];
+      if (currentIdx > 0 && platforms[currentIdx - 1]?.isBubble) {
+        targetPlatform = platforms[currentIdx - 1];
       } else {
-        const anyBubblesAbove = platforms.filter(
-          (p) =>
-            p.isBubble &&
-            p.id.replace(/^msg-/, '') !== curIdClean &&
-            p.top < posRef.current.y - 50
+        // Fallback to closest bubble above
+        const safeBubbles = platforms.filter(
+          (p) => p.isBubble && p.id.replace(/^msg-/, '') !== curIdClean && p.top < posRef.current.y - 30
         );
-        if (anyBubblesAbove.length > 0) {
-          anyBubblesAbove.sort((a, b) => b.top - a.top);
-          targetPlatform = anyBubblesAbove[0];
+        if (safeBubbles.length > 0) {
+          safeBubbles.sort((a, b) => b.top - a.top);
+          targetPlatform = safeBubbles[0];
         } else {
           lastEscapeJumpTimeRef.current = Date.now() + 1500;
         }
@@ -651,7 +666,12 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         if (!Number.isFinite(posRef.current.y)) posRef.current.y = 200;
 
         const msgCont = document.getElementById('message-container');
-        const scrollPlatforms = scanPlatforms(false);
+        const now = performance.now();
+        if (now - lastScanTimeRef.current > 750 || platformsCacheRef.current.length === 0) {
+          lastScanTimeRef.current = now;
+          scanPlatforms(false);
+        }
+        const scrollPlatforms = platformsCacheRef.current;
 
         // Initial Mount Anchor: Find a comfortable visible message bubble to spawn on immediately with zero flicker
         if (!hasInitializedRef.current) {
@@ -943,28 +963,47 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           });
           const otherBubbles = visibleBubbles.filter((p) => p.id.replace(/^msg-/, '') !== curIdClean);
 
-          const roll = Math.random();
-
-          // 1. Playful Hop between message bubbles (~45% chance when other visible bubbles exist)
-          if (roll < 0.45 && otherBubbles.length > 0) {
-            const curY = posRef.current.y;
-            // Sort by proximity to Mochi's current vertical height
-            const sortedByDist = [...otherBubbles].sort(
-              (a, b) => Math.abs(a.top - curY) - Math.abs(b.top - curY)
+          // Sequential navigation towards new message goal (one-by-one, strictly no skipping!)
+          if (targetGoalIdRef.current && targetGoalIdRef.current !== curIdClean) {
+            const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
+            const currentIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
+            const goalIdx = allBubbles.findIndex(
+              (p) => p.id.replace(/^msg-/, '') === targetGoalIdRef.current?.replace(/^msg-/, '')
             );
 
-            // 75% of the time, hop to an adjacent or nearby bubble (above, below, or partner's opposite bubble)
-            // 25% of the time, hop to any visible bubble for variety!
-            let targetP: Platform;
-            if (Math.random() < 0.75 && sortedByDist.length > 0) {
-              const pool = sortedByDist.slice(0, Math.min(3, sortedByDist.length));
-              targetP = pool[Math.floor(Math.random() * pool.length)];
-            } else {
-              targetP = otherBubbles[Math.floor(Math.random() * otherBubbles.length)];
+            if (currentIdx !== -1 && goalIdx !== -1 && currentIdx !== goalIdx) {
+              const stepDir = goalIdx > currentIdx ? 1 : -1;
+              const nextPlat = allBubbles[currentIdx + stepDir];
+              if (nextPlat) {
+                startJump(nextPlat, false);
+                return;
+              }
+            }
+            targetGoalIdRef.current = null;
+          }
+
+          const roll = Math.random();
+
+          // 1. Playful Hop strictly one-by-one between adjacent message bubbles (no skipping!)
+          if (roll < 0.45 && otherBubbles.length > 0) {
+            const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
+            const curIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
+
+            const adjacentCandidates: Platform[] = [];
+            if (curIdx > 0) {
+              const above = allBubbles[curIdx - 1];
+              if (above.top >= safeTop) adjacentCandidates.push(above);
+            }
+            if (curIdx < allBubbles.length - 1) {
+              const below = allBubbles[curIdx + 1];
+              if (below.top <= safeBottom) adjacentCandidates.push(below);
             }
 
-            startJump(targetP, false);
-            return;
+            if (adjacentCandidates.length > 0) {
+              const targetP = adjacentCandidates[Math.floor(Math.random() * adjacentCandidates.length)];
+              startJump(targetP, false);
+              return;
+            }
           }
 
           // 2. Walking along current message platform (~25% chance)
@@ -1086,12 +1125,15 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             posRef.current.y = plan.targetY;
             attachedPlatformIdRef.current = plan.targetPlatformId;
             platformOffsetRatioRef.current = plan.targetRatio;
-            targetGoalIdRef.current = null;
             jumpPlanRef.current = null;
             stateRef.current = 'landing';
             stateTimerRef.current = 10;
             squashRef.current = { sx: 1.25, sy: 0.76 };
             addParticle('✨', 1);
+
+            if (targetGoalIdRef.current === plan.targetPlatformId) {
+              targetGoalIdRef.current = null;
+            }
           }
         } else {
           stateRef.current = 'idle';
@@ -1100,7 +1142,12 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       } else if (state === 'landing') {
         if (stateTimerRef.current <= 0) {
           stateRef.current = 'idle';
-          stateTimerRef.current = 45 + Math.floor(Math.random() * 45);
+          if (targetGoalIdRef.current && targetGoalIdRef.current !== attachedPlatformIdRef.current) {
+            stateTimerRef.current = 16; // Cute short pause before taking the next one-by-one hop!
+          } else {
+            targetGoalIdRef.current = null;
+            stateTimerRef.current = 45 + Math.floor(Math.random() * 45);
+          }
         }
       } else if (state === 'peeking') {
         tailWaveRef.current += 0.05;

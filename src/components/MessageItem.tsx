@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { CornerUpLeft, Clock3, Check, Ban, Gamepad2 } from 'lucide-react';
+import { CornerUpLeft, Clock3, Check, Ban, Gamepad2, Archive } from 'lucide-react';
 import { Message, UserRole, UserProfile, MediaAttachment } from '../types';
 import { getMillis, parseDate } from '../lib/dateUtils';
 import { useOverlayBack } from '../lib/overlayManager';
@@ -190,7 +190,8 @@ function MessageItemComponent({
 
     triggerHaptic(24, 220);
 
-    if (!msg.deleted) setShowPicker(true);
+    const isArchivedMedia = Boolean(msg.deleted_from_media && !msg.deleted);
+    if (!msg.deleted && !isArchivedMedia) setShowPicker(true);
     if (!isSelected) onToggleSelect(msg);
   };
 
@@ -317,8 +318,10 @@ function MessageItemComponent({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const isArchivedMedia = Boolean(msg.deleted_from_media && !msg.deleted);
+
   const renderReceipt = (onDarkOverlay: boolean = false) => {
-    if (!isOwn || msg.deleted) return null;
+    if (!isOwn || msg.deleted || isArchivedMedia) return null;
     if (msg.deliveryStatus === 'sending') {
       return <Clock3 aria-label="Sending" className={`w-3 h-3 ${onDarkOverlay ? 'text-white/80' : 'text-current'}`} />;
     }
@@ -394,7 +397,7 @@ function MessageItemComponent({
     (msg.deleted_from_media_by && msg.deleted_from_media_by === role) ||
     (!msg.deleted_from_media_by && msg.sender_role === role)
   );
-  const hasReactions = Boolean(msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0);
+  const hasReactions = Boolean(msg.reactions && !msg.deleted && !isArchivedMedia && Object.keys(msg.reactions).length > 0);
   const isFirst = isFirstInGroup;
   const shouldShowAvatar = showAvatar ?? (!isOwn && isFirst);
   const rowMarginTop = isFirst ? 'mt-2 sm:mt-2.5' : 'mt-[2px] sm:mt-[3px]';
@@ -416,7 +419,7 @@ function MessageItemComponent({
       onClick={handleClick}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (!msg.deleted && !checkSelectionActive()) {
+        if (!msg.deleted && !isArchivedMedia && !checkSelectionActive()) {
           const now = Date.now();
           if (now - lastDoubleTapTimeRef.current > 400) {
             lastDoubleTapTimeRef.current = now;
@@ -466,13 +469,13 @@ function MessageItemComponent({
       )}
 
       <motion.div
-        drag="x"
+        drag={!msg.deleted && !isArchivedMedia ? 'x' : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragSnapToOrigin
         dragElastic={isOwn ? { left: 0.38, right: 0 } : { left: 0, right: 0.38 }}
         dragMomentum={false}
         dragDirectionLock
-        dragListener={!showPicker && !selectionActive}
+        dragListener={!showPicker && !selectionActive && !msg.deleted && !isArchivedMedia}
         dragTransition={{
           bounceStiffness: 640,
           bounceDamping: 28,
@@ -519,7 +522,7 @@ function MessageItemComponent({
                (info.offset.x >= 24 && info.velocity.x > 380) ||
                hasTriggeredReplyThreshold.current);
 
-          if (passedThreshold) {
+          if (passedThreshold && !msg.deleted && !isArchivedMedia) {
             onReply(msg);
             triggerHaptic(26, 120);
             const inputEl = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
@@ -690,10 +693,10 @@ function MessageItemComponent({
                       <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
                       <span>{isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
                     </div>
-                  ) : msg.deleted_from_media ? (
+                  ) : isArchivedMedia ? (
                     <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
-                      <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                      <span>{isMediaDeletedByMe ? 'You deleted this media' : 'This media was deleted'}</span>
+                      <Archive className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                      <span>Archived</span>
                     </div>
                   ) : detectedReel ? (
                     <div className="flex-1 min-w-0 flex flex-col select-none">
