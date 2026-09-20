@@ -44,6 +44,7 @@ const ProfileModal = lazy(() => import('./components/ProfileModal').then(m => ({
 const PartnerInfoModal = lazy(() => import('./components/PartnerInfoModal').then(m => ({ default: m.PartnerInfoModal })));
 const E2EEVerificationModal = lazy(() => import('./components/E2EEVerificationModal').then(m => ({ default: m.E2EEVerificationModal })));
 const ThemeCustomizeSheet = lazy(() => import('./components/ThemeCustomizePage').then(m => ({ default: m.ThemeCustomizeSheet })));
+const MediaGalleryModal = lazy(() => import('./components/MediaGalleryModal').then(m => ({ default: m.MediaGalleryModal })));
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
@@ -282,6 +283,16 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPartnerInfo, setShowPartnerInfo] = useState(false);
   const [showPetModal, setShowPetModal] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [galleryMediaViewer, setGalleryMediaViewer] = useState<MediaAttachment | null>(null);
+  const [galleryMediaList, setGalleryMediaList] = useState<MediaAttachment[] | undefined>(undefined);
+  const [galleryMediaIndex, setGalleryMediaIndex] = useState<number>(0);
+
+  const handleOpenGalleryMedia = useCallback((media: MediaAttachment, fullList?: MediaAttachment[], initialIndex?: number) => {
+    setGalleryMediaViewer(media);
+    setGalleryMediaList(fullList || (media.mediaList) || [media]);
+    setGalleryMediaIndex(initialIndex || 0);
+  }, []);
   const [petSettings, setPetSettings] = useState<PetSettings>(() => {
     if (typeof window === 'undefined') {
       return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
@@ -561,6 +572,11 @@ export default function App() {
   useOverlayBack(showProfileModal, () => setShowProfileModal(false), 'profile-modal');
   useOverlayBack(showPartnerInfo, () => setShowPartnerInfo(false), 'partner-info-modal');
   useOverlayBack(showPetModal, () => setShowPetModal(false), 'pet-settings-modal');
+  useOverlayBack(showMediaModal, () => setShowMediaModal(false), 'media-gallery-modal');
+  useOverlayBack(!!galleryMediaViewer, () => {
+    setGalleryMediaViewer(null);
+    setGalleryMediaList(undefined);
+  }, 'gallery-media-viewer');
   useOverlayBack(showE2EEModal, () => setShowE2EEModal(false), 'e2ee-modal');
   useOverlayBack(!!showFullImage, () => setShowFullImage(null), 'full-image-viewer');
   useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
@@ -596,6 +612,7 @@ export default function App() {
       showCustomizeModal ||
       showGamesMenu ||
       showPartnerInfo ||
+      showMediaModal ||
       showClearChatConfirm ||
       showDeleteChoices ||
       activeGame ||
@@ -609,6 +626,7 @@ export default function App() {
     showCustomizeModal,
     showGamesMenu,
     showPartnerInfo,
+    showMediaModal,
     showClearChatConfirm,
     showDeleteChoices,
     activeGame,
@@ -1954,10 +1972,12 @@ export default function App() {
           socketOnlineUsers={socketOnlineUsers}
           formatLastSeen={formatLastSeen}
           totalMessages={messages.length}
+          messages={messages}
           onSelectTab={(tab) => handleHubTabChange(tab)}
           onOpenSettings={() => setShowProfileModal(true)}
           onOpenProfile={() => setShowProfileModal(true)}
           onOpenPartnerInfo={() => setShowPartnerInfo(true)}
+          onOpenMedia={() => setShowMediaModal(true)}
           onLogout={handleLogout}
         />
       ) : activeHubTab === 'instagram' || activeHubTab === 'whatsapp' ? (
@@ -2315,6 +2335,29 @@ export default function App() {
           isThemeSaving={isThemeSaving}
           partnerProfile={partnerProfile}
           userProfile={userProfile}
+        />
+
+        <AnimatePresence>
+          {showMediaModal && (
+            <MediaGalleryModal
+              isOpen={showMediaModal}
+              onClose={() => setShowMediaModal(false)}
+              messages={messages}
+              myProfile={userProfile}
+              partnerProfile={partnerProfile}
+              onViewMedia={handleOpenGalleryMedia}
+            />
+          )}
+        </AnimatePresence>
+
+        <FullscreenMediaViewer 
+          media={galleryMediaViewer}
+          mediaList={galleryMediaList}
+          initialIndex={galleryMediaIndex}
+          onClose={() => {
+            setGalleryMediaViewer(null);
+            setGalleryMediaList(undefined);
+          }}
         />
       </Suspense>
       <DeleteChoicesModal

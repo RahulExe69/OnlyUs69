@@ -11,13 +11,20 @@ import {
   ChevronRight,
   Flame,
   Lock,
-  ArrowRight
+  ArrowRight,
+  FolderHeart,
+  Sparkles,
+  Image as ImageIcon,
+  Film,
+  Mic,
+  Link2
 } from 'lucide-react';
-import { UserProfile } from '../types';
+import { UserProfile, Message } from '../types';
 import { is3DTheme } from '../lib/themes';
 import { QuantumAuraBackground } from './QuantumAuraBackground';
 import { ShaderBorderBeam } from './ShaderBorderBeam';
 import { RomanticCardAmbiance } from './RomanticCardAmbiance';
+import { hydrateMessageMedia } from '../lib/dateUtils';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -28,10 +35,12 @@ interface MultiHubDashboardProps {
   socketOnlineUsers: string[];
   formatLastSeen: (timestamp: any, uid?: string) => string;
   totalMessages: number;
+  messages?: Message[];
   onSelectTab: (tab: 'chat' | 'instagram' | 'whatsapp') => void;
   onOpenSettings: () => void;
   onOpenProfile: () => void;
   onOpenPartnerInfo?: () => void;
+  onOpenMedia?: () => void;
   onLogout: () => void;
 }
 
@@ -41,10 +50,12 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   isOwner,
   formatLastSeen,
   totalMessages,
+  messages = [],
   onSelectTab,
   onOpenSettings,
   onOpenProfile,
   onOpenPartnerInfo,
+  onOpenMedia,
   onLogout,
 }) => {
   // Normal names (strictly account display names or standard 'Rahul' & 'Nusrat', excluding nicknames)
@@ -56,6 +67,49 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   const lastSeenStatus = formatLastSeen(partnerProfile?.last_seen, partnerProfile?.uid);
   const isPartnerOnline = lastSeenStatus === 'Online';
   const isInGame = lastSeenStatus === 'In Game Room 🎮';
+
+  // Real-time media stats calculation for Media & Memories
+  const mediaStats = React.useMemo(() => {
+    let photos = 0;
+    let videos = 0;
+    let audios = 0;
+    let links = 0;
+    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+
+    messages.forEach((msg) => {
+      if (msg.deleted) return;
+      if (isOwner && msg.hidden_for_owner) return;
+      if (!isOwner && msg.hidden_for_partner) return;
+
+      const media = msg.media || hydrateMessageMedia(msg);
+      if (media?.mediaList && media.mediaList.length > 0) {
+        media.mediaList.forEach((item) => {
+          if (item.type === 'video') videos++;
+          else if (item.type === 'audio') audios++;
+          else photos++;
+        });
+      } else if (media) {
+        if (media.type === 'video') videos++;
+        else if (media.type === 'audio') audios++;
+        else photos++;
+      }
+
+      const rawAtt = (msg as any).attachment_url;
+      if (typeof rawAtt === 'string' && rawAtt.trim()) {
+        const isAudio = /^data:audio\//.test(rawAtt) || /\.(mp3|wav|ogg|m4a|aac|weba|webm)(?:\?|$)/i.test(rawAtt);
+        const isVideo = !isAudio && (/^data:video\//.test(rawAtt) || /\.(mp4|mov|webm)(?:\?|$)/i.test(rawAtt));
+        if (isAudio) audios++;
+        else if (isVideo) videos++;
+      }
+
+      if (msg.text) {
+        const matches = msg.text.match(urlRegex);
+        if (matches) links += matches.length;
+      }
+    });
+
+    return { photos, videos, audios, links, total: photos + videos + audios + links };
+  }, [messages, isOwner]);
 
   const handleTabClick = (tab: 'chat' | 'instagram' | 'whatsapp') => {
     const hasAndroidBridge = typeof window !== 'undefined' && typeof window.AndroidBridge?.openTab === 'function';
@@ -279,6 +333,59 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
             <div className="w-9 h-9 rounded-full bg-white/25 backdrop-blur-md flex items-center justify-center text-white group-hover:bg-white group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shadow-md shrink-0 border border-white/30">
               <ArrowRight className="w-4 h-4 stroke-[2.5]" />
             </div>
+          </div>
+        </motion.div>
+
+        {/* Media Option: Placed directly under OnlyUs Chat */}
+        <motion.div
+          whileHover={{ scale: 1.012 }}
+          whileTap={{ scale: 0.985 }}
+          onClick={() => {
+            if (onOpenMedia) onOpenMedia();
+          }}
+          className="group cursor-pointer p-4 rounded-3xl bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)]/75 hover:border-[var(--theme-accent)]/50 shadow-md transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--theme-accent)] to-rose-400 flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+              <FolderHeart className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-[var(--theme-text)] leading-tight">
+                  Media
+                </h3>
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] text-[10px] font-bold border border-[var(--theme-accent)]/20 shadow-2xs">
+                  <Sparkles className="w-2.5 h-2.5 fill-current" />
+                  <span>{mediaStats.total}</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--theme-text)]/60 font-medium truncate mt-0.5">
+                Photos, videos, audios & shared links
+              </p>
+              {/* Quick count chips */}
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[10px] text-[var(--theme-text)]/70 font-semibold">
+                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                  <ImageIcon className="w-3 h-3 text-[var(--theme-accent)]" />
+                  <span>{mediaStats.photos}</span>
+                </span>
+                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                  <Film className="w-3 h-3 text-purple-500" />
+                  <span>{mediaStats.videos}</span>
+                </span>
+                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                  <Mic className="w-3 h-3 text-emerald-500" />
+                  <span>{mediaStats.audios}</span>
+                </span>
+                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                  <Link2 className="w-3 h-3 text-blue-500" />
+                  <span>{mediaStats.links}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--theme-text)]/40 group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shrink-0">
+            <ChevronRight className="w-5 h-5 stroke-[2.2]" />
           </div>
         </motion.div>
 
