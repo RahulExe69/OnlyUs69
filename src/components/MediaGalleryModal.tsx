@@ -24,7 +24,7 @@ import { hydrateMessageMedia, parseDate, getMillis } from '../lib/dateUtils';
 import { getLocalMedia, downloadAndCacheRemoteMedia } from '../lib/mediaStore';
 import { useOverlayBack } from '../lib/overlayManager';
 import { supabase } from '../lib/supabase';
-import { deleteFromCloudinary, extractAllCloudinaryIds } from '../lib/cloudinary';
+import { deleteFromCloudinary, extractAllCloudinaryIds, extractPublicIdFromUrl } from '../lib/cloudinary';
 
 export interface ExtractedMediaItem {
   id: string;
@@ -897,6 +897,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         media.mediaList.forEach((item) => {
           const u = item.url || item.thumbnailUrl;
           if (!u && !item.id) return;
+          const itemIsArchived = isArchived || Boolean(item.deleted_from_media);
           const extracted: ExtractedMediaItem = {
             id: item.id || `${msg.id}_${Math.random().toString(36).substr(2, 9)}`,
             type: item.type || 'image',
@@ -909,13 +910,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             timestamp: msg.timestamp || msg.created_at,
             senderRole: msg.sender_role,
             messageId: msg.id,
-            deleted_from_media: isArchived,
-            deleted_from_media_by: msg.deleted_from_media_by,
-            deleted_from_media_at: msg.deleted_from_media_at,
+            deleted_from_media: itemIsArchived,
+            deleted_from_media_by: item.deleted_from_media_by || msg.deleted_from_media_by,
+            deleted_from_media_at: item.deleted_from_media_at || msg.deleted_from_media_at,
             media_deletion_consent: msg.media_deletion_consent || {},
           };
 
-          if (isArchived) {
+          if (itemIsArchived) {
             archList.push(extracted);
           } else {
             if (item.type === 'video') vList.push(extracted);
@@ -997,6 +998,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const matches = msg.text.match(urlRegex);
         if (matches) {
           matches.forEach((url) => {
+            if (msg.permanently_deleted_links?.includes(url)) return;
+            const isLinkArchived = isArchived || Boolean(msg.deleted_links_from_media?.includes(url));
             let domain = '';
             try {
               domain = new URL(url).hostname.replace('www.', '');
@@ -1011,12 +1014,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               timestamp: msg.timestamp || msg.created_at,
               senderRole: msg.sender_role,
               messageId: msg.id,
-              deleted_from_media: isArchived,
+              deleted_from_media: isLinkArchived,
               deleted_from_media_by: msg.deleted_from_media_by,
               deleted_from_media_at: msg.deleted_from_media_at,
               media_deletion_consent: msg.media_deletion_consent || {},
             };
-            if (isArchived) archList.push(linkItem);
+            if (isLinkArchived) archList.push(linkItem);
             else lList.push(linkItem);
           });
         }
@@ -1116,44 +1119,111 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     onViewMedia(mediaAttachments[index >= 0 ? index : 0], mediaAttachments, index >= 0 ? index : 0);
   };
 
-  const getSelectedMessageIds = (ids: string[]) => {
-    const msgIds = new Set<string>();
+  // Group selected item IDs by parent messageId and extract details
+  const getSelectedItemsMap = (ids: string[]) => {
     const allItems = [...photos, ...videos, ...audios, ...links, ...archivedItems];
-    allItems.forEach((item) => {
-      if (ids.includes(item.id)) {
-        msgIds.add(item.messageId);
+    const map = new Map<string, Array<ExtractedMediaItem | ExtractedLinkItem>>();
+    ids.forEach((id) => {
+      const it = allItems.find((x) => x.id === id);
+      if (it) {
+        const list = map.get(it.messageId) || [];
+        list.push(it);
+        map.set(it.messageId, list);
       }
     });
-    return Array.from(msgIds);
+    return map;
   };
 
-  // 1. Move to Archived
+  // 1. Move to Archived (Granular: isolates individual media items & links without destroying parent messages)
   const handleMoveToArchived = async (ids: string[]) => {
-    const msgIds = getSelectedMessageIds(ids);
-    if (msgIds.length === 0) return;
+    const selectedItemMap = getSelectedItemsMap(ids);
+    if (selectedItemMap.size === 0) return;
 
     setIsProcessingAction(true);
     try {
       const nowIso = new Date().toISOString();
-      await supabase
-        .from('messages')
-        .update({
-          deleted_from_media: true,
-          deleted_from_media_by: myRole,
-          deleted_from_media_at: nowIso,
-        })
-        .in('id', msgIds);
+      const updatedMessagesMap = new Map<string, Message>();
 
-      const updated = messages.map((m) =>
-        msgIds.includes(m.id)
-          ? {
-              ...m,
-              deleted_from_media: true,
-              deleted_from_media_by: myRole,
-              deleted_from_media_at: nowIso,
+      for (const [msgId, itemsForMsg] of selectedItemMap.entries()) {
+        const origMsg = messages.find((m) => m.id === msgId);
+        if (!origMsg) continue;
+
+        let nextMsg: Message = { ...origMsg };
+        const linkItems = itemsForMsg.filter((x): x is ExtractedLinkItem => 'domain' in x);
+        const mediaItems = itemsForMsg.filter((x): x is ExtractedMediaItem => !('domain' in x));
+
+        // Archive selected links
+        if (linkItems.length > 0) {
+          const archivedUrls = linkItems.map((l) => l.url);
+          const existingDeletedLinks = nextMsg.deleted_links_from_media || [];
+          nextMsg.deleted_links_from_media = Array.from(new Set([...existingDeletedLinks, ...archivedUrls]));
+        }
+
+        // Archive selected media
+        if (mediaItems.length > 0) {
+          const selectedMediaIds = new Set(mediaItems.map((m) => m.id));
+
+          if (Array.isArray(nextMsg.mediaList) && nextMsg.mediaList.length > 0) {
+            const nextMediaList = nextMsg.mediaList.map((m) => {
+              if (selectedMediaIds.has(m.id)) {
+                return {
+                  ...m,
+                  deleted_from_media: true,
+                  deleted_from_media_by: myRole,
+                  deleted_from_media_at: nowIso,
+                };
+              }
+              return m;
+            });
+            nextMsg.mediaList = nextMediaList;
+            const allArchived = nextMediaList.every((m) => Boolean(m.deleted_from_media));
+            if (allArchived) {
+              nextMsg.deleted_from_media = true;
+              nextMsg.deleted_from_media_by = myRole;
+              nextMsg.deleted_from_media_at = nowIso;
             }
-          : m
-      );
+          } else {
+            // Single media item or voice note
+            nextMsg.deleted_from_media = true;
+            nextMsg.deleted_from_media_by = myRole;
+            nextMsg.deleted_from_media_at = nowIso;
+          }
+        }
+
+        // Build updated attachment_url if mediaList was modified
+        let nextAttachmentUrl: string | undefined = undefined;
+        if (nextMsg.mediaList && nextMsg.mediaList.length > 0) {
+          nextAttachmentUrl = JSON.stringify({
+            ...(nextMsg.media || {}),
+            mediaList: nextMsg.mediaList,
+          });
+        }
+
+        // Persist to Supabase
+        const updatePayload: any = {
+          deleted_from_media: nextMsg.deleted_from_media ?? false,
+          deleted_from_media_by: nextMsg.deleted_from_media_by ?? null,
+          deleted_from_media_at: nextMsg.deleted_from_media_at ?? null,
+          deleted_links_from_media: nextMsg.deleted_links_from_media ?? [],
+        };
+        if (nextAttachmentUrl !== undefined) {
+          updatePayload.attachment_url = nextAttachmentUrl;
+        }
+
+        const { error: updateErr } = await supabase
+          .from('messages')
+          .update(updatePayload)
+          .eq('id', msgId);
+
+        if (updateErr) {
+          console.error('[MediaGallery] Error archiving items in Supabase:', updateErr);
+          throw updateErr;
+        }
+
+        updatedMessagesMap.set(msgId, nextMsg);
+      }
+
+      const updated = messages.map((m) => updatedMessagesMap.get(m.id) || m);
       onUpdateMessages?.(updated);
 
       showToast(`Archived ${ids.length} item${ids.length > 1 ? 's' : ''}`);
@@ -1170,30 +1240,86 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
   // 2. Restore from Archived to active gallery
   const handleRestoreItems = async (ids: string[]) => {
-    const msgIds = getSelectedMessageIds(ids);
-    if (msgIds.length === 0) return;
+    const selectedItemMap = getSelectedItemsMap(ids);
+    if (selectedItemMap.size === 0) return;
 
     setIsProcessingAction(true);
     try {
-      await supabase
-        .from('messages')
-        .update({
-          deleted_from_media: false,
+      const updatedMessagesMap = new Map<string, Message>();
+
+      for (const [msgId, itemsForMsg] of selectedItemMap.entries()) {
+        const origMsg = messages.find((m) => m.id === msgId);
+        if (!origMsg) continue;
+
+        let nextMsg: Message = { ...origMsg };
+        const linkItems = itemsForMsg.filter((x): x is ExtractedLinkItem => 'domain' in x);
+        const mediaItems = itemsForMsg.filter((x): x is ExtractedMediaItem => !('domain' in x));
+
+        // Restore selected links
+        if (linkItems.length > 0) {
+          const restoredUrls = new Set(linkItems.map((l) => l.url));
+          nextMsg.deleted_links_from_media = (nextMsg.deleted_links_from_media || []).filter(
+            (u) => !restoredUrls.has(u)
+          );
+        }
+
+        // Restore selected media
+        if (mediaItems.length > 0) {
+          const selectedMediaIds = new Set(mediaItems.map((m) => m.id));
+
+          if (Array.isArray(nextMsg.mediaList) && nextMsg.mediaList.length > 0) {
+            const nextMediaList = nextMsg.mediaList.map((m) => {
+              if (selectedMediaIds.has(m.id)) {
+                return {
+                  ...m,
+                  deleted_from_media: false,
+                  deleted_from_media_by: undefined,
+                  deleted_from_media_at: undefined,
+                };
+              }
+              return m;
+            });
+            nextMsg.mediaList = nextMediaList;
+          }
+          nextMsg.deleted_from_media = false;
+          nextMsg.deleted_from_media_by = undefined;
+          nextMsg.deleted_from_media_at = undefined;
+        }
+
+        // Build updated attachment_url if mediaList was modified
+        let nextAttachmentUrl: string | undefined = undefined;
+        if (nextMsg.mediaList && nextMsg.mediaList.length > 0) {
+          nextAttachmentUrl = JSON.stringify({
+            ...(nextMsg.media || {}),
+            mediaList: nextMsg.mediaList,
+          });
+        }
+
+        // Persist to Supabase
+        const updatePayload: any = {
+          deleted_from_media: nextMsg.deleted_from_media ?? false,
           deleted_from_media_by: null,
           deleted_from_media_at: null,
-        })
-        .in('id', msgIds);
+          deleted_links_from_media: nextMsg.deleted_links_from_media ?? [],
+        };
+        if (nextAttachmentUrl !== undefined) {
+          updatePayload.attachment_url = nextAttachmentUrl;
+        }
 
-      const updated = messages.map((m) =>
-        msgIds.includes(m.id)
-          ? {
-              ...m,
-              deleted_from_media: false,
-              deleted_from_media_by: null,
-              deleted_from_media_at: null,
-            }
-          : m
-      );
+        const { error: restoreErr } = await supabase
+          .from('messages')
+          .update(updatePayload)
+          .eq('id', msgId);
+
+        if (restoreErr) {
+          console.error('[MediaGallery] Error restoring items in Supabase:', restoreErr);
+          throw restoreErr;
+        }
+
+        updatedMessagesMap.set(msgId, nextMsg);
+      }
+
+      const updated = messages.map((m) => updatedMessagesMap.get(m.id) || m);
       onUpdateMessages?.(updated);
 
       showToast(`Restored ${ids.length} item${ids.length > 1 ? 's' : ''} to Gallery`);
@@ -1208,55 +1334,149 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }
   };
 
-  // 3. Permanent Deletion from Archived (Direct Cloudinary destruction & message deletion)
+  // 3. Permanent Deletion (Targeted Cloudinary destruction without wiping chat text or unrelated media)
   const handlePermanentDelete = async (ids: string[]) => {
-    const msgIds = getSelectedMessageIds(ids);
-    if (msgIds.length === 0) return;
+    const selectedItemMap = getSelectedItemsMap(ids);
+    if (selectedItemMap.size === 0) return;
 
     setIsProcessingAction(true);
     try {
+      const nowIso = new Date().toISOString();
+      // 1. Collect Cloudinary public IDs or asset URLs strictly for selected media items
       const publicIdsToPurge: string[] = [];
-      for (const msgId of msgIds) {
-        const m = messages.find((x) => x.id === msgId);
-        if (m) {
-          const pIds = extractAllCloudinaryIds(m);
-          pIds.forEach((p) => publicIdsToPurge.push(p));
+      for (const [, itemsForMsg] of selectedItemMap.entries()) {
+        const mediaItems = itemsForMsg.filter((x): x is ExtractedMediaItem => !('domain' in x));
+        for (const mItem of mediaItems) {
+          if (mItem.public_id) {
+            publicIdsToPurge.push(mItem.public_id);
+          }
+          if (mItem.url && mItem.url.includes('cloudinary.com')) {
+            const extracted = extractPublicIdFromUrl(mItem.url);
+            if (extracted) publicIdsToPurge.push(extracted);
+            publicIdsToPurge.push(mItem.url);
+          }
         }
       }
 
       if (publicIdsToPurge.length > 0) {
-        await deleteFromCloudinary(publicIdsToPurge);
+        await deleteFromCloudinary(Array.from(new Set(publicIdsToPurge)));
       }
 
-      await supabase
-        .from('messages')
-        .update({
-          text: '',
-          attachment_url: null,
-          media: null,
-          mediaList: null,
-          deleted: true,
-          deletedBy: myRole,
-          deleted_from_media: true,
-          deleted_from_media_by: myRole,
-          reactions: {},
-        })
-        .in('id', msgIds);
+      // 2. Perform targeted, safe message updates without collateral damage
+      const updatedMessagesMap = new Map<string, Message>();
 
-      const updated = messages.map((m) =>
-        msgIds.includes(m.id)
-          ? {
-              ...m,
-              text: '',
-              attachment_url: null,
-              media: undefined,
-              mediaList: undefined,
-              deleted: true,
-              deletedBy: myRole,
-              reactions: {},
+      for (const [msgId, itemsForMsg] of selectedItemMap.entries()) {
+        const origMsg = messages.find((m) => m.id === msgId);
+        if (!origMsg) continue;
+
+        let nextMsg: Message = { ...origMsg };
+        const linkItems = itemsForMsg.filter((x): x is ExtractedLinkItem => 'domain' in x);
+        const mediaItems = itemsForMsg.filter((x): x is ExtractedMediaItem => !('domain' in x));
+
+        // Handle Links permanent deletion
+        if (linkItems.length > 0) {
+          const purgedUrls = linkItems.map((l) => l.url);
+          nextMsg.deleted_links_from_media = (nextMsg.deleted_links_from_media || []).filter(
+            (u) => !purgedUrls.includes(u)
+          );
+          nextMsg.permanently_deleted_links = Array.from(
+            new Set([...(nextMsg.permanently_deleted_links || []), ...purgedUrls])
+          );
+
+          // If the message text was exclusively this link URL and has no other media, safely delete message
+          const trimmedText = (nextMsg.text || '').trim();
+          const wasOnlyLink = purgedUrls.some((u) => trimmedText === u || trimmedText === u + '/');
+          const hasOtherMedia = Boolean(
+            nextMsg.media || (Array.isArray(nextMsg.mediaList) && nextMsg.mediaList.length > 0)
+          );
+
+          if (wasOnlyLink && !hasOtherMedia) {
+            nextMsg.deleted = true;
+            nextMsg.deletedBy = myRole;
+            nextMsg.deleted_from_media = true;
+            nextMsg.deleted_from_media_by = myRole;
+            nextMsg.deleted_from_media_at = nowIso;
+            nextMsg.text = '';
+          }
+        }
+
+        // Handle Media permanent deletion
+        if (mediaItems.length > 0) {
+          const selectedMediaIds = new Set(mediaItems.map((m) => m.id));
+
+          if (Array.isArray(nextMsg.mediaList) && nextMsg.mediaList.length > 0) {
+            const remainingMedia = nextMsg.mediaList.filter((m) => !selectedMediaIds.has(m.id));
+            nextMsg.mediaList = remainingMedia.length > 0 ? remainingMedia : undefined;
+
+            if (remainingMedia.length === 0) {
+              nextMsg.media = undefined;
+              nextMsg.attachment_url = undefined;
+              nextMsg.deleted_from_media = true;
+              nextMsg.deleted_from_media_by = myRole;
+              nextMsg.deleted_from_media_at = nowIso;
+              nextMsg.deleted = true;
+              nextMsg.deletedBy = myRole;
+              nextMsg.text = '';
             }
-          : m
-      );
+          } else {
+            // Single media or audio attachment
+            nextMsg.media = undefined;
+            nextMsg.mediaList = undefined;
+            nextMsg.attachment_url = undefined;
+            nextMsg.deleted_from_media = true;
+            nextMsg.deleted_from_media_by = myRole;
+            nextMsg.deleted_from_media_at = nowIso;
+            nextMsg.deleted = true;
+            nextMsg.deletedBy = myRole;
+            nextMsg.text = '';
+          }
+        }
+
+        // Build updated attachment_url if mediaList still has items
+        let nextAttachmentUrl: string | null = null;
+        if (nextMsg.mediaList && nextMsg.mediaList.length > 0) {
+          nextAttachmentUrl = JSON.stringify({
+            ...(nextMsg.media || {}),
+            mediaList: nextMsg.mediaList,
+          });
+        }
+
+        // Persist to Supabase
+        const updatePayload: any = {
+          text: nextMsg.text ?? '',
+          attachment_url: nextAttachmentUrl,
+          deleted: nextMsg.deleted ?? false,
+          deletedBy: nextMsg.deletedBy ?? null,
+          deleted_from_media: nextMsg.deleted_from_media ?? false,
+          deleted_from_media_by: nextMsg.deleted_from_media_by ?? null,
+          deleted_from_media_at: nextMsg.deleted_from_media_at ?? null,
+          deleted_links_from_media: nextMsg.deleted_links_from_media ?? [],
+          permanently_deleted_links: nextMsg.permanently_deleted_links ?? [],
+        };
+
+        if (nextMsg.deleted) {
+          updatePayload.ciphertext = null;
+          updatePayload.iv = null;
+          updatePayload.attachment_url = null;
+          updatePayload.text = '';
+          updatePayload.reactions = {};
+          updatePayload.gameInvite = null;
+        }
+
+        const { error: deleteErr } = await supabase
+          .from('messages')
+          .update(updatePayload)
+          .eq('id', msgId);
+
+        if (deleteErr) {
+          console.error('[MediaGallery] Error permanently deleting items in Supabase:', deleteErr);
+          throw deleteErr;
+        }
+
+        updatedMessagesMap.set(msgId, nextMsg);
+      }
+
+      const updated = messages.map((m) => updatedMessagesMap.get(m.id) || m);
       onUpdateMessages?.(updated);
 
       showToast(`Deleted ${ids.length} item${ids.length > 1 ? 's' : ''} permanently`);

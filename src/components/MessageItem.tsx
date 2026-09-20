@@ -113,13 +113,27 @@ function MessageItemComponent({
     const original = replyToMessage || (replyId && allMessages ? allMessages.find((m) => m.id === replyId) : undefined);
     if (original) {
       const isOrigDeletedByMe = original.deletedBy ? original.deletedBy === role : original.sender_role === role;
+      const isOrigMedia = Boolean(
+        original.deleted_from_media ||
+        (original as any).media_deleted_by ||
+        Boolean((original as any).attachment_url) ||
+        Boolean(original.media) ||
+        Boolean(original.mediaList && original.mediaList.length > 0)
+      );
+      const isOrigArchived = Boolean(original.deleted_from_media && !original.deleted);
+      const origArchiverName = (original.deleted_from_media_by || original.sender_role) === 'owner' ? 'Rahul' : 'Nusrat';
+      const origDeleterName = (original.deletedBy || (original as any).media_deleted_by || original.deleted_from_media_by || original.sender_role) === 'owner' ? 'Rahul' : 'Nusrat';
+
+      let replyText = original.text || (original.media ? '📷 Photo' : 'Original message');
+      if (original.deleted) {
+        replyText = isOrigMedia ? `${origDeleterName} Deleted` : (isOrigDeletedByMe ? 'You deleted this message' : 'This message was deleted');
+      } else if (isOrigArchived) {
+        replyText = `${origArchiverName} Archived`;
+      }
+
       return {
         id: original.id,
-        text: original.deleted
-          ? isOrigDeletedByMe
-            ? 'You deleted this message'
-            : 'This message was deleted'
-          : original.text || (original.media ? '📷 Photo' : 'Original message'),
+        text: replyText,
         sender_role: original.sender_role,
       };
     }
@@ -397,6 +411,21 @@ function MessageItemComponent({
     (msg.deleted_from_media_by && msg.deleted_from_media_by === role) ||
     (!msg.deleted_from_media_by && msg.sender_role === role)
   );
+
+  const isDeletedMedia = Boolean(
+    msg.deleted &&
+    (msg.deleted_from_media ||
+     (msg as any).media_deleted_by ||
+     Boolean((msg as any).attachment_url) ||
+     Boolean(msg.media) ||
+     Boolean(msg.mediaList && msg.mediaList.length > 0))
+  );
+
+  const archiverRole = msg.deleted_from_media_by || msg.sender_role;
+  const archiverName = archiverRole === 'owner' ? 'Rahul' : 'Nusrat';
+
+  const deleterRole = msg.deletedBy || (msg as any).media_deleted_by || msg.deleted_from_media_by || msg.sender_role;
+  const deleterName = deleterRole === 'owner' ? 'Rahul' : 'Nusrat';
   const hasReactions = Boolean(msg.reactions && !msg.deleted && !isArchivedMedia && Object.keys(msg.reactions).length > 0);
   const isFirst = isFirstInGroup;
   const shouldShowAvatar = showAvatar ?? (!isOwn && isFirst);
@@ -691,12 +720,12 @@ function MessageItemComponent({
                   {msg.deleted ? (
                     <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
                       <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                      <span>{isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
+                      <span>{isDeletedMedia ? `${deleterName} Deleted` : isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
                     </div>
                   ) : isArchivedMedia ? (
                     <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
                       <Archive className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                      <span>Archived</span>
+                      <span>{`${archiverName} Archived`}</span>
                     </div>
                   ) : detectedReel ? (
                     <div className="flex-1 min-w-0 flex flex-col select-none">

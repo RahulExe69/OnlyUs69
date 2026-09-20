@@ -62,10 +62,15 @@ export interface Message {
   deleted_from_media?: boolean;
   deleted_from_media_by?: UserRole;
   deleted_from_media_at?: any;
+  deleted_links_from_media?: string[];
+  permanently_deleted_links?: string[];
+  media_deleted_by?: UserRole;
+  media_deleted_at?: any;
   media_deletion_consent?: { [role: string]: boolean };
   hidden_for_owner?: boolean;
   hidden_for_partner?: boolean;
   isEdited?: boolean;
+  attachment_url?: string;
   media?: MediaAttachment;
   mediaList?: MediaAttachment[]; // For multi-photo albums / collages
   /** Local-only while an optimistic message is waiting for Supabase. */

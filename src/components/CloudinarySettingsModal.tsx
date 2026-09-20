@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Plus, Trash2, CheckCircle2, AlertCircle, Sparkles, ExternalLink, ShieldCheck, Loader2, Key, Eye, EyeOff, Edit2 } from 'lucide-react';
-import { CloudinaryAccount, getCloudinaryAccounts, saveCloudinaryAccounts, verifyCloudinaryCredentials } from '../lib/cloudinary';
+import { CloudinaryAccount, getCloudinaryAccounts, saveCloudinaryAccounts, verifyCloudinaryCredentials, deleteFromCloudinary } from '../lib/cloudinary';
 
 export const CloudinarySettingsSection: React.FC = () => {
   const [accounts, setAccounts] = useState<CloudinaryAccount[]>(() => getCloudinaryAccounts());
@@ -121,7 +121,14 @@ export const CloudinarySettingsSection: React.FC = () => {
       });
 
       if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
         setTestStatus(prev => ({ ...prev, [account.id]: 'success' }));
+        // Clean up test image immediately so no orphan assets remain in user's Cloudinary storage
+        if (resData?.public_id) {
+          try {
+            await deleteFromCloudinary([resData.public_id]);
+          } catch (_) {}
+        }
       } else {
         setTestStatus(prev => ({ ...prev, [account.id]: 'failed' }));
       }

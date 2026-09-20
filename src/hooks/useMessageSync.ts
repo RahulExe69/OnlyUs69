@@ -15,6 +15,33 @@ export interface UseMessageSyncOptions {
   onScrollToBottom?: (smooth?: boolean) => void;
 }
 
+const formatReplyText = (orig: any, isDeletedByMe: boolean) => {
+  if (orig.deleted) {
+    const isOrigMedia = Boolean(
+      orig.deleted_from_media ||
+      orig.media_deleted_by ||
+      orig.attachment_url ||
+      orig.media ||
+      (orig.mediaList && orig.mediaList.length > 0)
+    );
+    const origDeleterName =
+      (orig.deletedBy || orig.media_deleted_by || orig.deleted_from_media_by || orig.sender_role) === 'owner'
+        ? 'Rahul'
+        : 'Nusrat';
+    return isOrigMedia
+      ? `${origDeleterName} Deleted`
+      : isDeletedByMe
+      ? 'You deleted this message'
+      : 'This message was deleted';
+  }
+  if (orig.deleted_from_media) {
+    const origArchiverName =
+      (orig.deleted_from_media_by || orig.sender_role) === 'owner' ? 'Rahul' : 'Nusrat';
+    return `${origArchiverName} Archived`;
+  }
+  return orig.text;
+};
+
 export function useMessageSync({
   user,
   userProfile,
@@ -72,11 +99,7 @@ export function useMessageSync({
             : orig.sender_role === userProfile?.role;
           replyToObj = {
             id: orig.id,
-            text: orig.deleted
-              ? isOrigDeletedByMe
-                ? 'You deleted this message'
-                : 'This message was deleted'
-              : orig.text,
+            text: formatReplyText(orig, isOrigDeletedByMe),
             sender_role: orig.sender_role,
           };
         } else {
@@ -280,11 +303,7 @@ export function useMessageSync({
                       : orig.sender_role === userProfile?.role;
                     replyToObj = {
                       id: orig.id,
-                      text: orig.deleted
-                        ? isOrigDeletedByMe
-                          ? 'You deleted this message'
-                          : 'This message was deleted'
-                        : orig.text,
+                      text: formatReplyText(orig, isOrigDeletedByMe),
                       sender_role: orig.sender_role,
                     };
                   } else {
@@ -366,11 +385,7 @@ export function useMessageSync({
                       : orig.sender_role === userProfile?.role;
                     replyToObj = {
                       id: orig.id,
-                      text: orig.deleted
-                        ? isOrigDeletedByMe
-                          ? 'You deleted this message'
-                          : 'This message was deleted'
-                        : orig.text,
+                      text: formatReplyText(orig, isOrigDeletedByMe),
                       sender_role: orig.sender_role,
                     };
                   } else {

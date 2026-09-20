@@ -104,17 +104,22 @@ Deno.serve(async (req: Request) => {
         const parts = str.split('/upload/');
         if (parts.length >= 2) {
           const afterUpload = parts[1];
-          const segments = afterUpload.split('/');
-          const pathSegments: string[] = [];
-          for (const seg of segments) {
-            if (/^v\d+$/.test(seg)) continue; // skip version like v1726827000
-            if (seg.includes(',') || (seg.includes('_') && (seg.startsWith('w_') || seg.startsWith('h_') || seg.startsWith('c_') || seg.startsWith('q_') || seg.startsWith('f_')))) {
-              continue; // skip transforms
+          if (afterUpload.includes('onlyus_chat/')) {
+            const idx = afterUpload.indexOf('onlyus_chat/');
+            str = afterUpload.substring(idx);
+          } else {
+            const segments = afterUpload.split('/');
+            const pathSegments: string[] = [];
+            for (const seg of segments) {
+              if (/^v\d+$/.test(seg)) continue; // skip version like v1726827000
+              if (seg.includes(',') || /^[a-z]{1,3}_/i.test(seg) || /^t_[a-zA-Z0-9_-]+/i.test(seg)) {
+                continue; // skip transforms
+              }
+              pathSegments.push(seg);
             }
-            pathSegments.push(seg);
-          }
-          if (pathSegments.length > 0) {
-            str = pathSegments.join('/');
+            if (pathSegments.length > 0) {
+              str = pathSegments.join('/');
+            }
           }
         }
       }
@@ -255,17 +260,20 @@ Deno.serve(async (req: Request) => {
       if (remainingVariants.size === 0) break;
 
       const basicAuth = btoa(`${account.apiKey}:${account.apiSecret}`);
+      const idsToTry = Array.from(remainingVariants);
+      if (idsToTry.length === 0) break;
 
-      for (const resType of resourceTypes) {
-        if (remainingVariants.size === 0) break;
+      // Batch in groups of 50
+      const chunks: string[][] = [];
+      for (let i = 0; i < idsToTry.length; i += 50) {
+        chunks.push(idsToTry.slice(i, i + 50));
+      }
 
-        const idsToTry = Array.from(remainingVariants);
-        // Batch in groups of 50
-        for (let i = 0; i < idsToTry.length; i += 50) {
-          const chunk = idsToTry.slice(i, i + 50);
-          const queryParams = chunk.map(id => `public_ids[]=${encodeURIComponent(id)}`).join('&');
+      // Concurrently execute requests across chunks and resource types
+      const tasks = chunks.flatMap(chunk => {
+        const queryParams = chunk.map(id => `public_ids[]=${encodeURIComponent(id)}`).join('&');
+        return resourceTypes.map(async (resType) => {
           const deleteUrl = `https://api.cloudinary.com/v1_1/${account.cloudName}/resources/${resType}/upload?${queryParams}`;
-
           try {
             const delRes = await fetch(deleteUrl, {
               method: 'DELETE',
@@ -276,25 +284,31 @@ Deno.serve(async (req: Request) => {
 
             if (delRes.ok) {
               const resData = await delRes.json();
-              if (resData?.deleted) {
-                for (const [id, status] of Object.entries(resData.deleted)) {
-                  if (status === 'deleted') {
-                    deletedMap[id] = `deleted (${resType} on ${account.cloudName})`;
-                    remainingVariants.delete(id);
-
-                    // Mark corresponding raw ID as deleted
-                    for (const [rawId, vars] of idVariantMap.entries()) {
-                      if (vars.includes(id)) {
-                        resolvedRawDeleted.add(rawId);
-                        vars.forEach(v => remainingVariants.delete(v));
-                      }
-                    }
-                  }
-                }
-              }
+              return { success: true, resData, resType, cloudName: account.cloudName };
             }
           } catch (e) {
             console.warn(`Error deleting ${resType} on ${account.cloudName}:`, e);
+          }
+          return { success: false, resType, cloudName: account.cloudName };
+        });
+      });
+
+      const settled = await Promise.allSettled(tasks);
+      for (const item of settled) {
+        if (item.status === 'fulfilled' && item.value?.success && item.value.resData?.deleted) {
+          for (const [id, status] of Object.entries(item.value.resData.deleted)) {
+            if (status === 'deleted') {
+              deletedMap[id] = `deleted (${item.value.resType} on ${item.value.cloudName})`;
+              remainingVariants.delete(id);
+
+              // Mark corresponding raw ID as deleted
+              for (const [rawId, vars] of idVariantMap.entries()) {
+                if (vars.includes(id)) {
+                  resolvedRawDeleted.add(rawId);
+                  vars.forEach(v => remainingVariants.delete(v));
+                }
+              }
+            }
           }
         }
       }

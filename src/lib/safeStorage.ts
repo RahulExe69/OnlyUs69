@@ -61,6 +61,13 @@ export function sanitizeMessagesForCache(messages: Message[]): any[] {
       reactions: m.reactions || {},
       deleted: !!m.deleted,
       deletedBy: m.deletedBy,
+      deleted_from_media: !!m.deleted_from_media,
+      deleted_from_media_by: m.deleted_from_media_by,
+      deleted_from_media_at: m.deleted_from_media_at,
+      deleted_links_from_media: Array.isArray(m.deleted_links_from_media) ? m.deleted_links_from_media : [],
+      permanently_deleted_links: Array.isArray(m.permanently_deleted_links) ? m.permanently_deleted_links : [],
+      media_deleted_by: m.media_deleted_by,
+      media_deleted_at: m.media_deleted_at,
       hidden_for_owner: !!m.hidden_for_owner,
       hidden_for_partner: !!m.hidden_for_partner,
       isEdited: !!m.isEdited,
@@ -95,6 +102,9 @@ export function sanitizeMessagesForCache(messages: Message[]): any[] {
           mimeType: item.mimeType,
           url: item.url && item.url.startsWith('http') ? item.url : '',
           thumbnailUrl: item.thumbnailUrl && item.thumbnailUrl.length < 15000 ? item.thumbnailUrl : undefined,
+          deleted_from_media: !!item.deleted_from_media,
+          deleted_from_media_by: item.deleted_from_media_by,
+          deleted_from_media_at: item.deleted_from_media_at,
         }));
       }
     }
@@ -108,6 +118,9 @@ export function sanitizeMessagesForCache(messages: Message[]): any[] {
         mimeType: item.mimeType,
         url: item.url && item.url.startsWith('http') ? item.url : '',
         thumbnailUrl: item.thumbnailUrl && item.thumbnailUrl.length < 15000 ? item.thumbnailUrl : undefined,
+        deleted_from_media: !!item.deleted_from_media,
+        deleted_from_media_by: item.deleted_from_media_by,
+        deleted_from_media_at: item.deleted_from_media_at,
       }));
     }
 

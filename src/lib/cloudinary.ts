@@ -198,6 +198,14 @@ export function extractPublicIdFromUrl(url?: string): string | null {
     const parts = url.split('/upload/');
     if (parts.length < 2) return null;
     const afterUpload = parts[1];
+
+    // If onlyus_chat/ folder is present, directly capture from folder onwards
+    if (afterUpload.includes('onlyus_chat/')) {
+      const idx = afterUpload.indexOf('onlyus_chat/');
+      const pathWithExt = afterUpload.substring(idx).split('?')[0].split('#')[0];
+      return pathWithExt.replace(/\.[a-zA-Z0-9]{2,5}$/, '');
+    }
+
     const segments = afterUpload.split('/');
     const pathSegments: string[] = [];
     for (let i = 0; i < segments.length; i++) {
@@ -205,15 +213,8 @@ export function extractPublicIdFromUrl(url?: string): string | null {
       if (/^v\d+$/.test(seg)) continue; // skip version prefix like v1726827000
       if (
         seg.includes(',') ||
-        (seg.includes('_') &&
-          (seg.startsWith('w_') ||
-            seg.startsWith('h_') ||
-            seg.startsWith('c_') ||
-            seg.startsWith('q_') ||
-            seg.startsWith('f_') ||
-            seg.startsWith('fl_') ||
-            seg.startsWith('b_') ||
-            seg.startsWith('e_')))
+        /^[a-z]{1,3}_/i.test(seg) ||
+        /^t_[a-zA-Z0-9_-]+/i.test(seg)
       ) {
         continue; // skip transformation segment
       }
