@@ -190,6 +190,90 @@ export async function uploadToCloudinary(
 }
 
 /**
+ * Extract Cloudinary public_id from a Cloudinary delivery URL
+ */
+export function extractPublicIdFromUrl(url?: string): string | null {
+  if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return null;
+  try {
+    const parts = url.split('/upload/');
+    if (parts.length < 2) return null;
+    const afterUpload = parts[1];
+    const segments = afterUpload.split('/');
+    const pathSegments: string[] = [];
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (/^v\d+$/.test(seg)) continue; // skip version prefix like v1726827000
+      if (
+        seg.includes(',') ||
+        (seg.includes('_') &&
+          (seg.startsWith('w_') ||
+            seg.startsWith('h_') ||
+            seg.startsWith('c_') ||
+            seg.startsWith('q_') ||
+            seg.startsWith('f_') ||
+            seg.startsWith('fl_') ||
+            seg.startsWith('b_') ||
+            seg.startsWith('e_')))
+      ) {
+        continue; // skip transformation segment
+      }
+      pathSegments.push(seg);
+    }
+    if (pathSegments.length === 0) return null;
+    const fullPath = pathSegments.join('/').split('?')[0].split('#')[0];
+    return fullPath.replace(/\.[a-zA-Z0-9]{2,5}$/, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract all Cloudinary public_ids and URLs from a message or media object
+ */
+export function extractAllCloudinaryIds(obj: any): string[] {
+  if (!obj) return [];
+  const results = new Set<string>();
+
+  function inspectItem(item: any) {
+    if (!item) return;
+    if (item.public_id && typeof item.public_id === 'string') {
+      results.add(item.public_id.trim());
+    }
+    if (item.url && typeof item.url === 'string') {
+      const ext = extractPublicIdFromUrl(item.url);
+      if (ext) results.add(ext);
+      if (item.url.includes('cloudinary.com')) results.add(item.url);
+    }
+    if (item.thumbnailUrl && typeof item.thumbnailUrl === 'string') {
+      const ext = extractPublicIdFromUrl(item.thumbnailUrl);
+      if (ext) results.add(ext);
+    }
+    if (Array.isArray(item.mediaList)) {
+      item.mediaList.forEach(inspectItem);
+    }
+  }
+
+  // If obj is a message
+  if (obj.media) inspectItem(obj.media);
+  if (Array.isArray(obj.mediaList)) obj.mediaList.forEach(inspectItem);
+
+  // If obj is string attachment_url
+  if (typeof obj.attachment_url === 'string') {
+    const ext = extractPublicIdFromUrl(obj.attachment_url);
+    if (ext) results.add(ext);
+    try {
+      const parsed = JSON.parse(obj.attachment_url);
+      inspectItem(parsed);
+    } catch (_) {}
+  }
+
+  // If obj is itself an item
+  inspectItem(obj);
+
+  return Array.from(results).filter(Boolean);
+}
+
+/**
  * Delete media from Cloudinary via the Supabase delete-cloudinary Edge Function
  */
 export async function deleteFromCloudinary(publicIds: string[]): Promise<boolean> {
@@ -197,8 +281,22 @@ export async function deleteFromCloudinary(publicIds: string[]): Promise<boolean
   if (filtered.length === 0) return true;
 
   try {
+    // Check if we have credentials in localStorage accounts to pass as direct fallback
+    const accounts = getCloudinaryAccounts();
+    const activeWithKeys = accounts.find(a => a.cloudName && a.apiKey && a.apiSecret);
+
+    const payload: any = {
+      public_ids: filtered,
+    };
+
+    if (activeWithKeys) {
+      payload.cloud_name = activeWithKeys.cloudName;
+      payload.apiKey = activeWithKeys.apiKey;
+      payload.apiSecret = activeWithKeys.apiSecret;
+    }
+
     const { data, error } = await supabase.functions.invoke('delete-cloudinary', {
-      body: { public_ids: filtered },
+      body: payload,
     });
 
     if (error) {

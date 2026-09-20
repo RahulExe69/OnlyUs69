@@ -13,7 +13,7 @@ import { WhatsAppMediaBubble } from './components/WhatsAppMediaBubble';
 import { FullscreenMediaViewer } from './components/FullscreenMediaViewer';
 import { MediaSendPreviewModal, SelectedMediaFile } from './components/MediaSendPreviewModal';
 import { saveLocalMedia, getLocalMedia, initMediaSyncListener } from './lib/mediaStore';
-import { uploadToCloudinary, syncCloudinaryFromAppConfig } from './lib/cloudinary';
+import { uploadToCloudinary, syncCloudinaryFromAppConfig, deleteFromCloudinary, extractAllCloudinaryIds } from './lib/cloudinary';
 import { processImageLossless, blobToDataUrl } from './lib/imageProcessor';
 import { useOverlayBack, hasOpenOverlays, popOverlay } from './lib/overlayManager';
 import { cacheMessages, loadCachedMessages, safeSetItem, safeGetItem, safeRemoveItem } from './lib/safeStorage';
@@ -1764,16 +1764,29 @@ export default function App() {
     
     try {
       if (everyone) {
-        // Delete for Everyone (Update Database with placeholder)
+        // Delete for Everyone (Update Database with placeholder and purge media from Cloudinary)
         const messagesToUpdate = messagesToProcess
           .filter(m => m.sender_role === userProfile?.role && !m.deleted)
           .map(m => m.id)
           .filter(id => !id.startsWith('temp-'));
+
+        // Collect all Cloudinary media public_ids across the deleted messages
+        const publicIdsToPurge: string[] = [];
+        messagesToProcess.forEach(m => {
+          const ids = extractAllCloudinaryIds(m);
+          ids.forEach(id => publicIdsToPurge.push(id));
+        });
+
+        if (publicIdsToPurge.length > 0) {
+          deleteFromCloudinary(publicIdsToPurge).catch(cldErr => {
+            console.warn('Notice: Background Cloudinary media deletion error:', cldErr);
+          });
+        }
         
         // Optimistic UI update
         setMessages(prev => {
           const updated = prev.map(m => 
-            messagesToProcess.some(sm => sm.id === m.id && sm.sender_role === userProfile?.role)
+            messagesToProcess.some(sm => sm.id === m.id)
               ? { 
                   ...m, 
                   deleted: true, 
@@ -1814,7 +1827,7 @@ export default function App() {
           );
         }
       } else {
-        // Delete for Me (If partner already deleted from their side, permanently delete from Database)
+        // Delete for Me (If partner already deleted from their side, permanently delete from Database and Cloudinary)
         const currentRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
         const visibilityField = currentRole === 'owner' ? 'hidden_for_owner' : 'hidden_for_partner';
         const partnerVisibilityField = currentRole === 'owner' ? 'hidden_for_partner' : 'hidden_for_owner';
@@ -1831,6 +1844,23 @@ export default function App() {
             idsToHideOnly.push(m.id);
           }
         });
+
+        // If messages are permanently purged because both sides deleted, purge Cloudinary media
+        if (idsToDeleteCompletely.length > 0) {
+          const publicIdsToPurge: string[] = [];
+          messagesToProcess
+            .filter(m => idsToDeleteCompletely.includes(m.id))
+            .forEach(m => {
+              const ids = extractAllCloudinaryIds(m);
+              ids.forEach(id => publicIdsToPurge.push(id));
+            });
+
+          if (publicIdsToPurge.length > 0) {
+            deleteFromCloudinary(publicIdsToPurge).catch(cldErr => {
+              console.warn('Notice: Background Cloudinary media deletion error:', cldErr);
+            });
+          }
+        }
 
         // Optimistic UI update: hide locally immediately
         setMessages(prev => {
@@ -2365,6 +2395,17 @@ export default function App() {
               myProfile={userProfile}
               partnerProfile={partnerProfile}
               onViewMedia={handleOpenGalleryMedia}
+              onUpdateMessages={(updatedMsgs) => {
+                setMessages(prev => {
+                  const map = new Map(updatedMsgs.map(u => [u.id, u]));
+                  const next = prev.map(m => {
+                    const found = map.get(m.id);
+                    return found ? { ...m, ...found } : m;
+                  });
+                  cacheMessages(next);
+                  return next;
+                });
+              }}
             />
           )}
         </AnimatePresence>
@@ -3358,18 +3399,6 @@ const ChatView = React.memo(function ChatView({
           style={{ touchAction: 'pan-y' }}
           className="flex-1 overflow-y-auto pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
         >
-          {petSettings && (
-            <ChatPetCompanion 
-              settings={petSettings} 
-              onUpdateSettings={onUpdatePetSettings}
-              lastMessageId={messages[messages.length - 1]?.id} 
-              lastMessageText={messages[messages.length - 1]?.text}
-              lastMessageSender={messages[messages.length - 1]?.sender_role === 'owner' ? 'Rahul' : partnerName}
-              isTyping={socketTypingUsers.length > 0} 
-              partnerName={partnerName}
-              currentUserRole={role}
-            />
-          )}
           {quotaExceeded && <QuotaBanner />}
           <div className="flex justify-center mb-10 pt-6">
             <span className="text-[9px] font-bold text-[var(--theme-accent)] uppercase tracking-[0.4em] bg-[var(--theme-surface)]/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-[var(--theme-border)]">Our Story Begins Here</span>
@@ -3514,6 +3543,19 @@ const ChatView = React.memo(function ChatView({
         externalTriggerVoiceRecord={triggerVoiceRecord}
         onClearExternalVoiceRecordTrigger={() => setTriggerVoiceRecord(false)}
       />
+
+      {petSettings && (
+        <ChatPetCompanion 
+          settings={petSettings} 
+          onUpdateSettings={onUpdatePetSettings}
+          lastMessageId={messages[messages.length - 1]?.id} 
+          lastMessageText={messages[messages.length - 1]?.text}
+          lastMessageSender={messages[messages.length - 1]?.sender_role === 'owner' ? 'Rahul' : partnerName}
+          isTyping={socketTypingUsers.length > 0} 
+          partnerName={partnerName}
+          currentUserRole={role}
+        />
+      )}
 
       {/* Hidden file inputs for Camera, Gallery, and Audio */}
       <input 
