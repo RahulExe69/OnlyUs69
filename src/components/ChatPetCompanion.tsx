@@ -147,6 +147,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const targetEyeOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
   const idleGazeTimerRef = useRef<number>(0);
   const breathePhaseRef = useRef<number>(0);
+  const yawProgressRef = useRef<number>(0); // 0.0 (2.0D front-facing) -> 1.0 (2.5D 3/4 profile)
 
   // Floating particles (hearts, zzz, sparkles)
   const particlesRef = useRef<Particle[]>([]);
@@ -1208,6 +1209,20 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         }
       }
 
+      // Continuous Multi-Perspective Yaw Interpolation:
+      // Smoothly blends across 2.0D (0.0) -> 2.1D (0.25) -> 2.2D (0.50) -> 2.3D (0.75) -> 2.4D-2.5D (1.0)
+      const isLookingAtUser =
+        stateRef.current === 'purring' ||
+        stateRef.current === 'alert' ||
+        stateRef.current === 'peeking' ||
+        stateRef.current === 'typing_wait' ||
+        stateRef.current === 'loaf' ||
+        (stateRef.current === 'idle' && Math.sin(breathePhaseRef.current * 0.35) > -0.65);
+
+      const targetYaw = isLookingAtUser ? 0.0 : 1.0;
+      // Butter-smooth spring easing transition
+      yawProgressRef.current += (targetYaw - yawProgressRef.current) * 0.10;
+
       // --- RENDERING TO LOCAL 160x140 CANVAS ---
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -1239,7 +1254,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         groomPhaseRef.current,
         stretchPhaseRef.current,
         eyeOffsetRef.current,
-        breathePhaseRef.current
+        breathePhaseRef.current,
+        settings.is25D || false,
+        yawProgressRef.current
       );
 
       ctx.restore();
@@ -1309,7 +1326,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         msgContainerEl.removeEventListener('scroll', handleMsgScroll);
       }
     };
-  }, [settings.enabled, settings.breed, settings.accessory, getPlatformRect, scanPlatforms, startJump, checkTypingBoxCollision, addParticle]);
+  }, [settings.enabled, settings.breed, settings.accessory, settings.is25D, getPlatformRect, scanPlatforms, startJump, checkTypingBoxCollision, addParticle]);
 
   if (!settings.enabled) return null;
 
@@ -1354,22 +1371,23 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 // -------------------------------------------------------------
 // 🎨 HAND-CRAFTED 2D VECTOR KITTEN RENDERER (Catalyststuff Vector Aesthetic)
 // -------------------------------------------------------------
-export function drawCuteKitten(
-  ctx: CanvasRenderingContext2D,
-  state: CatState,
-  breed: PetBreed,
-  accessory: PetAccessory,
-  walkPhase: number,
-  tailWave: number,
-  buttWiggle: number,
-  isBlinking: boolean,
-  earTwitchTimer: number,
-  groomPhase: number = 0,
-  stretchPhase: number = 0,
-  eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
-  breathePhase: number = 0
-) {
-  // Signature cartoon vector color palettes
+export interface KittenPalette {
+  bodyColor: string;
+  bellyColor: string;
+  outlineColor: string;
+  earPink: string;
+  eyeHighlight: string;
+  noseColor: string;
+  padColor: string;
+  whiskerColor: string;
+  spotColor1: string | null;
+  spotColor2: string | null;
+  eyeColor: string;
+  pawColor: string;
+  farShadeColor: string;
+}
+
+export function getPetPalette(breed: PetBreed): KittenPalette {
   let bodyColor = '#FFFFFF';
   let bellyColor = '#FFF9FC';
   let outlineColor = '#2A2733';   // Crisp bold charcoal vector stroke
@@ -1382,9 +1400,9 @@ export function drawCuteKitten(
   let spotColor2: string | null = null;
   let eyeColor = '#22202A';
   let pawColor = bodyColor;
+  let farShadeColor = 'rgba(28, 25, 38, 0.16)';
 
   if (breed === 'mochi') {
-    // Pure snowy milky kitten (100% match to reference photo)
     bodyColor = '#FFFFFF';
     bellyColor = '#FFF9FC';
     outlineColor = '#2A2733';
@@ -1392,8 +1410,8 @@ export function drawCuteKitten(
     noseColor = '#FF8DA5';
     eyeColor = '#22202A';
     pawColor = '#FFFFFF';
+    farShadeColor = 'rgba(28, 25, 38, 0.14)';
   } else if (breed === 'calico') {
-    // Calico with sweet apricot & chocolate patches
     bodyColor = '#FCFAF8';
     bellyColor = '#FFF9FC';
     spotColor1 = '#F59E0B'; // warm apricot
@@ -1403,8 +1421,8 @@ export function drawCuteKitten(
     noseColor = '#FB7185';
     eyeColor = '#22202A';
     pawColor = '#FCFAF8';
+    farShadeColor = 'rgba(43, 34, 30, 0.16)';
   } else if (breed === 'caramel') {
-    // Honey ginger tabby kitten
     bodyColor = '#FB923C';
     bellyColor = '#FEF3C7';
     spotColor1 = '#C2410C'; // tabby stripes
@@ -1413,8 +1431,8 @@ export function drawCuteKitten(
     noseColor = '#EA580C';
     eyeColor = '#22202A';
     pawColor = '#FB923C';
+    farShadeColor = 'rgba(56, 26, 8, 0.18)';
   } else if (breed === 'luna') {
-    // Velvet midnight black kitten
     bodyColor = '#23232B';
     bellyColor = '#2F2F3B';
     outlineColor = '#111116';
@@ -1424,8 +1442,8 @@ export function drawCuteKitten(
     whiskerColor = 'rgba(240, 240, 250, 0.7)';
     eyeColor = '#34D399';
     pawColor = '#FFFFFF';
+    farShadeColor = 'rgba(0, 0, 0, 0.25)';
   } else if (breed === 'siamese') {
-    // Seal Point Siamese kitten (creamy silk with espresso points & sapphire eyes)
     bodyColor = '#F5EBE6';
     bellyColor = '#FAF5F0';
     outlineColor = '#3A2926';
@@ -1436,8 +1454,8 @@ export function drawCuteKitten(
     whiskerColor = '#3A2926';
     eyeColor = '#0284C7'; // sapphire sky blue
     pawColor = '#4A3531';
+    farShadeColor = 'rgba(58, 41, 38, 0.18)';
   } else if (breed === 'tuxedo') {
-    // Dapper Tuxedo kitten (formal black coat, white socks & golden topaz eyes)
     bodyColor = '#1E1E24';
     bellyColor = '#FFFFFF';
     outlineColor = '#111116';
@@ -1447,8 +1465,8 @@ export function drawCuteKitten(
     whiskerColor = 'rgba(255, 255, 255, 0.85)';
     eyeColor = '#EAB308'; // golden topaz
     pawColor = '#FFFFFF';
+    farShadeColor = 'rgba(0, 0, 0, 0.28)';
   } else if (breed === 'silver') {
-    // Silver British Shorthair (soft misty slate coat with emerald green eyes)
     bodyColor = '#94A3B8';
     bellyColor = '#E2E8F0';
     outlineColor = '#334155';
@@ -1458,8 +1476,8 @@ export function drawCuteKitten(
     whiskerColor = '#1E293B';
     eyeColor = '#059669'; // seafoam emerald
     pawColor = '#94A3B8';
+    farShadeColor = 'rgba(30, 41, 59, 0.18)';
   } else if (breed === 'cinnamon') {
-    // Warm Cinnamon Tabby (rich terracotta coat with amber eyes)
     bodyColor = '#C27852';
     bellyColor = '#FEF3C7';
     spotColor1 = '#7C2D12';
@@ -1470,8 +1488,8 @@ export function drawCuteKitten(
     whiskerColor = '#451A03';
     eyeColor = '#D97706'; // honey amber
     pawColor = '#C27852';
+    farShadeColor = 'rgba(69, 26, 3, 0.18)';
   } else if (breed === 'berry') {
-    // Sweet Strawberry Milk (pastel blush pink kitten with sparkling ruby eyes)
     bodyColor = '#FDE8EF';
     bellyColor = '#FFF5F8';
     outlineColor = '#831843';
@@ -1481,7 +1499,56 @@ export function drawCuteKitten(
     whiskerColor = '#9D174D';
     eyeColor = '#BE185D'; // sparkling ruby
     pawColor = '#FDE8EF';
+    farShadeColor = 'rgba(131, 24, 67, 0.14)';
   }
+
+  return {
+    bodyColor,
+    bellyColor,
+    outlineColor,
+    earPink,
+    eyeHighlight,
+    noseColor,
+    padColor,
+    whiskerColor,
+    spotColor1,
+    spotColor2,
+    eyeColor,
+    pawColor,
+    farShadeColor,
+  };
+}
+
+export function drawCuteKitten2D(
+  ctx: CanvasRenderingContext2D,
+  state: CatState,
+  breed: PetBreed,
+  accessory: PetAccessory,
+  walkPhase: number,
+  tailWave: number,
+  buttWiggle: number,
+  isBlinking: boolean,
+  earTwitchTimer: number,
+  groomPhase: number = 0,
+  stretchPhase: number = 0,
+  eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  breathePhase: number = 0,
+  palette: KittenPalette
+) {
+  const {
+    bodyColor,
+    bellyColor,
+    outlineColor,
+    earPink,
+    eyeHighlight,
+    noseColor,
+    padColor,
+    whiskerColor,
+    spotColor1,
+    spotColor2,
+    eyeColor,
+    pawColor,
+  } = palette;
 
   // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
   ctx.save();
@@ -1891,7 +1958,7 @@ export function drawCuteKitten(
   ctx.stroke();
 
   // ACCESSORIES (Rendered cleanly on head)
-  drawAccessory(ctx, accessory);
+  drawAccessory(ctx, accessory, false);
 
   ctx.restore(); // end Head
 
@@ -1985,13 +2052,949 @@ export function drawCuteKitten(
 }
 
 // -------------------------------------------------------------
-// 🎀 ACCESSORIES RENDERER
+// 🌟 2.5D VOLUMETRIC KITTEN RENDERER (V2 Polish & True Trot Kinematics)
+// Genuine 3/4 depth perspective, cohesive connected feline anatomy,
+// authentic 4-beat diagonal trot (Zero Moonwalk: forward swing while lifted,
+// grounded push while stance), large expressive sparkling eyes, and rich depth.
 // -------------------------------------------------------------
-function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
+export function drawCuteKitten25D(
+  ctx: CanvasRenderingContext2D,
+  state: CatState,
+  breed: PetBreed,
+  accessory: PetAccessory,
+  walkPhase: number,
+  tailWave: number,
+  buttWiggle: number,
+  isBlinking: boolean,
+  earTwitchTimer: number,
+  groomPhase: number = 0,
+  stretchPhase: number = 0,
+  eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  breathePhase: number = 0,
+  palette: KittenPalette,
+  yawProgress: number = 0
+) {
+  const {
+    bodyColor,
+    bellyColor,
+    outlineColor,
+    earPink,
+    eyeHighlight,
+    noseColor,
+    padColor,
+    whiskerColor,
+    spotColor1,
+    spotColor2,
+    eyeColor,
+    pawColor,
+    farShadeColor,
+  } = palette;
+
+  // 1. Soft Dynamic Ground Drop Shadow in 2.5D Perspective
+  ctx.save();
+  ctx.beginPath();
+  const shadowScale = state === 'pre_jump' ? 1.25 : (state === 'loaf' ? 1.15 : (state === 'jumping' ? 0.55 : 1.0));
+  const shadowAlpha = state === 'jumping' ? 0.08 : 0.20;
+  const shadowOffsetX = state === 'walking' ? Math.sin(walkPhase) * 0.6 : 0;
+  ctx.ellipse(shadowOffsetX - 0.5, 0.5, 17.0 * shadowScale, 4.2 * shadowScale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(28, 22, 38, ${shadowAlpha})`;
+  ctx.fill();
+  ctx.restore();
+
+  // Butt wiggle offset (during pre_jump crouch)
+  const buttX = state === 'pre_jump' ? Math.sin(buttWiggle) * 3.2 : 0;
+  const buttY = state === 'pre_jump' ? Math.abs(Math.cos(buttWiggle)) * 1.4 : 0;
+
+  // Rhythmic kinematics
+  const isRelaxed = state === 'idle' || state === 'loaf' || state === 'purring' || state === 'peeking';
+  const breath = isRelaxed ? Math.sin(breathePhase) : 0;
+  const purrRumble = state === 'purring' ? Math.sin(breathePhase * 5) * 0.35 : 0;
+
+  // Natural trot bounce & undulating feline spine / scapula kinematics
+  const walkBob = state === 'walking' ? -Math.cos(walkPhase * 2) * 0.95 : 0;
+  // Feline scapular / pelvic counter-undulation
+  const shoulderBob = state === 'walking' ? Math.sin(walkPhase) * 0.75 : 0;
+  const pelvisBob = state === 'walking' ? -Math.sin(walkPhase + 0.15) * 0.65 : 0;
+  const walkPitch = state === 'walking' ? (shoulderBob - pelvisBob) * 0.038 : 0;
+
+  // -------------------------------------------------------------
+  // 🐾 SKELETAL GAIT KINEMATICS & FORWARD KINEMATICS (FK)
+  // Articulated 2-bone joint bending, knuckle peel, and paw compression
+  // -------------------------------------------------------------
+  const stride = 3.6;
+  const maxLift = 2.8;
+
+  interface LegKinematics {
+    stepX: number;
+    liftY: number;
+    isAirborne: boolean;
+    pawAngle: number;
+    pawSquashX: number;
+    pawSquashY: number;
+    kneeFlexX: number;
+    kneeFlexY: number;
+  }
+
+  const calcLimbKinematics = (phaseOffset: number, isFrontLeg: boolean): LegKinematics => {
+    if (state !== 'walking') {
+      return {
+        stepX: 0,
+        liftY: 0,
+        isAirborne: false,
+        pawAngle: 0,
+        pawSquashX: 1.0,
+        pawSquashY: 1.0,
+        kneeFlexX: 0,
+        kneeFlexY: 0,
+      };
+    }
+    let phi = (walkPhase + phaseOffset) % (Math.PI * 2);
+    if (phi < 0) phi += Math.PI * 2;
+
+    if (phi < Math.PI) {
+      // --- SWING PHASE (Airborne, lifting up and advancing forward) ---
+      const u = phi / Math.PI; // normalized 0..1 in swing
+      const liftY = Math.sin(phi) * maxLift;
+      // Advances forward in direction of travel from -stride to +stride
+      const stepX = -Math.cos(phi) * stride;
+
+      // Paw Knuckle Peel & Flexion:
+      // Early swing: toes trail slightly; Mid/late swing: reaches forward for next foothold
+      const pawAngle = isFrontLeg
+        ? -Math.sin(u * Math.PI) * 0.28
+        : -Math.sin(u * Math.PI) * 0.35;
+
+      // 2-Bone Joint Articulation (Elbow/Knee Forward Kinematics):
+      // Front leg: elbow tucks backward, wrist swings forward
+      // Hind leg: knee flexes forward and up to pull paw through smoothly
+      const jointSin = Math.sin(u * Math.PI);
+      const kneeFlexX = isFrontLeg ? -jointSin * 1.3 : jointSin * 1.6;
+      const kneeFlexY = -jointSin * (isFrontLeg ? 1.4 : 1.9);
+
+      return {
+        stepX,
+        liftY,
+        isAirborne: true,
+        pawAngle,
+        pawSquashX: 0.95,
+        pawSquashY: 1.05,
+        kneeFlexX,
+        kneeFlexY,
+      };
+    } else {
+      // --- STANCE PHASE (Grounded, bearing weight and pushing backward) ---
+      const v = (phi - Math.PI) / Math.PI; // normalized 0..1 in stance
+      const stepX = -Math.cos(phi) * stride; // pushes backward from +stride to -stride
+      const weightFactor = Math.sin(v * Math.PI); // peak load at mid-stance
+
+      // Paw compression & spread under kitten body weight
+      const pawSquashX = 1.0 + weightFactor * 0.14;
+      const pawSquashY = 1.0 - weightFactor * 0.12;
+
+      // Leg straightens and extends as it propels the torso forward
+      const kneeFlexX = stepX * 0.25;
+      const kneeFlexY = weightFactor * 0.4;
+
+      return {
+        stepX,
+        liftY: 0,
+        isAirborne: false,
+        pawAngle: 0,
+        pawSquashX,
+        pawSquashY,
+        kneeFlexX,
+        kneeFlexY,
+      };
+    }
+  };
+
+  // Diagonal trot pairs with authentic feline phase offset
+  const nearFrontGait = calcLimbKinematics(0, true);
+  const farHindGait = calcLimbKinematics(0.12, false);
+  const farFrontGait = calcLimbKinematics(Math.PI, true);
+  const nearHindGait = calcLimbKinematics(Math.PI + 0.12, false);
+
+  let farHindStep = farHindGait.stepX;
+  let farHindLift = farHindGait.liftY;
+  let farFrontStep = farFrontGait.stepX;
+  let farFrontLift = farFrontGait.liftY;
+  let nearHindStep = nearHindGait.stepX;
+  let nearHindLift = nearHindGait.liftY;
+  let nearFrontStep = nearFrontGait.stepX;
+  let nearFrontLift = nearFrontGait.liftY;
+
+  if (state === 'stretching') {
+    const stretchDist = Math.sin(stretchPhase) * 3.2;
+    farFrontStep = 4.0 + stretchDist;
+    nearFrontStep = 4.8 + stretchDist;
+    farHindStep = -4.0 - stretchDist * 0.4;
+    nearHindStep = -4.2 - stretchDist * 0.4;
+  } else if (state === 'jumping') {
+    farFrontStep = 3.8;
+    farFrontLift = 2.2;
+    nearFrontStep = 4.2;
+    nearFrontLift = 2.6;
+    farHindStep = -4.5;
+    farHindLift = -1.2;
+    nearHindStep = -4.0;
+    nearHindLift = -1.0;
+  }
+
+  // -------------------------------------------------------------
+  // 2. FAR LIMBS (Z < 0: BACKGROUND DEPTH LAYER)
+  // Seamless continuous limb contours with soft depth shading (Zero segmented borders)
+  // -------------------------------------------------------------
+  if (state !== 'loaf') {
+    ctx.save();
+
+    if (state === 'walking') {
+      // --- FAR HIND LEG & PAW (Continuous flowing limb during trot) ---
+      const fHindPawX = -8.5 + farHindStep;
+      const fHindPawY = -1.6 - farHindLift;
+      const fKneeX = -8.5 + farHindStep * 0.45 + farHindGait.kneeFlexX - 1.2;
+      const fKneeY = -8.0 + farHindGait.kneeFlexY;
+
+      ctx.beginPath();
+      ctx.moveTo(-9.5, -9.0);
+      ctx.quadraticCurveTo(fKneeX - 1.8, fKneeY, fHindPawX - 2.6, fHindPawY - 0.4);
+      ctx.quadraticCurveTo(fHindPawX - 3.0, fHindPawY + 2.4, fHindPawX, fHindPawY + 2.5);
+      ctx.quadraticCurveTo(fHindPawX + 3.0, fHindPawY + 2.4, fHindPawX + 2.6, fHindPawY - 0.4);
+      ctx.quadraticCurveTo(fKneeX + 1.8, fKneeY, -6.8, -8.0);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+      ctx.fillStyle = farShadeColor;
+      ctx.fill();
+
+      // Open outline stroke without dividing lines
+      ctx.beginPath();
+      ctx.moveTo(-9.5, -9.0);
+      ctx.quadraticCurveTo(fKneeX - 1.8, fKneeY, fHindPawX - 2.6, fHindPawY - 0.4);
+      ctx.quadraticCurveTo(fHindPawX - 3.0, fHindPawY + 2.4, fHindPawX, fHindPawY + 2.5);
+      ctx.quadraticCurveTo(fHindPawX + 3.0, fHindPawY + 2.4, fHindPawX + 2.6, fHindPawY - 0.4);
+      ctx.quadraticCurveTo(fKneeX + 1.8, fKneeY, -6.8, -8.0);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // --- FAR FRONT LEG & PAW (Continuous flowing arm during trot) ---
+      const fFrontPawX = 1.2 + farFrontStep;
+      const fFrontPawY = -1.6 - farFrontLift;
+      const fElbowX = 1.0 + farFrontStep * 0.4 + farFrontGait.kneeFlexX - 0.8;
+      const fElbowY = -7.5 + farFrontGait.kneeFlexY;
+
+      ctx.beginPath();
+      ctx.moveTo(-0.5, -9.0);
+      ctx.quadraticCurveTo(fElbowX - 1.6, fElbowY, fFrontPawX - 2.4, fFrontPawY - 0.4);
+      ctx.quadraticCurveTo(fFrontPawX - 2.8, fFrontPawY + 2.4, fFrontPawX, fFrontPawY + 2.6);
+      ctx.quadraticCurveTo(fFrontPawX + 2.8, fFrontPawY + 2.4, fFrontPawX + 2.4, fFrontPawY - 0.4);
+      ctx.quadraticCurveTo(fElbowX + 1.6, fElbowY, 2.8, -8.5);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+      ctx.fillStyle = farShadeColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-0.5, -9.0);
+      ctx.quadraticCurveTo(fElbowX - 1.6, fElbowY, fFrontPawX - 2.4, fFrontPawY - 0.4);
+      ctx.quadraticCurveTo(fFrontPawX - 2.8, fFrontPawY + 2.4, fFrontPawX, fFrontPawY + 2.6);
+      ctx.quadraticCurveTo(fFrontPawX + 2.8, fFrontPawY + 2.4, fFrontPawX + 2.4, fFrontPawY - 0.4);
+      ctx.quadraticCurveTo(fElbowX + 1.6, fElbowY, 2.8, -8.5);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    } else {
+      // Resting far front paw beside near paw in 3/4 sitting pose
+      const fPawX = 2.0;
+      const fPawY = -1.8;
+      ctx.beginPath();
+      ctx.ellipse(fPawX, fPawY, 3.2, 3.0, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.fillStyle = farShadeColor;
+      ctx.fill();
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // -------------------------------------------------------------
+  // 3. 3/4 VECTOR TAIL (Skeletal Multi-Segment Lagging Harmonic Pendulum)
+  // -------------------------------------------------------------
+  ctx.save();
+  const tailBaseX = -7.8 + buttX;
+  const tailBaseY = -10.0 + buttY + walkBob * 0.4 + pelvisBob * 0.5;
+
+  ctx.beginPath();
+  ctx.moveTo(tailBaseX, tailBaseY);
+
+  if (state === 'loaf') {
+    // Cozy curled tail wrapping around near flank
+    const breatheNap = Math.sin(Date.now() * 0.003) * 0.5;
+    ctx.bezierCurveTo(
+      tailBaseX - 3, tailBaseY + 3,
+      -2, tailBaseY + 7 + breatheNap,
+      7, tailBaseY + 4 + breatheNap
+    );
+  } else if (state === 'clinging') {
+    ctx.bezierCurveTo(
+      tailBaseX - 5, tailBaseY - 5,
+      tailBaseX - 12, tailBaseY - 3,
+      tailBaseX - 18, tailBaseY - 7
+    );
+  } else {
+    // Multi-segment lagging physics:
+    // Base lags slightly, mid segment arches, tip swishes with delayed whip follow-through
+    const waveBase = Math.sin(tailWave) * 2.2;
+    const waveMid = Math.sin(tailWave - 0.45) * 4.2;
+    const waveTip = Math.sin(tailWave - 0.95) * 6.8;
+
+    // Lower caudal vertebrae
+    const cp1x = tailBaseX - 5.0 + waveBase * 0.35;
+    const cp1y = tailBaseY - 4.5;
+    // Mid tail arch
+    const cp2x = tailBaseX - 9.2 + waveMid * 0.65;
+    const cp2y = tailBaseY - 15.0;
+    // Flexible tip follow-through
+    const tipX = tailBaseX - 4.2 + waveTip * 0.85;
+    const tipY = tailBaseY - 22.0 + Math.abs(waveTip) * 0.25;
+
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY);
+  }
+
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 4.6;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.strokeStyle = breed === 'siamese' ? '#4A3531' : bodyColor;
+  ctx.lineWidth = 3.0;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.restore();
+
+  // -------------------------------------------------------------
+  // 4. VOLUMETRIC 3/4 TORSO & FLANK (Plump, Chubby, Harmonious)
+  // -------------------------------------------------------------
+  ctx.save();
+  const bodyX = buttX * 0.3;
+  const bodyY = -12.2 + (state === 'pre_jump' ? 2.2 : 0) + walkBob - breath * 0.35 + purrRumble;
+
+  ctx.translate(bodyX, bodyY);
+  ctx.rotate(walkPitch);
+
+  // Chubby 3/4 Torso (Smooth continuous curve)
+  const bodyRadiusX = 13.5 - breath * 0.2;
+  const bodyRadiusY = 10.6 + breath * 0.4;
+  ctx.beginPath();
+  ctx.ellipse(-1.0, 0, bodyRadiusX, bodyRadiusY, 0.06, 0, Math.PI * 2);
+  ctx.fillStyle = bodyColor;
+  ctx.fill();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // Soft Ambient Underbelly Shading (Gently contoured, not a harsh band)
+  ctx.save();
+  ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(-1.0, 8.2, bodyRadiusX * 0.95, 3.8, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(28, 22, 38, 0.08)';
+  ctx.fill();
+  ctx.restore();
+
+  // Tabby Flank Stripes in 3/4 Perspective
+  if (spotColor1 && (breed === 'caramel' || breed === 'cinnamon')) {
+    ctx.save();
+    ctx.strokeStyle = spotColor1;
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-5.5, -6.5);
+    ctx.quadraticCurveTo(-4.5, -1.5, -3.0, 2.5);
+    ctx.moveTo(-1.0, -7.5);
+    ctx.quadraticCurveTo(0.2, -1.5, 2.0, 2.5);
+    ctx.moveTo(3.8, -6.5);
+    ctx.quadraticCurveTo(4.8, -1.5, 5.8, 1.8);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Calico Body Patches in 3/4 Perspective (Soft rounded flank markings)
+  if (spotColor1 && breed === 'calico') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(-4.2, -3.0, 4.8, 3.8, 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = spotColor1;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Soft White Creamy Belly & Chest Bib (Wrapping gracefully forward in 3/4 view)
+  ctx.beginPath();
+  ctx.ellipse(3.0, 1.2, 7.6 - breath * 0.2, 6.2 + breath * 0.35, 0.16, 0, Math.PI * 2);
+  ctx.fillStyle = bellyColor;
+  ctx.fill();
+
+  ctx.restore(); // end Torso
+
+  // -------------------------------------------------------------
+  // 5. FOREGROUND LIMBS (Z > 0: NEAR HAUNCH & NEAR PAWS)
+  // Seamlessly integrated limbs with natural organic folds & continuous contours
+  // -------------------------------------------------------------
+  if (state !== 'loaf') {
+    ctx.save();
+
+    // --- NEAR REAR HAUNCH (Seamless Thigh Fold - ZERO Closed Drumstick Border) ---
+    const haunchY = bodyY + 2.8 + pelvisBob * 0.4;
+    ctx.save();
+    // Gentle open crease curve suggesting where the chubby thigh naturally rests
+    ctx.beginPath();
+    ctx.arc(-5.2 + buttX * 0.3, haunchY + 0.6, 3.8, -Math.PI * 0.42, Math.PI * 0.12);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    // --- NEAR REAR LEG & PAW ---
+    const nHindPawX = -6.0 + nearHindStep + buttX * 0.3;
+    const nHindPawY = -1.5 - nearHindLift;
+
+    if (state === 'walking') {
+      const kneeX = -6.0 + nearHindStep * 0.5 + nearHindGait.kneeFlexX;
+      const kneeY = haunchY + 3.2 + nearHindGait.kneeFlexY;
+
+      // Single continuous flowing leg & paw contour (No line separating paw from leg)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-6.2 + buttX * 0.3 - 2.4, haunchY + 1.8);
+      ctx.quadraticCurveTo(kneeX - 2.0, kneeY, nHindPawX - 2.8, nHindPawY - 0.6);
+      ctx.quadraticCurveTo(nHindPawX - 3.2, nHindPawY + 2.8, nHindPawX, nHindPawY + 3.0);
+      ctx.quadraticCurveTo(nHindPawX + 3.2, nHindPawY + 2.8, nHindPawX + 2.8, nHindPawY - 0.6);
+      ctx.quadraticCurveTo(kneeX + 2.0, kneeY, -6.2 + buttX * 0.3 + 2.8, haunchY + 2.2);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-6.2 + buttX * 0.3 - 2.2, haunchY + 1.8);
+      ctx.quadraticCurveTo(kneeX - 2.0, kneeY, nHindPawX - 2.8, nHindPawY - 0.6);
+      ctx.quadraticCurveTo(nHindPawX - 3.2, nHindPawY + 2.8, nHindPawX, nHindPawY + 3.0);
+      ctx.quadraticCurveTo(nHindPawX + 3.2, nHindPawY + 2.8, nHindPawX + 2.8, nHindPawY - 0.6);
+      ctx.quadraticCurveTo(kneeX + 2.0, kneeY, -6.2 + buttX * 0.3 + 2.6, haunchY + 2.2);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Near rear toe notches
+      ctx.beginPath();
+      ctx.moveTo(nHindPawX - 1.1, nHindPawY + 0.6);
+      ctx.lineTo(nHindPawX - 1.1, nHindPawY + 2.6);
+      ctx.moveTo(nHindPawX + 1.1, nHindPawY + 0.6);
+      ctx.lineTo(nHindPawX + 1.1, nHindPawY + 2.6);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+
+      // Pink paw pad peek during trot swing lift
+      if (nearHindGait.isAirborne && nearHindLift > 1.0) {
+        ctx.beginPath();
+        ctx.arc(nHindPawX, nHindPawY + 0.5, 1.25, 0, Math.PI * 2);
+        ctx.fillStyle = padColor;
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      // Seated rear paw resting snugly beside haunch
+      ctx.save();
+      ctx.translate(nHindPawX, nHindPawY);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 3.8, 2.8, 0.05, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Toe notches
+      ctx.beginPath();
+      ctx.moveTo(-1.1, 0.3);
+      ctx.lineTo(-1.1, 2.3);
+      ctx.moveTo(1.1, 0.3);
+      ctx.lineTo(1.1, 2.3);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // --- NEAR FRONT LEG & PAW ---
+    if (state === 'grooming') {
+      // Face wash paw animation in 3/4 perspective
+      const washAngle = Math.sin(groomPhase) * 0.6;
+      ctx.save();
+      ctx.translate(3.5, -20);
+      ctx.rotate(washAngle);
+      ctx.beginPath();
+      ctx.ellipse(3, -4, 4.0, 3.0, 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(3, -4, 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = padColor;
+      ctx.fill();
+      ctx.restore();
+    } else if (state === 'walking') {
+      const nFrontPawX = 5.2 + nearFrontStep + buttX * 0.3;
+      const nFrontPawY = -1.5 - nearFrontLift;
+      const shoulderX = 5.0;
+      const shoulderY = bodyY + 3.0 + shoulderBob * 0.5;
+      const elbowX = 5.0 + nearFrontStep * 0.45 + nearFrontGait.kneeFlexX;
+      const elbowY = shoulderY + 4.5 + nearFrontGait.kneeFlexY;
+
+      // Unified foreground arm and paw (Single continuous contour without dividing lines)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(shoulderX - 2.0, shoulderY);
+      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, nFrontPawX - 2.8, nFrontPawY - 0.6);
+      ctx.quadraticCurveTo(nFrontPawX - 3.2, nFrontPawY + 3.0, nFrontPawX, nFrontPawY + 3.2);
+      ctx.quadraticCurveTo(nFrontPawX + 3.2, nFrontPawY + 3.0, nFrontPawX + 2.8, nFrontPawY - 0.6);
+      ctx.quadraticCurveTo(elbowX + 2.0, elbowY, shoulderX + 2.0, shoulderY);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+
+      // Stroke ONLY the outer contour (left, around paw, right) - NO line across shoulder or wrist
+      ctx.beginPath();
+      ctx.moveTo(shoulderX - 1.8, shoulderY);
+      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, nFrontPawX - 2.8, nFrontPawY - 0.6);
+      ctx.quadraticCurveTo(nFrontPawX - 3.2, nFrontPawY + 3.0, nFrontPawX, nFrontPawY + 3.2);
+      ctx.quadraticCurveTo(nFrontPawX + 3.2, nFrontPawY + 3.0, nFrontPawX + 2.8, nFrontPawY - 0.6);
+      ctx.quadraticCurveTo(elbowX + 2.0, elbowY, shoulderX + 1.8, shoulderY);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Near front toe notches
+      ctx.beginPath();
+      ctx.moveTo(nFrontPawX - 1.1, nFrontPawY + 0.6);
+      ctx.lineTo(nFrontPawX - 1.1, nFrontPawY + 2.8);
+      ctx.moveTo(nFrontPawX + 1.1, nFrontPawY + 0.6);
+      ctx.lineTo(nFrontPawX + 1.1, nFrontPawY + 2.8);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+
+      // Pink paw pad peek during trot swing lift
+      if (nearFrontGait.isAirborne && nearFrontLift > 1.0) {
+        ctx.beginPath();
+        ctx.arc(nFrontPawX, nFrontPawY + 0.5, 1.35, 0, Math.PI * 2);
+        ctx.fillStyle = padColor;
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      // Resting foreground front paw nestled at the base of the creamy chest bib
+      // (NO floating bone tube on the chest in sitting/idle pose)
+      const nPawX = 6.0 + buttX * 0.3;
+      const nPawY = -1.8;
+
+      ctx.save();
+      ctx.translate(nPawX, nPawY);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 3.6, 3.4, 0.05, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Near front toe notches
+      ctx.beginPath();
+      ctx.moveTo(-1.0, 0.3);
+      ctx.lineTo(-1.0, 2.3);
+      ctx.moveTo(1.0, 0.3);
+      ctx.lineTo(1.0, 2.3);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // -------------------------------------------------------------
+  // -------------------------------------------------------------
+  // 6. CHIBI HEAD & HYBRID 2.5D + 2D DYNAMIC GAZE SYSTEM
+  // In 2.5D mode, Mochi combines volumetric 3/4 body kinematics with the ability
+  // to turn her head forward to look directly at the user with sparkling eye contact!
+  // Both ears are strictly layered behind the cranium so no ear strokes cross the forehead.
+  // -------------------------------------------------------------
+  const t = Math.max(0, Math.min(1, yawProgress));
+  const lerp = (a: number, b: number, factor: number) => a + (b - a) * factor;
+
+  const headBob = state === 'walking' ? Math.sin(walkPhase * 2) * 0.45 : 0;
+  const headX = lerp(0.5, 3.0, t);
+  const headY = -22.5 + (state === 'pre_jump' ? 3.0 : 0) + headBob - breath * 0.45 + purrRumble * 0.5;
+
+  ctx.save();
+  ctx.translate(headX, headY);
+
+  const twitchL = (earTwitchTimer % 180 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
+  const twitchR = (earTwitchTimer % 240 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
+
+  // =========================================================
+  // 🐾 CONTINUOUSLY INTERPOLATED EARS (Strictly behind cranium)
+  // =========================================================
+
+  // Far/Left Ear
+  const earLX = lerp(-7.8, -2.6, t);
+  const earLY = lerp(-7.5, -9.2, t);
+  const earLRot = lerp(-0.14, -0.30, t) + twitchL;
+
+  ctx.save();
+  ctx.translate(earLX, earLY);
+  ctx.rotate(earLRot);
+  ctx.beginPath();
+  ctx.moveTo(lerp(-1, -4.5, t), lerp(5, 3.5, t));
+  ctx.quadraticCurveTo(lerp(-6.8, -4.8, t), lerp(1, -7.5, t), lerp(-6.8, 0, t), lerp(-10.5, -8.2, t));
+  ctx.quadraticCurveTo(lerp(0, 4.5, t), lerp(-8.5, -6.5, t), lerp(6.5, 3.5, t), lerp(-4.5, 3.5, t));
+  ctx.quadraticCurveTo(lerp(3, 1.5, t), lerp(1.5, 3.5, t), lerp(1, -4.5, t), lerp(5, 3.5, t));
+  ctx.closePath();
+  ctx.fillStyle = breed === "siamese" ? "#4A3531" : (spotColor2 && breed === "calico" ? spotColor2 : bodyColor);
+  ctx.fill();
+  ctx.lineWidth = lerp(1.6, 1.4, t);
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // Left Inner Ear Pink
+  ctx.beginPath();
+  ctx.moveTo(lerp(0.2, -2.5, t), lerp(2.5, 2.5, t));
+  ctx.quadraticCurveTo(lerp(-2.0, -2.5, t), lerp(-2.5, -4.8, t), lerp(-4.0, 0, t), lerp(-7.5, -5.4, t));
+  ctx.quadraticCurveTo(lerp(0.1, 2.5, t), lerp(-6.0, -4.5, t), lerp(4.2, 2.0, t), lerp(-4.0, 2.5, t));
+  ctx.closePath();
+  ctx.fillStyle = earPink;
+  ctx.fill();
+  if (t > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = t * 0.42;
+    ctx.fillStyle = farShadeColor;
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // Near/Right Ear
+  const earRX = lerp(7.8, 6.2, t);
+  const earRY = lerp(-7.5, -9.4, t);
+  const earRRot = lerp(0.14, 0.24, t) + twitchR;
+
+  ctx.save();
+  ctx.translate(earRX, earRY);
+  ctx.rotate(earRRot);
+  ctx.beginPath();
+  ctx.moveTo(lerp(1, -4.5, t), lerp(5, 3.5, t));
+  ctx.quadraticCurveTo(lerp(6.8, -4.0, t), lerp(1, -8.0, t), lerp(6.8, 0, t), lerp(-10.5, -8.8, t));
+  ctx.quadraticCurveTo(lerp(0, 4.5, t), lerp(-8.5, -7.0, t), lerp(-6.5, 4.0, t), lerp(-4.5, 3.5, t));
+  ctx.closePath();
+  ctx.fillStyle = breed === "siamese" ? "#4A3531" : (spotColor1 && breed === "calico" ? spotColor1 : bodyColor);
+  ctx.fill();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // Right Inner Ear Pink
+  ctx.beginPath();
+  ctx.moveTo(lerp(-0.2, -2.8, t), lerp(2.5, 2.5, t));
+  ctx.quadraticCurveTo(lerp(2.0, -2.2, t), lerp(-2.5, -5.5, t), lerp(4.0, 0, t), lerp(-7.5, -6.2, t));
+  ctx.quadraticCurveTo(lerp(-0.1, 2.8, t), lerp(-6.0, -5.0, t), lerp(-4.2, 2.2, t), lerp(-4.0, 2.5, t));
+  ctx.closePath();
+  ctx.fillStyle = earPink;
+  ctx.fill();
+  ctx.restore();
+
+  // =========================================================
+  // 🐱 CRANIUM (Head Silhouette layered ON TOP of ear roots)
+  // =========================================================
+  const cranX = lerp(0, 1.5, t);
+  const cranW = lerp(14.0, 11.8, t);
+  const cranH = lerp(11.4, 9.8, t);
+  const cranRot = lerp(0, 0.04, t);
+
+  ctx.beginPath();
+  ctx.ellipse(cranX, 0, cranW, cranH, cranRot, 0, Math.PI * 2);
+  ctx.fillStyle = bodyColor;
+  ctx.fill();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // Chubby cheeks softly blending with yaw rotation
+  if (t < 0.85) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - t * 1.25);
+    ctx.beginPath();
+    ctx.moveTo(-11.5, -0.5);
+    ctx.quadraticCurveTo(-14.4, 2.5, -11.8, 4.8);
+    ctx.fillStyle = bodyColor;
+    ctx.fill();
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(11.5, -0.5);
+    ctx.quadraticCurveTo(14.4, 2.5, 11.8, 4.8);
+    ctx.fillStyle = bodyColor;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Breed Markings smoothly sliding with perspective
+  if (breed === "caramel" || breed === "cinnamon") {
+    ctx.save();
+    ctx.strokeStyle = spotColor1 || "#C2410C";
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = "round";
+    const shiftM = lerp(0, 2.0, t);
+    ctx.beginPath();
+    ctx.moveTo(-4 + shiftM, lerp(-7, -6.5, t));
+    ctx.lineTo(-2 + shiftM, lerp(-3.5, -3.5, t));
+    ctx.lineTo(0 + shiftM, lerp(-5.5, -5.5, t));
+    ctx.lineTo(2 + shiftM, lerp(-3.5, -3.5, t));
+    ctx.lineTo(4 + shiftM, lerp(-7, -6.5, t));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (spotColor2 && breed === "calico") {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(lerp(-5.5, -3.5, t), -3.5, lerp(4.8, 4.5, t), lerp(5.2, 4.5, t), -0.2, 0, Math.PI * 2);
+    ctx.fillStyle = spotColor2;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (breed === "siamese") {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(lerp(0, 2.5, t), 1.0, 7.2, 5.4, lerp(0, 0.05, t), 0, Math.PI * 2);
+    ctx.fillStyle = "#4A3531";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (breed === "tuxedo") {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(lerp(0, 2.5, t), lerp(3.4, 3.2, t), lerp(6.2, 6.0, t), 4.2, lerp(0, 0.05, t), 0, Math.PI * 2);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Rosy Blush Cheeks
+  ctx.beginPath();
+  ctx.ellipse(lerp(-7.5, -4.2, t), lerp(3.5, 3.6, t), lerp(3.0, 2.6, t), lerp(1.8, 1.6, t), 0, 0, Math.PI * 2);
+  ctx.ellipse(lerp(7.5, 7.2, t), lerp(3.5, 3.6, t), lerp(3.0, 3.4, t), lerp(1.8, 1.8, t), 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255, 140, 175, 0.48)";
+  ctx.fill();
+
+  // =========================================================
+  // ✨ EYES WITH INTERPOLATED PERSPECTIVE & DUAL SPARKLES
+  // =========================================================
+  const eyeY = lerp(-0.4, -0.5, t);
+  const lookShiftX = Math.max(-1.4, Math.min(1.4, eyeOffset.dx));
+  const lookShiftY = Math.max(-1.4, Math.min(1.4, eyeOffset.dy));
+
+  const eyeXL = lerp(-5.4, -2.2, t) + lookShiftX * lerp(0.45, 0.35, t);
+  const eyeYL = eyeY + lookShiftY * 0.45;
+  const eyeLRx = lerp(3.6, 3.1, t);
+  const eyeLRy = 3.9;
+
+  const eyeXR = lerp(5.4, 5.6, t) + lookShiftX * 0.45;
+  const eyeYR = eyeY + lookShiftY * 0.45;
+  const eyeRRx = 3.6;
+  const eyeRRy = lerp(3.9, 4.0, t);
+
+  if (isBlinking || state === "loaf" || state === "purring") {
+    ctx.beginPath();
+    ctx.arc(eyeXL, eyeY + 0.6, lerp(3.2, 2.8, t), 0.15, Math.PI - 0.15, false);
+    ctx.arc(eyeXR, eyeY + 0.6, lerp(3.2, 3.4, t), 0.15, Math.PI - 0.15, false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  } else {
+    // Far Eye (Left)
+    ctx.beginPath();
+    ctx.ellipse(eyeXL, eyeYL, eyeLRx, eyeLRy, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeColor;
+    ctx.fill();
+
+    // Far Eye primary sparkle
+    ctx.beginPath();
+    ctx.arc(eyeXL + lerp(1.2, 1.0, t), eyeYL - 1.1, lerp(1.35, 1.15, t), 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+
+    // Far Eye secondary sparkle
+    ctx.beginPath();
+    ctx.arc(eyeXL - lerp(1.1, 0.9, t), eyeYL + 1.2, lerp(0.65, 0.55, t), 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+
+    // Near Eye (Right)
+    ctx.beginPath();
+    ctx.ellipse(eyeXR, eyeYR, eyeRRx, eyeRRy, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeColor;
+    ctx.fill();
+
+    // Near Eye primary sparkle
+    ctx.beginPath();
+    ctx.arc(eyeXR + 1.2, eyeYR - 1.1, 1.35, 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+
+    // Near Eye secondary sparkle
+    ctx.beginPath();
+    ctx.arc(eyeXR - 1.1, eyeYR + lerp(1.2, 1.3, t), 0.65, 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+  }
+
+  // =========================================================
+  // 🐾 SNOUT, NOSE & SWEET ":3" MOUTH
+  // =========================================================
+  const noseCenterX = lerp(0, 2.5, t);
+  ctx.beginPath();
+  ctx.moveTo(noseCenterX - 1.3, 1.8);
+  ctx.lineTo(noseCenterX + 1.3, 1.8);
+  ctx.lineTo(noseCenterX, 3.2);
+  ctx.closePath();
+  ctx.fillStyle = noseColor;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(noseCenterX, 3.2);
+  ctx.lineTo(noseCenterX, 4.2);
+  ctx.arc(lerp(-1.4, 0.9, t), 4.4, lerp(1.4, 1.5, t), 0.1, Math.PI - lerp(0.1, 0.2, t));
+  ctx.arc(lerp(1.4, 3.9, t), 4.4, lerp(1.4, 1.6, t), 0.15, Math.PI - 0.05);
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // =========================================================
+  // 🐱 WHISKERS (Interpolated with playful twitch)
+  // =========================================================
+  const whiskerTwitch = Math.sin(tailWave * 0.7) * 0.35;
+  ctx.beginPath();
+  // Left whiskers
+  ctx.moveTo(lerp(-7.5, -5.5, t), 2.5);
+  ctx.lineTo(lerp(-15.5, -11.5, t), lerp(1.5, 2.2, t) + whiskerTwitch);
+  ctx.moveTo(lerp(-7.5, -5.5, t), 4.5);
+  ctx.lineTo(lerp(-14.5, -11.0, t), lerp(5.5, 5.8, t) + whiskerTwitch);
+
+  // Right whiskers
+  ctx.moveTo(lerp(7.5, 9.5, t), lerp(2.5, 2.8, t));
+  ctx.lineTo(lerp(15.5, 17.2, t), lerp(1.5, 2.2, t) - whiskerTwitch);
+  ctx.moveTo(lerp(7.5, 9.5, t), lerp(4.5, 4.8, t));
+  ctx.lineTo(lerp(14.5, 16.5, t), lerp(5.5, 6.2, t) - whiskerTwitch);
+
+  ctx.strokeStyle = whiskerColor;
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
+  // =========================================================
+  // 🎀 ACCESSORIES (Smooth glide with perspective value t)
+  // =========================================================
+  drawAccessory(ctx, accessory, t);
+
+  ctx.restore(); // end Head
+}
+
+// -------------------------------------------------------------
+// 🐱 PRIMARY KITTEN RENDERER (Dispatches to 2D or 2.5D Mode)
+// -------------------------------------------------------------
+export function drawCuteKitten(
+  ctx: CanvasRenderingContext2D,
+  state: CatState,
+  breed: PetBreed,
+  accessory: PetAccessory,
+  walkPhase: number,
+  tailWave: number,
+  buttWiggle: number,
+  isBlinking: boolean,
+  earTwitchTimer: number,
+  groomPhase: number = 0,
+  stretchPhase: number = 0,
+  eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  breathePhase: number = 0,
+  is25D: boolean = false,
+  yawProgress: number = 0
+) {
+  const palette = getPetPalette(breed);
+  if (is25D) {
+    drawCuteKitten25D(
+      ctx,
+      state,
+      breed,
+      accessory,
+      walkPhase,
+      tailWave,
+      buttWiggle,
+      isBlinking,
+      earTwitchTimer,
+      groomPhase,
+      stretchPhase,
+      eyeOffset,
+      breathePhase,
+      palette,
+      yawProgress
+    );
+  } else {
+    drawCuteKitten2D(
+      ctx,
+      state,
+      breed,
+      accessory,
+      walkPhase,
+      tailWave,
+      buttWiggle,
+      isBlinking,
+      earTwitchTimer,
+      groomPhase,
+      stretchPhase,
+      eyeOffset,
+      breathePhase,
+      palette
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 🎀 ACCESSORIES RENDERER (Supports both 2D and 2.5D perspective)
+// -------------------------------------------------------------
+function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory, is25D: boolean | number = false) {
+  const t = typeof is25D === "number" ? Math.max(0, Math.min(1, is25D)) : (is25D ? 1 : 0);
+  const lerp = (a: number, b: number, factor: number) => a + (b - a) * factor;
   if (accessory === 'bow') {
     // Cute Scarlet Ribbon Bow with Center Golden Pearl
     ctx.save();
-    ctx.translate(0, 11);
+    ctx.translate(lerp(0, 2.2, t), 11);
     ctx.beginPath();
     // Left loop
     ctx.moveTo(0, 0);
@@ -2036,7 +3039,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'bell') {
     // Golden Jingle Bell on Red Collar with Gleam
     ctx.save();
-    ctx.translate(0, 11);
+    ctx.translate(lerp(0, 2.2, t), 11);
 
     // Collar
     ctx.beginPath();
@@ -2071,7 +3074,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'sakura') {
     // Five-Petaled Sakura Blossom Clip behind ear with golden stamen
     ctx.save();
-    ctx.translate(-7, -8);
+    ctx.translate(lerp(-7, 5.5, t), lerp(-8, -8.5, t));
     for (let i = 0; i < 5; i++) {
       ctx.save();
       ctx.rotate((i * Math.PI * 2) / 5);
@@ -2093,7 +3096,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'scarf') {
     // 🧣 Cozy Knitted Winter Scarf (Emoji 🧣 Style)
     ctx.save();
-    ctx.translate(0, 10.5);
+    ctx.translate(lerp(0, 1.8, t), 10.5);
 
     // 1. Back fold layer
     ctx.beginPath();
@@ -2164,7 +3167,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'crown') {
     // Tiny Golden Royal Crown with Ruby Studs
     ctx.save();
-    ctx.translate(0, -11);
+    ctx.translate(lerp(0, 2.0, t), -11);
     ctx.beginPath();
     ctx.moveTo(-6, 2);
     ctx.lineTo(-6, -3);
@@ -2191,44 +3194,44 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'glasses') {
     // 👓 Cute Round Golden Wireframe Glasses
     ctx.save();
-    ctx.translate(0, -0.4);
+    ctx.translate(lerp(0, 2.0, t), -0.4);
     ctx.strokeStyle = '#F59E0B';
     ctx.lineWidth = 1.2;
 
     // Left Lens Frame
     ctx.beginPath();
-    ctx.arc(-5.6, 0, 4.4, 0, Math.PI * 2);
+    ctx.arc(lerp(-5.6, -4.0, t), 0, lerp(4.4, 3.6, t), 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.fill();
     ctx.stroke();
 
     // Right Lens Frame
     ctx.beginPath();
-    ctx.arc(5.6, 0, 4.4, 0, Math.PI * 2);
+    ctx.arc(lerp(5.6, 4.2, t), 0, 4.4, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.fill();
     ctx.stroke();
 
     // Nose Bridge
     ctx.beginPath();
-    ctx.moveTo(-1.2, -0.6);
-    ctx.quadraticCurveTo(0, -1.8, 1.2, -0.6);
+    ctx.moveTo(lerp(-1.2, -0.4, t), -0.6);
+    ctx.quadraticCurveTo(lerp(0, 0.8, t), -1.8, lerp(1.2, 2.0, t), -0.6);
     ctx.stroke();
 
     // Side Temples
     ctx.beginPath();
-    ctx.moveTo(-10.0, 0);
-    ctx.lineTo(-13.5, -1.5);
-    ctx.moveTo(10.0, 0);
-    ctx.lineTo(13.5, -1.5);
+    ctx.moveTo(lerp(-10.0, -7.6, t), 0);
+    ctx.lineTo(lerp(-13.5, -11.0, t), -1.5);
+    ctx.moveTo(lerp(10.0, 8.6, t), 0);
+    ctx.lineTo(lerp(13.5, 12.0, t), -1.5);
     ctx.stroke();
 
     // Glass shine gleam
     ctx.beginPath();
-    ctx.moveTo(-7.5, -2.2);
-    ctx.lineTo(-4.5, -3.4);
-    ctx.moveTo(3.8, -2.2);
-    ctx.lineTo(6.8, -3.4);
+    ctx.moveTo(lerp(-7.5, -5.5, t), -2.2);
+    ctx.lineTo(lerp(-4.5, -3.0, t), -3.4);
+    ctx.moveTo(lerp(3.8, 2.8, t), -2.2);
+    ctx.lineTo(lerp(6.8, 5.8, t), -3.4);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.lineWidth = 0.9;
     ctx.stroke();
@@ -2237,7 +3240,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'sprout') {
     // 🌱 Cute Little Green Plant Sprout on Head
     ctx.save();
-    ctx.translate(0, -11.5);
+    ctx.translate(lerp(0, 2.0, t), -11.5);
 
     // Tiny curved green stem
     ctx.beginPath();
@@ -2273,7 +3276,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'beanie') {
     // 🧶 Cozy Knitted Winter Beanie with Fluffy Pom-Pom
     ctx.save();
-    ctx.translate(0, -11);
+    ctx.translate(lerp(0, 1.8, t), -11);
 
     // Beanie Dome Cap
     ctx.beginPath();
@@ -2319,7 +3322,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'angel_halo') {
     // ✨ Radiant Floating Angel Halo
     ctx.save();
-    ctx.translate(0, -16.5);
+    ctx.translate(lerp(0, 2.0, t), -16.5);
 
     // Golden Halo Ring
     ctx.beginPath();
@@ -2346,7 +3349,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'heart_clip') {
     // 💖 Sweet Pink Heart Hair Barrette Clip
     ctx.save();
-    ctx.translate(8.5, -8.5);
+    ctx.translate(lerp(8.5, 6.5, t), -8.5);
     ctx.rotate(0.2);
 
     // Metallic clip pin
@@ -2375,7 +3378,7 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory) {
   } else if (accessory === 'party_hat') {
     // 🥳 Festive Birthday Party Cone Hat with Pom-Pom
     ctx.save();
-    ctx.translate(0, -11);
+    ctx.translate(lerp(0, 2.0, t), -11);
     ctx.rotate(-0.1);
 
     // Cone body

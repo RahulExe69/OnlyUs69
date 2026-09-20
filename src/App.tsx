@@ -299,7 +299,7 @@ export default function App() {
   }, []);
   const [petSettings, setPetSettings] = useState<PetSettings>(() => {
     if (typeof window === 'undefined') {
-      return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
+      return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true, is25D: false };
     }
     try {
       const stored = localStorage.getItem('onlyus_pet_settings');
@@ -312,11 +312,12 @@ export default function App() {
             breed: parsed.breed || 'mochi',
             accessory: parsed.accessory || 'bow',
             soundEnabled: parsed.soundEnabled ?? true,
+            is25D: parsed.is25D ?? false,
           };
         }
       }
     } catch (_) {}
-    return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true };
+    return { enabled: true, name: 'Mochi', breed: 'mochi', accessory: 'bow', soundEnabled: true, is25D: false };
   });
 
   const petConfigDebounceTimerRef = useRef<any>(null);

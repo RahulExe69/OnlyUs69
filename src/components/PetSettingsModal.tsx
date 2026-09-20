@@ -91,10 +91,11 @@ function playPetSFX(type: 'meow' | 'purr' | 'equip', soundEnabled: boolean = tru
 const MiniMochiCanvas: React.FC<{
   breed: PetBreed;
   accessory: PetAccessory;
+  is25D?: boolean;
   scale?: number;
   width?: number;
   height?: number;
-}> = ({ breed, accessory, scale = 1.15, width = 84, height = 66 }) => {
+}> = ({ breed, accessory, is25D = false, scale = 1.15, width = 84, height = 66 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -125,10 +126,12 @@ const MiniMochiCanvas: React.FC<{
       0,
       0,
       0,
-      { dx: 0, dy: 0 }
+      { dx: 0, dy: 0 },
+      0,
+      is25D
     );
     ctx.restore();
-  }, [breed, accessory, scale, width, height]);
+  }, [breed, accessory, is25D, scale, width, height]);
 
   return (
     <canvas
@@ -142,8 +145,9 @@ const MiniMochiCanvas: React.FC<{
 const HeroMochiCanvas: React.FC<{
   breed: PetBreed;
   accessory: PetAccessory;
+  is25D?: boolean;
   onPet: () => void;
-}> = ({ breed, accessory, onPet }) => {
+}> = ({ breed, accessory, is25D = false, onPet }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
   const tailRef = useRef(0);
@@ -200,7 +204,8 @@ const HeroMochiCanvas: React.FC<{
         0,
         0,
         { dx: 0, dy: 0 },
-        breatheRef.current
+        breatheRef.current,
+        is25D
       );
       ctx.restore();
 
@@ -211,7 +216,7 @@ const HeroMochiCanvas: React.FC<{
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [breed, accessory]);
+  }, [breed, accessory, is25D]);
 
   return (
     <div onClick={onPet} className="cursor-pointer group flex flex-col items-center">
@@ -334,6 +339,14 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
   // Select item / accessory
   const handleSelectAccessory = (accessory: PetAccessory) => {
     const updated = { ...localSettings, accessory };
+    setLocalSettings(updated);
+    onSaveSettings(updated);
+    playPetSFX('equip', localSettings.soundEnabled);
+  };
+
+  // Toggle 2.5D volumetric perspective
+  const handleToggle25D = (val: boolean) => {
+    const updated = { ...localSettings, is25D: val };
     setLocalSettings(updated);
     onSaveSettings(updated);
     playPetSFX('equip', localSettings.soundEnabled);
@@ -487,6 +500,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
             <HeroMochiCanvas
               breed={localSettings.breed}
               accessory={localSettings.accessory}
+              is25D={localSettings.is25D}
               onPet={handlePetKitten}
             />
 
@@ -535,6 +549,44 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                   <Edit2 className="w-3 h-3 text-[var(--theme-text)]/50" />
                 </button>
               )}
+            </div>
+
+            {/* 🌟 2D Classic vs 2.5D Volumetric Dimension Mode Switcher */}
+            <div className="w-full flex items-center justify-between px-4 pt-3 pb-1 mt-2 border-t border-[var(--theme-border)]/50 z-20">
+              <div className="flex flex-col items-start text-left">
+                <span className="text-xs font-bold text-[var(--theme-text)]">
+                  Pet Perspective
+                </span>
+                <span className="text-[10px] text-[var(--theme-text)]/60 font-medium">
+                  {localSettings.is25D ? '2.5D Volumetric (Trot gait & 3/4 depth)' : '2D Classic (Original planar view)'}
+                </span>
+              </div>
+
+              {/* Segmented Toggle Pill */}
+              <div className="flex items-center p-0.5 rounded-xl bg-[var(--theme-bg)] border border-[var(--theme-border)] shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => handleToggle25D(false)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    !localSettings.is25D
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  2D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggle25D(true)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    localSettings.is25D
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  2.5D
+                </button>
+              </div>
             </div>
           </div>
 
@@ -593,6 +645,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                         <MiniMochiCanvas
                           breed={skin.id}
                           accessory={localSettings.accessory}
+                          is25D={localSettings.is25D}
                           scale={1.15}
                           width={84}
                           height={66}
@@ -636,6 +689,7 @@ export const PetSettingsModal: React.FC<PetSettingsModalProps> = ({
                         <MiniMochiCanvas
                           breed={localSettings.breed}
                           accessory={item.id}
+                          is25D={localSettings.is25D}
                           scale={1.15}
                           width={84}
                           height={66}

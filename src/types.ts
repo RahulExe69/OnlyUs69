@@ -189,4 +189,5 @@ export interface PetSettings {
   breed: PetBreed;
   accessory: PetAccessory;
   soundEnabled?: boolean;
+  is25D?: boolean;
 }
