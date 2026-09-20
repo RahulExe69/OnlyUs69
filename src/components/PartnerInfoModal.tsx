@@ -101,6 +101,7 @@ interface PartnerInfoModalProps {
   isThemeSaving?: boolean;
   petSettings?: PetSettings;
   onOpenPetSettings?: () => void;
+  onOpenMediaGallery?: () => void;
 }
 
 export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
@@ -116,7 +117,8 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
   onThemeSelect,
   isThemeSaving = false,
   petSettings,
-  onOpenPetSettings
+  onOpenPetSettings,
+  onOpenMediaGallery
 }) => {
   const [view, setView] = useState<'main' | 'nicknames'>('main');
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'reels' | 'links'>('media');
@@ -268,7 +270,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
     const role = myProfile?.role;
     
     messages.forEach((m: any) => {
-      if (m.deleted) return;
+      if (m.deleted || m.deleted_from_media) return;
       if (role === 'owner' && m.hidden_for_owner) return;
       if (role === 'partner' && m.hidden_for_partner) return;
       
@@ -301,7 +303,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
     const role = myProfile?.role;
     
     messages.forEach((m: any) => {
-      if (m.deleted) return;
+      if (m.deleted || m.deleted_from_media) return;
       if (role === 'owner' && m.hidden_for_owner) return;
       if (role === 'partner' && m.hidden_for_partner) return;
       
@@ -325,7 +327,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
     messages.forEach((m: any) => {
-      if (m.deleted || !m.text) return;
+      if (m.deleted || m.deleted_from_media || !m.text) return;
       if (role === 'owner' && m.hidden_for_owner) return;
       if (role === 'partner' && m.hidden_for_partner) return;
 
@@ -528,9 +530,21 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                 <h3 className="text-[14px] font-bold tracking-tight text-[var(--theme-text)]">
                   Shared Content
                 </h3>
-                <span className="text-[11px] font-medium text-[var(--theme-text)]/50">
-                  {sharedPhotos.length + sharedVideos.length + sharedLinks.length} items
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-medium text-[var(--theme-text)]/50">
+                    {sharedPhotos.length + sharedVideos.length + sharedLinks.length} items
+                  </span>
+                  {onOpenMediaGallery && (
+                    <button
+                      type="button"
+                      onClick={onOpenMediaGallery}
+                      className="text-[12px] font-semibold text-[var(--theme-accent)] hover:underline flex items-center gap-0.5 cursor-pointer ml-1"
+                    >
+                      <span>Open Vault</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Segmented Tab Bar */}

@@ -30,6 +30,15 @@ window.addEventListener('error', (event) => {
   }
 });
 
+// Global contextmenu listener to block mobile browser long-press popups (Copy/Save/Share) while preserving inputs
+window.addEventListener('contextmenu', (e: MouseEvent) => {
+  const target = e.target as HTMLElement | null;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+    return;
+  }
+  e.preventDefault();
+}, { passive: false, capture: true });
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

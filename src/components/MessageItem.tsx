@@ -383,12 +383,17 @@ function MessageItemComponent({
   };
 
   const hasMedia = Boolean(
-    (msg.media && (msg.media.url || (msg.media.mediaList && msg.media.mediaList.length > 0))) ||
-      (msg.mediaList && msg.mediaList.length > 0)
+    !msg.deleted_from_media &&
+    ((msg.media && (msg.media.url || (msg.media.mediaList && msg.media.mediaList.length > 0))) ||
+      (msg.mediaList && msg.mediaList.length > 0))
   );
   const isAudioMedia = Boolean(msg.media?.type === 'audio');
-  const isMediaOnly = hasMedia && !isAudioMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted;
+  const isMediaOnly = hasMedia && !isAudioMedia && !msg.text && !msg.gameInvite && !resolvedReplyTo && !msg.deleted && !msg.deleted_from_media;
   const isDeletedByMe = Boolean((msg.deletedBy && msg.deletedBy === role) || (!msg.deletedBy && msg.sender_role === role));
+  const isMediaDeletedByMe = Boolean(
+    (msg.deleted_from_media_by && msg.deleted_from_media_by === role) ||
+    (!msg.deleted_from_media_by && msg.sender_role === role)
+  );
   const hasReactions = Boolean(msg.reactions && !msg.deleted && Object.keys(msg.reactions).length > 0);
   const isFirst = isFirstInGroup;
   const shouldShowAvatar = showAvatar ?? (!isOwn && isFirst);
@@ -646,7 +651,7 @@ function MessageItemComponent({
               )}
 
               {/* Media attachment */}
-              {(msg.media || msg.mediaList) && !msg.deleted && (
+              {(msg.media || msg.mediaList) && !msg.deleted && !msg.deleted_from_media && (
                 <div className={!isMediaOnly ? 'mb-2' : ''}>
                   <WhatsAppMediaBubble
                     media={msg.media || msg.mediaList![0]}
@@ -684,6 +689,11 @@ function MessageItemComponent({
                     <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
                       <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
                       <span>{isDeletedByMe ? 'You deleted this message' : 'This message was deleted'}</span>
+                    </div>
+                  ) : msg.deleted_from_media ? (
+                    <div className="flex items-center gap-1.5 py-0.5 select-none text-[13.5px] lg:text-[14.5px] italic opacity-75 font-normal tracking-tight">
+                      <Ban className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                      <span>{isMediaDeletedByMe ? 'You deleted this media' : 'This media was deleted'}</span>
                     </div>
                   ) : detectedReel ? (
                     <div className="flex-1 min-w-0 flex flex-col select-none">

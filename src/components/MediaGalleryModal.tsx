@@ -13,18 +13,23 @@ import {
   Check, 
   Play, 
   Pause, 
-  Calendar, 
   Clock, 
   Sparkles, 
-  FolderHeart, 
-  User, 
-  Filter,
-  Volume2
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  ShieldCheck,
+  Flame,
+  Info
 } from 'lucide-react';
 import { Message, MediaAttachment, UserProfile, UserRole } from '../types';
 import { hydrateMessageMedia, parseDate, getMillis } from '../lib/dateUtils';
 import { getLocalMedia, downloadAndCacheRemoteMedia } from '../lib/mediaStore';
 import { useOverlayBack } from '../lib/overlayManager';
+import { supabase } from '../lib/supabase';
+import { deleteFromCloudinary } from '../lib/cloudinary';
 
 export interface ExtractedMediaItem {
   id: string;
@@ -34,9 +39,14 @@ export interface ExtractedMediaItem {
   fileName?: string;
   caption?: string;
   duration?: number;
+  public_id?: string;
   timestamp: any;
   senderRole: UserRole;
   messageId: string;
+  deleted_from_media?: boolean;
+  deleted_from_media_by?: UserRole;
+  deleted_from_media_at?: any;
+  media_deletion_consent?: { [role: string]: boolean };
 }
 
 export interface ExtractedLinkItem {
@@ -47,6 +57,10 @@ export interface ExtractedLinkItem {
   timestamp: any;
   senderRole: UserRole;
   messageId: string;
+  deleted_from_media?: boolean;
+  deleted_from_media_by?: UserRole;
+  deleted_from_media_at?: any;
+  media_deletion_consent?: { [role: string]: boolean };
 }
 
 interface MediaGalleryModalProps {
@@ -73,7 +87,11 @@ const AudioPlayerCard: React.FC<{
   senderName: string;
   senderPhoto?: string;
   isMe: boolean;
-}> = React.memo(({ item, senderName, senderPhoto, isMe }) => {
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  onLongPress?: () => void;
+}> = React.memo(({ item, senderName, senderPhoto, isMe, isSelectionMode, isSelected, onToggleSelect, onLongPress }) => {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(
     item.url && (item.url.startsWith('blob:') || item.url.startsWith('data:') || item.url.startsWith('http'))
       ? item.url
@@ -84,6 +102,7 @@ const AudioPlayerCard: React.FC<{
   const [duration, setDuration] = useState(item.duration || 0);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const longPressTimerRef = useRef<any>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,7 +135,8 @@ const AudioPlayerCard: React.FC<{
     };
   }, [item.id, item.url]);
 
-  const togglePlay = () => {
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!audioRef.current || !resolvedUrl) return;
     if (isPlaying) {
       audioRef.current.pause();
@@ -140,6 +160,7 @@ const AudioPlayerCard: React.FC<{
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
     const target = parseFloat(e.target.value);
     setCurrentTime(target);
     if (audioRef.current) {
@@ -166,8 +187,46 @@ const AudioPlayerCard: React.FC<{
 
   const progress = duration > 0 ? currentTime / duration : 0;
 
+  // Touch handlers for long-press selection
+  const handleTouchStart = () => {
+    if (isSelectionMode) return;
+    longPressTimerRef.current = setTimeout(() => {
+      if (onLongPress) onLongPress();
+      try {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      } catch (_) {}
+    }, 450);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   return (
-    <div className="p-3.5 rounded-2xl bg-[var(--theme-surface)]/90 border border-[var(--theme-border)]/70 hover:border-[var(--theme-accent)]/40 shadow-xs transition-all space-y-2.5">
+    <div 
+      onClick={() => {
+        if (isSelectionMode && onToggleSelect) {
+          onToggleSelect();
+        }
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (onLongPress) onLongPress();
+      }}
+      className={`p-3.5 rounded-2xl bg-[var(--theme-surface)]/90 border transition-all space-y-2.5 relative select-none ${
+        isSelected
+          ? 'border-[var(--theme-accent)] ring-2 ring-[var(--theme-accent)]/20 shadow-md'
+          : 'border-[var(--theme-border)]/70 hover:border-[var(--theme-accent)]/40 shadow-xs'
+      }`}
+    >
       {resolvedUrl && (
         <audio
           ref={audioRef}
@@ -193,6 +252,23 @@ const AudioPlayerCard: React.FC<{
       {/* Header with sender and timestamp */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
+          {/* Selection indicator if active */}
+          {isSelectionMode && (
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onToggleSelect) onToggleSelect();
+              }}
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                isSelected
+                  ? 'bg-[var(--theme-accent)] border-[var(--theme-accent)] text-white shadow-xs'
+                  : 'bg-[var(--theme-bg)] border-[var(--theme-border)] text-transparent'
+              }`}
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+            </div>
+          )}
+
           <div className="w-6 h-6 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 shrink-0 flex items-center justify-center text-[10px] font-bold text-[var(--theme-accent)] border border-[var(--theme-accent)]/30">
             {senderPhoto ? (
               <img src={senderPhoto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -282,17 +358,22 @@ const AudioPlayerCard: React.FC<{
 });
 
 /**
- * Photo/Video Thumbnail Cell
+ * Photo/Video Thumbnail Cell with Long-Press & Multi-Select Checkmark
  */
 const MediaGridCell: React.FC<{
   item: ExtractedMediaItem;
   onClick: () => void;
-}> = React.memo(({ item, onClick }) => {
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  onLongPress?: () => void;
+}> = React.memo(({ item, onClick, isSelectionMode, isSelected, onToggleSelect, onLongPress }) => {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(
     item.url && (item.url.startsWith('blob:') || item.url.startsWith('data:') || item.url.startsWith('http'))
       ? item.url
       : null
   );
+  const longPressTimerRef = useRef<any>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -325,13 +406,66 @@ const MediaGridCell: React.FC<{
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const handleTouchStart = () => {
+    if (isSelectionMode) return;
+    longPressTimerRef.current = setTimeout(() => {
+      if (onLongPress) onLongPress();
+      try {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      } catch (_) {}
+    }, 450);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      className="group aspect-square rounded-xl overflow-hidden relative cursor-pointer bg-[var(--theme-bg)] border border-[var(--theme-border)]/50 shadow-2xs"
+      onClick={() => {
+        if (isSelectionMode) {
+          if (onToggleSelect) onToggleSelect();
+        } else {
+          onClick();
+        }
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (onLongPress) onLongPress();
+      }}
+      className={`group aspect-square rounded-xl overflow-hidden relative cursor-pointer bg-[var(--theme-bg)] border transition-all select-none ${
+        isSelected
+          ? 'border-[var(--theme-accent)] ring-2 ring-[var(--theme-accent)] shadow-md scale-[0.98]'
+          : 'border-[var(--theme-border)]/50 shadow-2xs'
+      }`}
     >
+      {/* Top Right Checkmark Badge (Always visible in selection mode, or on hover) */}
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onToggleSelect) onToggleSelect();
+        }}
+        className={`absolute top-2 right-2 z-20 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+          isSelected
+            ? 'bg-[var(--theme-accent)] text-white shadow-md scale-100 ring-2 ring-white/80'
+            : isSelectionMode
+            ? 'bg-black/45 border-2 border-white/80 text-transparent scale-100'
+            : 'opacity-0 group-hover:opacity-100 bg-black/45 border-2 border-white/80 text-transparent'
+        }`}
+      >
+        <Check className={`w-3.5 h-3.5 stroke-[3] ${isSelected ? 'opacity-100' : 'opacity-0'}`} />
+      </div>
+
       {resolvedUrl ? (
         item.type === 'video' ? (
           <div className="w-full h-full relative bg-black/90 flex items-center justify-center">
@@ -376,21 +510,31 @@ const MediaGridCell: React.FC<{
           {item.type === 'video' ? <Film className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
         </div>
       )}
+
+      {/* Dim overlay when selected */}
+      {isSelected && (
+        <div className="absolute inset-0 bg-[var(--theme-accent)]/15 pointer-events-none" />
+      )}
     </motion.div>
   );
 });
 
 /**
- * Shared Link Card Component
+ * Shared Link Card Component with Multi-Select
  */
 const LinkCard: React.FC<{
   item: ExtractedLinkItem;
   senderName: string;
   senderPhoto?: string;
   isMe: boolean;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  onLongPress?: () => void;
   onCopy: (text: string) => void;
-}> = React.memo(({ item, senderName, senderPhoto, isMe, onCopy }) => {
+}> = React.memo(({ item, senderName, senderPhoto, isMe, isSelectionMode, isSelected, onToggleSelect, onLongPress, onCopy }) => {
   const [copied, setCopied] = useState(false);
+  const longPressTimerRef = useRef<any>(null);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -407,15 +551,67 @@ const LinkCard: React.FC<{
     });
   }, [item.timestamp]);
 
-  // Platform badges
   const isInstagram = item.domain.includes('instagram.com');
   const isYoutube = item.domain.includes('youtube.com') || item.domain.includes('youtu.be');
   const isSpotify = item.domain.includes('spotify.com');
 
+  const handleTouchStart = () => {
+    if (isSelectionMode) return;
+    longPressTimerRef.current = setTimeout(() => {
+      if (onLongPress) onLongPress();
+      try {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      } catch (_) {}
+    }, 450);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   return (
-    <div className="p-3.5 rounded-2xl bg-[var(--theme-surface)]/90 border border-[var(--theme-border)]/70 hover:border-[var(--theme-accent)]/40 shadow-xs transition-all flex flex-col gap-2">
+    <div 
+      onClick={() => {
+        if (isSelectionMode && onToggleSelect) {
+          onToggleSelect();
+        }
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchEnd}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (onLongPress) onLongPress();
+      }}
+      className={`p-3.5 rounded-2xl bg-[var(--theme-surface)]/90 border transition-all flex flex-col gap-2 relative select-none ${
+        isSelected
+          ? 'border-[var(--theme-accent)] ring-2 ring-[var(--theme-accent)]/20 shadow-md'
+          : 'border-[var(--theme-border)]/70 hover:border-[var(--theme-accent)]/40 shadow-xs'
+      }`}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
+          {isSelectionMode && (
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onToggleSelect) onToggleSelect();
+              }}
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                isSelected
+                  ? 'bg-[var(--theme-accent)] border-[var(--theme-accent)] text-white shadow-xs'
+                  : 'bg-[var(--theme-bg)] border-[var(--theme-border)] text-transparent'
+              }`}
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+            </div>
+          )}
+
           <div className="w-5 h-5 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 shrink-0 flex items-center justify-center text-[10px] font-bold text-[var(--theme-accent)]">
             {senderPhoto ? (
               <img src={senderPhoto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -456,6 +652,9 @@ const LinkCard: React.FC<{
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => {
+              if (isSelectionMode) e.preventDefault();
+            }}
             className="text-xs sm:text-sm font-semibold text-[var(--theme-accent)] hover:underline truncate block leading-snug"
           >
             {item.url}
@@ -496,7 +695,7 @@ const LinkCard: React.FC<{
 });
 
 /**
- * Main Media Gallery & Vault Modal
+ * Main Media Gallery & Vault Modal with Photos App Multi-Select & Recently Deleted Vault
  */
 export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   isOpen,
@@ -509,17 +708,34 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   // Overlay management for hardware back / gesture support
   useOverlayBack(isOpen, onClose, 'media-gallery-modal');
 
-  const [activeTab, setActiveTab] = useState<'photos' | 'videos' | 'audio' | 'links'>('photos');
+  const [activeTab, setActiveTab] = useState<'photos' | 'videos' | 'audio' | 'links' | 'deleted'>('photos');
+  const [deletedSubFilter, setDeletedSubFilter] = useState<'all' | 'photos' | 'videos' | 'audio' | 'links'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [senderFilter, setSenderFilter] = useState<'all' | 'rahul' | 'nusrat'>('all');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Multi-select state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  // Deletion Confirmation & Consent Modal state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    type: 'move_to_recently_deleted' | 'restore' | 'permanent_delete';
+    targetIds: string[];
+  }>({
+    isOpen: false,
+    type: 'move_to_recently_deleted',
+    targetIds: []
+  });
+
   const myRole = myProfile?.role || 'owner';
   const isOwner = myRole === 'owner';
+  const partnerRole = isOwner ? 'partner' : 'owner';
   const partnerName = myProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul');
   const myName = myProfile?.display_name || (isOwner ? 'Rahul' : 'Nusrat');
 
-  // Specific first names for filter tabs
   const rahulLabel = isOwner ? (myName.split(' ')[0] || 'Rahul') : (partnerName.split(' ')[0] || 'Rahul');
   const nusratLabel = isOwner ? (partnerName.split(' ')[0] || 'Nusrat') : (myName.split(' ')[0] || 'Nusrat');
 
@@ -528,19 +744,28 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     setTimeout(() => setToastMsg(null), 2500);
   };
 
-  // Extract all media items from messages
-  const { photos, videos, audios, links } = useMemo(() => {
+  // Exit selection mode when switching tabs
+  const handleTabChange = (tab: 'photos' | 'videos' | 'audio' | 'links' | 'deleted') => {
+    setActiveTab(tab);
+    setIsSelectionMode(false);
+    setSelectedIds([]);
+  };
+
+  // Extract all media items from messages (active + recently deleted)
+  const { photos, videos, audios, links, deletedItems } = useMemo(() => {
     const pList: ExtractedMediaItem[] = [];
     const vList: ExtractedMediaItem[] = [];
     const aList: ExtractedMediaItem[] = [];
     const lList: ExtractedLinkItem[] = [];
+    const dList: (ExtractedMediaItem | ExtractedLinkItem)[] = [];
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
     messages.forEach((msg) => {
-      if (msg.deleted) return;
+      // If permanently deleted or hidden for me, skip completely
       if (myRole === 'owner' && msg.hidden_for_owner) return;
       if (myRole === 'partner' && msg.hidden_for_partner) return;
 
+      const isDeletedFromMedia = Boolean(msg.deleted_from_media);
       const media = msg.media || hydrateMessageMedia(msg);
 
       // Photos & Videos extraction
@@ -556,13 +781,23 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             fileName: item.fileName,
             caption: item.caption || msg.text,
             duration: item.duration,
+            public_id: item.public_id || (media as any).public_id,
             timestamp: msg.timestamp || msg.created_at,
             senderRole: msg.sender_role,
             messageId: msg.id,
+            deleted_from_media: isDeletedFromMedia,
+            deleted_from_media_by: msg.deleted_from_media_by,
+            deleted_from_media_at: msg.deleted_from_media_at,
+            media_deletion_consent: msg.media_deletion_consent || {},
           };
-          if (item.type === 'video') vList.push(extracted);
-          else if (item.type === 'audio') aList.push(extracted);
-          else pList.push(extracted);
+
+          if (isDeletedFromMedia) {
+            dList.push(extracted);
+          } else if (!msg.deleted) {
+            if (item.type === 'video') vList.push(extracted);
+            else if (item.type === 'audio') aList.push(extracted);
+            else pList.push(extracted);
+          }
         });
       } else if (media) {
         const u = media.url || media.thumbnailUrl;
@@ -575,13 +810,23 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             fileName: media.fileName,
             caption: media.caption || msg.text,
             duration: media.duration,
+            public_id: media.public_id,
             timestamp: msg.timestamp || msg.created_at,
             senderRole: msg.sender_role,
             messageId: msg.id,
+            deleted_from_media: isDeletedFromMedia,
+            deleted_from_media_by: msg.deleted_from_media_by,
+            deleted_from_media_at: msg.deleted_from_media_at,
+            media_deletion_consent: msg.media_deletion_consent || {},
           };
-          if (media.type === 'video') vList.push(extracted);
-          else if (media.type === 'audio') aList.push(extracted);
-          else pList.push(extracted);
+
+          if (isDeletedFromMedia) {
+            dList.push(extracted);
+          } else if (!msg.deleted) {
+            if (media.type === 'video') vList.push(extracted);
+            else if (media.type === 'audio') aList.push(extracted);
+            else pList.push(extracted);
+          }
         }
       }
 
@@ -591,23 +836,35 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const isAudio = /^data:audio\//.test(rawAtt) || /\.(mp3|wav|ogg|m4a|aac|weba|webm)(?:\?|$)/i.test(rawAtt);
         const isVideo = !isAudio && (/^data:video\//.test(rawAtt) || /\.(mp4|mov|webm)(?:\?|$)/i.test(rawAtt));
         if (isAudio && !aList.some((x) => x.messageId === msg.id)) {
-          aList.push({
+          const item: ExtractedMediaItem = {
             id: msg.id,
             type: 'audio',
             url: rawAtt,
             timestamp: msg.timestamp || msg.created_at,
             senderRole: msg.sender_role,
             messageId: msg.id,
-          });
+            deleted_from_media: isDeletedFromMedia,
+            deleted_from_media_by: msg.deleted_from_media_by,
+            deleted_from_media_at: msg.deleted_from_media_at,
+            media_deletion_consent: msg.media_deletion_consent || {},
+          };
+          if (isDeletedFromMedia) dList.push(item);
+          else if (!msg.deleted) aList.push(item);
         } else if (isVideo && !vList.some((x) => x.messageId === msg.id)) {
-          vList.push({
+          const item: ExtractedMediaItem = {
             id: msg.id,
             type: 'video',
             url: rawAtt,
             timestamp: msg.timestamp || msg.created_at,
             senderRole: msg.sender_role,
             messageId: msg.id,
-          });
+            deleted_from_media: isDeletedFromMedia,
+            deleted_from_media_by: msg.deleted_from_media_by,
+            deleted_from_media_at: msg.deleted_from_media_at,
+            media_deletion_consent: msg.media_deletion_consent || {},
+          };
+          if (isDeletedFromMedia) dList.push(item);
+          else if (!msg.deleted) vList.push(item);
         }
       }
 
@@ -622,7 +879,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             } catch {
               domain = 'web';
             }
-            lList.push({
+            const linkItem: ExtractedLinkItem = {
               id: `${msg.id}_${url}`,
               url,
               domain,
@@ -630,7 +887,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               timestamp: msg.timestamp || msg.created_at,
               senderRole: msg.sender_role,
               messageId: msg.id,
-            });
+              deleted_from_media: isDeletedFromMedia,
+              deleted_from_media_by: msg.deleted_from_media_by,
+              deleted_from_media_at: msg.deleted_from_media_at,
+              media_deletion_consent: msg.media_deletion_consent || {},
+            };
+            if (isDeletedFromMedia) dList.push(linkItem);
+            else if (!msg.deleted) lList.push(linkItem);
           });
         }
       }
@@ -642,11 +905,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     vList.sort(sortByTime);
     aList.sort(sortByTime);
     lList.sort(sortByTime);
+    dList.sort(sortByTime);
 
-    return { photos: pList, videos: vList, audios: aList, links: lList };
+    return { photos: pList, videos: vList, audios: aList, links: lList, deletedItems: dList };
   }, [messages, myRole]);
 
-  // Sender filtering helper (Rahul is owner, Nusrat is partner)
+  // Sender filtering helper
   const filterBySender = useCallback((item: { senderRole: UserRole }) => {
     if (senderFilter === 'all') return true;
     if (senderFilter === 'rahul') return item.senderRole === 'owner';
@@ -654,7 +918,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     return true;
   }, [senderFilter]);
 
-  // Query filtering helper
+  // Query and Sender filtered lists
   const filteredPhotos = useMemo(() => {
     return photos.filter((p) => {
       if (!filterBySender(p)) return false;
@@ -696,8 +960,69 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     });
   }, [links, filterBySender, searchQuery]);
 
+  // Filtered Recently Deleted Items
+  const filteredDeletedItems = useMemo(() => {
+    return deletedItems.filter((item) => {
+      if (!filterBySender(item)) return false;
+      // Sub-type filter
+      if (deletedSubFilter === 'photos' && ('type' in item ? item.type !== 'image' : true)) return false;
+      if (deletedSubFilter === 'videos' && ('type' in item ? item.type !== 'video' : true)) return false;
+      if (deletedSubFilter === 'audio' && ('type' in item ? item.type !== 'audio' : true)) return false;
+      if (deletedSubFilter === 'links' && !('domain' in item)) return false;
+
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      if ('url' in item && item.url.toLowerCase().includes(q)) return true;
+      if ('caption' in item && item.caption && item.caption.toLowerCase().includes(q)) return true;
+      if ('contextText' in item && item.contextText && item.contextText.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [deletedItems, filterBySender, deletedSubFilter, searchQuery]);
+
+  // Current active item list in the view
+  const currentViewItems = useMemo(() => {
+    if (activeTab === 'photos') return filteredPhotos;
+    if (activeTab === 'videos') return filteredVideos;
+    if (activeTab === 'audio') return filteredAudios;
+    if (activeTab === 'links') return filteredLinks;
+    if (activeTab === 'deleted') return filteredDeletedItems;
+    return [];
+  }, [activeTab, filteredPhotos, filteredVideos, filteredAudios, filteredLinks, filteredDeletedItems]);
+
+  // Toggle single item selection
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const exists = prev.includes(id);
+      const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
+      if (next.length === 0) {
+        setIsSelectionMode(false);
+      } else {
+        setIsSelectionMode(true);
+      }
+      return next;
+    });
+  };
+
+  // Start selection mode from long press
+  const handleLongPress = (id: string) => {
+    setIsSelectionMode(true);
+    setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  // Select all / Deselect all
+  const handleSelectAll = () => {
+    if (selectedIds.length === currentViewItems.length) {
+      setSelectedIds([]);
+      setIsSelectionMode(false);
+    } else {
+      setSelectedIds(currentViewItems.map((x) => x.id));
+      setIsSelectionMode(true);
+    }
+  };
+
   // Open photo/video in FullscreenMediaViewer
   const handleOpenViewer = (item: ExtractedMediaItem, list: ExtractedMediaItem[]) => {
+    if (isSelectionMode) return;
     const mediaAttachments: MediaAttachment[] = list.map((x) => ({
       id: x.id,
       type: x.type,
@@ -706,30 +1031,203 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       fileName: x.fileName,
       caption: x.caption,
       duration: x.duration,
+      public_id: x.public_id,
     }));
     const index = list.findIndex((x) => x.id === item.id);
     onViewMedia(mediaAttachments[index >= 0 ? index : 0], mediaAttachments, index >= 0 ? index : 0);
+  };
+
+  // Map selected item IDs to unique Message IDs
+  const getSelectedMessageIds = (ids: string[]) => {
+    const msgIds = new Set<string>();
+    currentViewItems.forEach((item) => {
+      if (ids.includes(item.id)) {
+        msgIds.add(item.messageId);
+      }
+    });
+    return Array.from(msgIds);
+  };
+
+  // 1. Move to Recently Deleted (Requires consent tracking)
+  const handleMoveToRecentlyDeleted = async (ids: string[]) => {
+    const msgIds = getSelectedMessageIds(ids);
+    if (msgIds.length === 0) return;
+
+    setIsProcessingAction(true);
+    try {
+      // For each message, set deleted_from_media: true, deleted_from_media_by: myRole, and record consent
+      const nowIso = new Date().toISOString();
+      for (const msgId of msgIds) {
+        const existingMsg = messages.find((m) => m.id === msgId);
+        const existingConsent = existingMsg?.media_deletion_consent || {};
+        const updatedConsent = {
+          ...existingConsent,
+          [myRole]: true,
+        };
+
+        await supabase
+          .from('messages')
+          .update({
+            deleted_from_media: true,
+            deleted_from_media_by: myRole,
+            deleted_from_media_at: nowIso,
+            media_deletion_consent: updatedConsent,
+          })
+          .eq('id', msgId);
+      }
+
+      showToast(`Moved ${ids.length} item${ids.length > 1 ? 's' : ''} to Recently Deleted`);
+      setSelectedIds([]);
+      setIsSelectionMode(false);
+      setConfirmDialog({ isOpen: false, type: 'move_to_recently_deleted', targetIds: [] });
+    } catch (err) {
+      console.error('Error moving to recently deleted:', err);
+      showToast('Could not move items to Recently Deleted');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // 2. Restore from Recently Deleted
+  const handleRestoreItems = async (ids: string[]) => {
+    const msgIds = getSelectedMessageIds(ids);
+    if (msgIds.length === 0) return;
+
+    setIsProcessingAction(true);
+    try {
+      for (const msgId of msgIds) {
+        await supabase
+          .from('messages')
+          .update({
+            deleted_from_media: false,
+            deleted_from_media_by: null,
+            deleted_from_media_at: null,
+            media_deletion_consent: {},
+          })
+          .eq('id', msgId);
+      }
+
+      showToast(`Restored ${ids.length} item${ids.length > 1 ? 's' : ''} to Gallery`);
+      setSelectedIds([]);
+      setIsSelectionMode(false);
+      setConfirmDialog({ isOpen: false, type: 'restore', targetIds: [] });
+    } catch (err) {
+      console.error('Error restoring items:', err);
+      showToast('Could not restore items');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // 3. Permanent Deletion with Two-Party Consent & Cloudinary purge
+  const handlePermanentDelete = async (ids: string[]) => {
+    const msgIds = getSelectedMessageIds(ids);
+    if (msgIds.length === 0) return;
+
+    setIsProcessingAction(true);
+    try {
+      const publicIdsToPurge: string[] = [];
+      const messagesToMarkDeleted: string[] = [];
+      let pendingPartnerCount = 0;
+
+      for (const msgId of msgIds) {
+        const existingMsg = messages.find((m) => m.id === msgId);
+        const existingConsent = existingMsg?.media_deletion_consent || {};
+        const partnerConsented = Boolean(existingConsent[partnerRole]);
+
+        // If partner already consented, both parties have consented -> PERMANENT PURGE!
+        if (partnerConsented) {
+          messagesToMarkDeleted.push(msgId);
+          // Collect public_ids
+          if (existingMsg?.media?.public_id) {
+            publicIdsToPurge.push(existingMsg.media.public_id);
+          }
+          if (existingMsg?.media?.mediaList) {
+            existingMsg.media.mediaList.forEach((sub) => {
+              if (sub.public_id) publicIdsToPurge.push(sub.public_id);
+            });
+          }
+        } else {
+          // Partner has not consented yet -> register my consent and notify
+          pendingPartnerCount++;
+          const updatedConsent = {
+            ...existingConsent,
+            [myRole]: true,
+          };
+          await supabase
+            .from('messages')
+            .update({
+              media_deletion_consent: updatedConsent,
+              deleted_from_media: true,
+              deleted_from_media_by: myRole,
+            })
+            .eq('id', msgId);
+        }
+      }
+
+      // Execute Cloudinary server destruction if any items have full consent
+      if (publicIdsToPurge.length > 0) {
+        await deleteFromCloudinary(publicIdsToPurge);
+      }
+
+      // Mark messages as deleted in chat (showing "deleted from media" banner)
+      if (messagesToMarkDeleted.length > 0) {
+        for (const msgId of messagesToMarkDeleted) {
+          await supabase
+            .from('messages')
+            .update({
+              text: '',
+              attachment_url: null,
+              media: null,
+              mediaList: null,
+              deleted: true,
+              deletedBy: myRole,
+              deleted_from_media: true,
+              deleted_from_media_by: myRole,
+              reactions: {},
+            })
+            .eq('id', msgId);
+        }
+      }
+
+      if (pendingPartnerCount > 0 && messagesToMarkDeleted.length > 0) {
+        showToast(`Permanently deleted ${messagesToMarkDeleted.length} items. Waiting on ${partnerName}'s consent for ${pendingPartnerCount}.`);
+      } else if (pendingPartnerCount > 0) {
+        showToast(`Consent recorded. Waiting for ${partnerName} to also confirm permanent deletion.`);
+      } else {
+        showToast(`Permanently deleted ${messagesToMarkDeleted.length} items from media & Cloudinary.`);
+      }
+
+      setSelectedIds([]);
+      setIsSelectionMode(false);
+      setConfirmDialog({ isOpen: false, type: 'permanent_delete', targetIds: [] });
+    } catch (err) {
+      console.error('Error during permanent deletion:', err);
+      showToast('Error performing permanent deletion');
+    } finally {
+      setIsProcessingAction(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[120] flex flex-col bg-[var(--theme-bg)] text-[var(--theme-text)] overflow-hidden animate-in fade-in duration-150">
-      {/* Toast */}
+      {/* Toast Notification */}
       <AnimatePresence>
         {toastMsg && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a1a]/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg pointer-events-none"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-[140] bg-[#1a1a1a]/95 backdrop-blur-md text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg pointer-events-none"
           >
             {toastMsg}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Top Header */}
       <header className="flex-shrink-0 px-4 py-3 border-b border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-3 min-w-0">
@@ -737,7 +1235,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               type="button"
               onClick={onClose}
               className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer shrink-0"
-              title="Back to Dashboard"
+              title="Back"
             >
               <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
             </button>
@@ -754,80 +1252,202 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 <span className="font-semibold text-[var(--theme-text)]">{audios.length}</span> audios
                 <span className="mx-1 text-[var(--theme-text)]/35">•</span>
                 <span className="font-semibold text-[var(--theme-text)]">{links.length}</span> links
+                {deletedItems.length > 0 && (
+                  <>
+                    <span className="mx-1 text-[var(--theme-text)]/35">•</span>
+                    <span className="font-semibold text-rose-500">{deletedItems.length}</span> recently deleted
+                  </>
+                )}
               </p>
             </div>
           </div>
 
-          {/* Sender Filter Toggle: Account-sensitive ordering
-              From Rahul's account (isOwner): ALL -> NUSRAT -> RAHUL
-              From Nusrat's account (!isOwner): ALL -> RAHUL -> NUSRAT */}
-          <div className="self-end sm:self-auto flex items-center gap-1 bg-[var(--theme-bg)]/90 p-1 rounded-xl border border-[var(--theme-border)]/60 shrink-0">
-            <button
-              type="button"
-              onClick={() => setSenderFilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
-                senderFilter === 'all'
-                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
-              }`}
-            >
-              All
-            </button>
-
-            {isOwner ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSenderFilter('nusrat')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
-                    senderFilter === 'nusrat'
-                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
-                  }`}
-                >
-                  {nusratLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSenderFilter('rahul')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
-                    senderFilter === 'rahul'
-                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
-                  }`}
-                >
-                  {rahulLabel}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSenderFilter('rahul')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
-                    senderFilter === 'rahul'
-                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
-                  }`}
-                >
-                  {rahulLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSenderFilter('nusrat')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
-                    senderFilter === 'nusrat'
-                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
-                  }`}
-                >
-                  {nusratLabel}
-                </button>
-              </>
+          {/* Action Row: Multi-select button & Sender Filter */}
+          <div className="self-end sm:self-auto flex items-center gap-2 shrink-0">
+            {/* Toggle Select Mode Button */}
+            {currentViewItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSelectionMode) {
+                    setIsSelectionMode(false);
+                    setSelectedIds([]);
+                  } else {
+                    setIsSelectionMode(true);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isSelectionMode
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'bg-[var(--theme-bg)] border border-[var(--theme-border)]/70 text-[var(--theme-text)]/80 hover:text-[var(--theme-text)]'
+                }`}
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>{isSelectionMode ? 'Done' : 'Select'}</span>
+              </button>
             )}
+
+            {/* Sender Filter Toggle */}
+            <div className="flex items-center gap-1 bg-[var(--theme-bg)]/90 p-1 rounded-xl border border-[var(--theme-border)]/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSenderFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                  senderFilter === 'all'
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                }`}
+              >
+                All
+              </button>
+
+              {isOwner ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSenderFilter('nusrat')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                      senderFilter === 'nusrat'
+                        ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                        : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                    }`}
+                  >
+                    {nusratLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSenderFilter('rahul')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                      senderFilter === 'rahul'
+                        ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                        : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                    }`}
+                  >
+                    {rahulLabel}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSenderFilter('rahul')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                      senderFilter === 'rahul'
+                        ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                        : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                    }`}
+                  >
+                    {rahulLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSenderFilter('nusrat')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                      senderFilter === 'nusrat'
+                        ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                        : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                    }`}
+                  >
+                    {nusratLabel}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
+
+      {/* Floating Multi-Select Action Bar (Shows when items are selected) */}
+      <AnimatePresence>
+        {isSelectionMode && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex-shrink-0 bg-[var(--theme-surface)] border-b border-[var(--theme-border)] px-4 py-2.5 flex items-center justify-between overflow-hidden shadow-xs z-20"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-xs font-semibold text-[var(--theme-accent)] hover:underline cursor-pointer flex items-center gap-1.5"
+              >
+                {selectedIds.length === currentViewItems.length && currentViewItems.length > 0 ? (
+                  <>
+                    <CheckSquare className="w-4 h-4" />
+                    <span>Deselect All</span>
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-4 h-4" />
+                    <span>Select All ({currentViewItems.length})</span>
+                  </>
+                )}
+              </button>
+              <span className="text-xs font-medium text-[var(--theme-text)]/60">
+                {selectedIds.length} selected
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {activeTab === 'deleted' ? (
+                <>
+                  {/* Restore action */}
+                  <button
+                    type="button"
+                    disabled={selectedIds.length === 0 || isProcessingAction}
+                    onClick={() => {
+                      setConfirmDialog({
+                        isOpen: true,
+                        type: 'restore',
+                        targetIds: selectedIds,
+                      });
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restore</span>
+                  </button>
+
+                  {/* Permanent Delete action */}
+                  <button
+                    type="button"
+                    disabled={selectedIds.length === 0 || isProcessingAction}
+                    onClick={() => {
+                      setConfirmDialog({
+                        isOpen: true,
+                        type: 'permanent_delete',
+                        targetIds: selectedIds,
+                      });
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                  >
+                    <Flame className="w-3.5 h-3.5" />
+                    <span>Delete Forever</span>
+                  </button>
+                </>
+              ) : (
+                /* Move to Recently Deleted action */
+                <button
+                  type="button"
+                  disabled={selectedIds.length === 0 || isProcessingAction}
+                  onClick={() => {
+                    setConfirmDialog({
+                      isOpen: true,
+                      type: 'move_to_recently_deleted',
+                      targetIds: selectedIds,
+                    });
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete ({selectedIds.length})</span>
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Search & Tabs Row */}
       <div className="px-4 pt-3 pb-2 border-b border-[var(--theme-border)]/40 bg-[var(--theme-surface)]/80 space-y-2.5">
@@ -838,7 +1458,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${activeTab}...`}
+            placeholder={`Search ${activeTab === 'deleted' ? 'recently deleted' : activeTab}...`}
             className="w-full pl-9 pr-8 py-2 rounded-xl bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/70 text-xs text-[var(--theme-text)] placeholder-[var(--theme-text)]/40 focus:outline-hidden focus:border-[var(--theme-accent)] transition-colors"
           />
           {searchQuery && (
@@ -852,12 +1472,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
           )}
         </div>
 
-        {/* 4 Clean Segmented Tabs */}
-        <div className="grid grid-cols-4 gap-1.5 p-1 rounded-xl bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60">
+        {/* 5 Main Tabs (Photos, Videos, Audio, Links, Recently Deleted Vault) */}
+        <div className="grid grid-cols-5 gap-1 p-1 rounded-xl bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60">
           <button
             type="button"
-            onClick={() => setActiveTab('photos')}
-            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all ${
+            onClick={() => handleTabChange('photos')}
+            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'photos'
                 ? 'bg-[var(--theme-surface)] text-[var(--theme-accent)] shadow-xs border border-[var(--theme-border)]/60'
                 : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -870,8 +1490,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('videos')}
-            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all ${
+            onClick={() => handleTabChange('videos')}
+            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'videos'
                 ? 'bg-[var(--theme-surface)] text-[var(--theme-accent)] shadow-xs border border-[var(--theme-border)]/60'
                 : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -884,8 +1504,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('audio')}
-            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all ${
+            onClick={() => handleTabChange('audio')}
+            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'audio'
                 ? 'bg-[var(--theme-surface)] text-[var(--theme-accent)] shadow-xs border border-[var(--theme-border)]/60'
                 : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -898,8 +1518,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('links')}
-            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all ${
+            onClick={() => handleTabChange('links')}
+            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'links'
                 ? 'bg-[var(--theme-surface)] text-[var(--theme-accent)] shadow-xs border border-[var(--theme-border)]/60'
                 : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
@@ -909,7 +1529,45 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             <span>Links</span>
             <span className="text-[10px] font-mono opacity-70">({filteredLinks.length})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabChange('deleted')}
+            className={`py-2 px-1 rounded-lg text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeTab === 'deleted'
+                ? 'bg-rose-500/10 text-rose-500 shadow-xs border border-rose-500/30 font-extrabold'
+                : 'text-rose-500/70 hover:text-rose-500'
+            }`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Deleted</span>
+            <span className="text-[10px] font-mono opacity-75">({deletedItems.length})</span>
+          </button>
         </div>
+
+        {/* Sub-filters for Recently Deleted Tab */}
+        {activeTab === 'deleted' && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+            <span className="text-[11px] font-semibold text-[var(--theme-text)]/60 mr-1 flex items-center gap-1">
+              <Info className="w-3 h-3 text-rose-500" />
+              Filter:
+            </span>
+            {(['all', 'photos', 'videos', 'audio', 'links'] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setDeletedSubFilter(filter)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize transition-all cursor-pointer shrink-0 ${
+                  deletedSubFilter === filter
+                    ? 'bg-rose-500 text-white shadow-xs'
+                    : 'bg-[var(--theme-bg)] border border-[var(--theme-border)]/60 text-[var(--theme-text)]/70 hover:text-[var(--theme-text)]'
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Main Tab Content Viewport */}
@@ -923,6 +1581,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   <MediaGridCell
                     key={item.id}
                     item={item}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.includes(item.id)}
+                    onToggleSelect={() => handleToggleSelect(item.id)}
+                    onLongPress={() => handleLongPress(item.id)}
                     onClick={() => handleOpenViewer(item, filteredPhotos)}
                   />
                 ))}
@@ -952,6 +1614,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   <MediaGridCell
                     key={item.id}
                     item={item}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.includes(item.id)}
+                    onToggleSelect={() => handleToggleSelect(item.id)}
+                    onLongPress={() => handleLongPress(item.id)}
                     onClick={() => handleOpenViewer(item, filteredVideos)}
                   />
                 ))}
@@ -987,6 +1653,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     senderName={senderName}
                     senderPhoto={senderPhoto}
                     isMe={isMe}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.includes(item.id)}
+                    onToggleSelect={() => handleToggleSelect(item.id)}
+                    onLongPress={() => handleLongPress(item.id)}
                   />
                 );
               })
@@ -1021,6 +1691,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     senderName={senderName}
                     senderPhoto={senderPhoto}
                     isMe={isMe}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.includes(item.id)}
+                    onToggleSelect={() => handleToggleSelect(item.id)}
+                    onLongPress={() => handleLongPress(item.id)}
                     onCopy={() => showToast('Link copied to clipboard!')}
                   />
                 );
@@ -1040,7 +1714,236 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             )}
           </div>
         )}
+
+        {/* RECENTLY DELETED VAULT TAB */}
+        {activeTab === 'deleted' && (
+          <div className="space-y-4">
+            {/* Banner explaining Recently Deleted & Two-Party Consent */}
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+              <div className="text-xs text-[var(--theme-text)]/85 space-y-1">
+                <p className="font-bold text-rose-500">Recently Deleted Vault & Mutual Consent</p>
+                <p className="text-[11px] leading-relaxed text-[var(--theme-text)]/70">
+                  Items here are hidden from the active media gallery. You can restore them anytime. 
+                  Permanent deletion requires <strong>mutual consent from both {rahulLabel} and {nusratLabel}</strong>. Once both confirm, items are permanently erased from Cloudinary storage and replaced with a deletion banner in your chat.
+                </p>
+              </div>
+            </div>
+
+            {filteredDeletedItems.length > 0 ? (
+              <div className="space-y-3">
+                {/* Media grid for photos/videos in deleted vault */}
+                {filteredDeletedItems.some((x) => 'type' in x && (x.type === 'image' || x.type === 'video')) && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                    {filteredDeletedItems
+                      .filter((x): x is ExtractedMediaItem => 'type' in x && (x.type === 'image' || x.type === 'video'))
+                      .map((item) => {
+                        const partnerConsent = Boolean(item.media_deletion_consent?.[partnerRole]);
+                        const myConsent = Boolean(item.media_deletion_consent?.[myRole]);
+
+                        return (
+                          <div key={item.id} className="relative group">
+                            <MediaGridCell
+                              item={item}
+                              isSelectionMode={isSelectionMode}
+                              isSelected={selectedIds.includes(item.id)}
+                              onToggleSelect={() => handleToggleSelect(item.id)}
+                              onLongPress={() => handleLongPress(item.id)}
+                              onClick={() => {
+                                if (!isSelectionMode) {
+                                  handleToggleSelect(item.id);
+                                }
+                              }}
+                            />
+                            {/* Mutual consent status badge */}
+                            <div className="absolute bottom-1 left-1 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-xs text-[9px] font-semibold text-white">
+                              {partnerConsent ? (
+                                <span className="text-emerald-400">Partner Agreed</span>
+                              ) : myConsent ? (
+                                <span className="text-amber-400">Waiting Partner</span>
+                              ) : (
+                                <span className="text-white/70">In Vault</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+
+                {/* Audio cards in deleted vault */}
+                {filteredDeletedItems
+                  .filter((x): x is ExtractedMediaItem => 'type' in x && x.type === 'audio')
+                  .map((item) => {
+                    const isMe = item.senderRole === myRole;
+                    const senderName = isMe ? myName : partnerName;
+                    const senderPhoto = isMe ? myProfile?.photo_url : partnerProfile?.photo_url;
+                    const partnerConsent = Boolean(item.media_deletion_consent?.[partnerRole]);
+
+                    return (
+                      <div key={item.id} className="relative">
+                        <AudioPlayerCard
+                          item={item}
+                          senderName={senderName}
+                          senderPhoto={senderPhoto}
+                          isMe={isMe}
+                          isSelectionMode={isSelectionMode}
+                          isSelected={selectedIds.includes(item.id)}
+                          onToggleSelect={() => handleToggleSelect(item.id)}
+                          onLongPress={() => handleLongPress(item.id)}
+                        />
+                        <div className="mt-1 flex items-center justify-between px-2 text-[10px] text-[var(--theme-text)]/60">
+                          <span>Status: {partnerConsent ? 'Partner confirmed deletion' : 'Waiting for partner confirmation'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {/* Link cards in deleted vault */}
+                {filteredDeletedItems
+                  .filter((x): x is ExtractedLinkItem => 'domain' in x)
+                  .map((item) => {
+                    const isMe = item.senderRole === myRole;
+                    const senderName = isMe ? myName : partnerName;
+                    const senderPhoto = isMe ? myProfile?.photo_url : partnerProfile?.photo_url;
+                    return (
+                      <LinkCard
+                        key={item.id}
+                        item={item}
+                        senderName={senderName}
+                        senderPhoto={senderPhoto}
+                        isMe={isMe}
+                        isSelectionMode={isSelectionMode}
+                        isSelected={selectedIds.includes(item.id)}
+                        onToggleSelect={() => handleToggleSelect(item.id)}
+                        onLongPress={() => handleLongPress(item.id)}
+                        onCopy={() => showToast('Link copied!')}
+                      />
+                    );
+                  })}
+              </div>
+            ) : (
+              <div className="py-20 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-3">
+                  <Trash2 className="w-7 h-7 stroke-[1.8]" />
+                </div>
+                <h3 className="text-sm font-bold text-[var(--theme-text)]">Recently Deleted is Empty</h3>
+                <p className="text-xs text-[var(--theme-text)]/60 mt-1 max-w-xs mx-auto">
+                  {searchQuery
+                    ? 'No items matched your search query in Recently Deleted.'
+                    : 'Media you remove from the gallery will appear here for safe restoration or permanent purge.'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Confirmation & Consent Dialog Modal */}
+      <AnimatePresence>
+        {confirmDialog.isOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="w-full max-w-sm rounded-3xl bg-[var(--theme-surface)] text-[var(--theme-text)] border border-[var(--theme-border)] shadow-2xl p-5 space-y-4 select-none"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                  confirmDialog.type === 'permanent_delete'
+                    ? 'bg-rose-500/15 text-rose-500'
+                    : confirmDialog.type === 'restore'
+                    ? 'bg-emerald-500/15 text-emerald-500'
+                    : 'bg-amber-500/15 text-amber-500'
+                }`}>
+                  {confirmDialog.type === 'permanent_delete' ? (
+                    <Flame className="w-5 h-5" />
+                  ) : confirmDialog.type === 'restore' ? (
+                    <RotateCcw className="w-5 h-5" />
+                  ) : (
+                    <Trash2 className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--theme-text)]">
+                    {confirmDialog.type === 'permanent_delete'
+                      ? 'Permanently Delete?'
+                      : confirmDialog.type === 'restore'
+                      ? 'Restore Selected Media?'
+                      : 'Move to Recently Deleted?'}
+                  </h3>
+                  <p className="text-xs text-[var(--theme-text)]/60">
+                    {confirmDialog.targetIds.length} item{confirmDialog.targetIds.length > 1 ? 's' : ''} selected
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs text-[var(--theme-text)]/80 leading-relaxed bg-[var(--theme-bg)]/80 p-3 rounded-2xl border border-[var(--theme-border)]/50">
+                {confirmDialog.type === 'permanent_delete' ? (
+                  <p>
+                    This permanently erases the media files from <strong>Cloudinary server storage</strong> and your database. 
+                    <br /><br />
+                    <strong>Mutual Consent Rule:</strong> If {partnerName} has not agreed yet, your consent will be saved until both of you confirm. Once both agree, it will also show as &quot;deleted from media&quot; in your chat.
+                  </p>
+                ) : confirmDialog.type === 'restore' ? (
+                  <p>
+                    Selected items will be restored immediately to your active Photos, Videos, Audio, or Links gallery tabs.
+                  </p>
+                ) : (
+                  <p>
+                    Items will be moved to your <strong>Recently Deleted</strong> vault. They won&apos;t appear in the main gallery, and can be restored or permanently purged anytime.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-1">
+                <button
+                  type="button"
+                  disabled={isProcessingAction}
+                  onClick={() => setConfirmDialog({ isOpen: false, type: 'move_to_recently_deleted', targetIds: [] })}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--theme-text)]/70 hover:bg-[var(--theme-bg)] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessingAction}
+                  onClick={() => {
+                    if (confirmDialog.type === 'permanent_delete') {
+                      handlePermanentDelete(confirmDialog.targetIds);
+                    } else if (confirmDialog.type === 'restore') {
+                      handleRestoreItems(confirmDialog.targetIds);
+                    } else {
+                      handleMoveToRecentlyDeleted(confirmDialog.targetIds);
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    confirmDialog.type === 'permanent_delete'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : confirmDialog.type === 'restore'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
+                >
+                  {isProcessingAction ? (
+                    <span>Processing...</span>
+                  ) : (
+                    <span>
+                      {confirmDialog.type === 'permanent_delete'
+                        ? 'Confirm Permanent Deletion'
+                        : confirmDialog.type === 'restore'
+                        ? 'Confirm Restore'
+                        : 'Move to Recently Deleted'}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

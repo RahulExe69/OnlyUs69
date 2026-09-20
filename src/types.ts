@@ -43,6 +43,11 @@ export interface MediaAttachment {
   duration?: number; // duration in seconds for video or audio
   width?: number;
   height?: number;
+  public_id?: string; // Cloudinary public_id for secure server destruction
+  deleted_from_media?: boolean;
+  deleted_from_media_by?: UserRole;
+  deleted_from_media_at?: any;
+  deletion_consent?: { [role: string]: boolean };
   mediaList?: MediaAttachment[]; // Multiple items support
 }
 
@@ -54,6 +59,10 @@ export interface Message {
   reactions?: { [role: string]: string }; // role -> emoji
   deleted?: boolean;
   deletedBy?: UserRole;
+  deleted_from_media?: boolean;
+  deleted_from_media_by?: UserRole;
+  deleted_from_media_at?: any;
+  media_deletion_consent?: { [role: string]: boolean };
   hidden_for_owner?: boolean;
   hidden_for_partner?: boolean;
   isEdited?: boolean;

@@ -2167,6 +2167,14 @@ export default function App() {
                                 <UserIcon className="w-4 h-4 text-[var(--theme-accent)]" />
                                 My Profile
                               </button>
+                              <button 
+                                onPointerDown={(e) => e.preventDefault()}
+                                onClick={() => { setShowMediaModal(true); setShowMenu(false); }}
+                                className="w-full px-4 py-3 text-left text-sm font-medium text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 flex items-center gap-3 transition-colors"
+                              >
+                                <ImageIcon className="w-4 h-4 text-[var(--theme-accent)]" />
+                                Media & Memories
+                              </button>
                               {isNotesFlavor && (
                                 <button 
                                   onPointerDown={(e) => e.preventDefault()}
@@ -2305,6 +2313,10 @@ export default function App() {
               isThemeSaving={isThemeSaving}
               petSettings={petSettings}
               onOpenPetSettings={() => setShowPetModal(true)}
+              onOpenMediaGallery={() => {
+                setShowPartnerInfo(false);
+                setShowMediaModal(true);
+              }}
             />
           )}
         </AnimatePresence>
@@ -2691,6 +2703,7 @@ const ChatView = React.memo(function ChatView({
 
           let cloudUrl = '';
           let cldThumb: string | undefined = undefined;
+          let cldPublicId: string | undefined = undefined;
 
           // 1. Primary: Upload directly to permanent Cloudinary Cloud (25 GB free tier, multi-account pool)
           try {
@@ -2698,6 +2711,7 @@ const ChatView = React.memo(function ChatView({
             if (cldRes?.secureUrl) {
               cloudUrl = cldRes.secureUrl;
               cldThumb = cldRes.thumbnailUrl;
+              cldPublicId = cldRes.publicId;
             }
           } catch (cldErr) {
             console.warn('Cloudinary upload attempt failed, falling back to Supabase:', cldErr);
@@ -2733,7 +2747,8 @@ const ChatView = React.memo(function ChatView({
             thumbnailUrl: cldThumb || previewThumbUrl || (finalUrl.length < 50000 ? finalUrl : undefined),
             fileName: item.file.name,
             fileSize: finalBlob.size,
-            mimeType: finalBlob.type
+            mimeType: finalBlob.type,
+            public_id: cldPublicId
           });
         }
 
@@ -3020,10 +3035,12 @@ const ChatView = React.memo(function ChatView({
         let cloudUrl = '';
 
         // 1. Primary: Upload voice note directly to Cloudinary permanent cloud
+        let audioPublicId: string | undefined = undefined;
         try {
           const cldRes = await uploadToCloudinary(audioBlob, 'audio', `${mediaId}.${ext}`);
           if (cldRes?.secureUrl) {
             cloudUrl = cldRes.secureUrl;
+            audioPublicId = cldRes.publicId;
           }
         } catch (cldErr) {
           console.warn('Cloudinary audio upload failed, falling back to Supabase:', cldErr);
@@ -3051,6 +3068,7 @@ const ChatView = React.memo(function ChatView({
         const finalAudioAttachment: MediaAttachment = {
           ...audioAttachment,
           url: finalUrl,
+          public_id: audioPublicId,
         };
 
         const audioPayload = JSON.stringify(finalAudioAttachment);

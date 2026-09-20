@@ -160,3 +160,27 @@ export async function uploadToCloudinary(
 
   return null;
 }
+
+/**
+ * Delete media from Cloudinary via the Supabase delete-cloudinary Edge Function
+ */
+export async function deleteFromCloudinary(publicIds: string[]): Promise<boolean> {
+  const filtered = publicIds.filter(id => Boolean(id && typeof id === 'string' && id.trim()));
+  if (filtered.length === 0) return true;
+
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-cloudinary', {
+      body: { public_ids: filtered },
+    });
+
+    if (error) {
+      console.warn('Notice: delete-cloudinary Edge Function returned error:', error);
+      return false;
+    }
+    return Boolean(data?.success);
+  } catch (err) {
+    console.warn('Network error invoking delete-cloudinary Edge Function:', err);
+    return false;
+  }
+}
+
