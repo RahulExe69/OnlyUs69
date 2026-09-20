@@ -511,12 +511,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
   const [activeTab, setActiveTab] = useState<'photos' | 'videos' | 'audio' | 'links'>('photos');
   const [searchQuery, setSearchQuery] = useState('');
-  const [senderFilter, setSenderFilter] = useState<'all' | 'me' | 'partner'>('all');
+  const [senderFilter, setSenderFilter] = useState<'all' | 'rahul' | 'nusrat'>('all');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const myRole = myProfile?.role || 'owner';
-  const partnerName = myProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (myRole === 'owner' ? 'Nusrat' : 'Rahul');
-  const myName = myProfile?.display_name || (myRole === 'owner' ? 'Rahul' : 'Nusrat');
+  const isOwner = myRole === 'owner';
+  const partnerName = myProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || (isOwner ? 'Nusrat' : 'Rahul');
+  const myName = myProfile?.display_name || (isOwner ? 'Rahul' : 'Nusrat');
+
+  // Specific first names for filter tabs
+  const rahulLabel = isOwner ? (myName.split(' ')[0] || 'Rahul') : (partnerName.split(' ')[0] || 'Rahul');
+  const nusratLabel = isOwner ? (partnerName.split(' ')[0] || 'Nusrat') : (myName.split(' ')[0] || 'Nusrat');
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -641,12 +646,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     return { photos: pList, videos: vList, audios: aList, links: lList };
   }, [messages, myRole]);
 
-  // Sender filtering helper
+  // Sender filtering helper (Rahul is owner, Nusrat is partner)
   const filterBySender = useCallback((item: { senderRole: UserRole }) => {
     if (senderFilter === 'all') return true;
-    if (senderFilter === 'me') return item.senderRole === myRole;
-    return item.senderRole !== myRole;
-  }, [senderFilter, myRole]);
+    if (senderFilter === 'rahul') return item.senderRole === 'owner';
+    if (senderFilter === 'nusrat') return item.senderRole === 'partner';
+    return true;
+  }, [senderFilter]);
 
   // Query filtering helper
   const filteredPhotos = useMemo(() => {
@@ -724,62 +730,102 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       </AnimatePresence>
 
       {/* Header */}
-      <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 border-b border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md z-20">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer"
-            title="Back to Dashboard"
-          >
-            <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
-          </button>
-          <div>
-            <h1 className="text-base sm:text-lg font-bold text-[var(--theme-text)] leading-tight flex items-center gap-2">
-              <span>Media & Memories</span>
-              <Sparkles className="w-4 h-4 text-[var(--theme-accent)]" />
-            </h1>
-            <p className="text-[11px] text-[var(--theme-text)]/60">
-              {photos.length} photos • {videos.length} videos • {audios.length} audios • {links.length} links
-            </p>
+      <header className="flex-shrink-0 px-4 py-3 border-b border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md z-20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer shrink-0"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[var(--theme-text)] leading-tight flex items-center gap-1.5 truncate">
+                <span>Media & Memories</span>
+                <Sparkles className="w-4 h-4 text-[var(--theme-accent)] shrink-0" />
+              </h1>
+              <p className="text-[11px] sm:text-xs text-[var(--theme-text)]/65 font-medium mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                <span className="font-semibold text-[var(--theme-text)]">{photos.length}</span> photos
+                <span className="mx-1 text-[var(--theme-text)]/35">•</span>
+                <span className="font-semibold text-[var(--theme-text)]">{videos.length}</span> videos
+                <span className="mx-1 text-[var(--theme-text)]/35">•</span>
+                <span className="font-semibold text-[var(--theme-text)]">{audios.length}</span> audios
+                <span className="mx-1 text-[var(--theme-text)]/35">•</span>
+                <span className="font-semibold text-[var(--theme-text)]">{links.length}</span> links
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Sender Filter Toggle */}
-        <div className="flex items-center gap-1 bg-[var(--theme-bg)]/80 p-1 rounded-xl border border-[var(--theme-border)]/60">
-          <button
-            type="button"
-            onClick={() => setSenderFilter('all')}
-            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-              senderFilter === 'all'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
-            }`}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setSenderFilter('me')}
-            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-              senderFilter === 'me'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
-            }`}
-          >
-            You
-          </button>
-          <button
-            type="button"
-            onClick={() => setSenderFilter('partner')}
-            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-              senderFilter === 'partner'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/60 hover:text-[var(--theme-text)]'
-            }`}
-          >
-            {partnerName.split(' ')[0]}
-          </button>
+          {/* Sender Filter Toggle: Account-sensitive ordering
+              From Rahul's account (isOwner): ALL -> NUSRAT -> RAHUL
+              From Nusrat's account (!isOwner): ALL -> RAHUL -> NUSRAT */}
+          <div className="self-end sm:self-auto flex items-center gap-1 bg-[var(--theme-bg)]/90 p-1 rounded-xl border border-[var(--theme-border)]/60 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSenderFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                senderFilter === 'all'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+              }`}
+            >
+              All
+            </button>
+
+            {isOwner ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSenderFilter('nusrat')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                    senderFilter === 'nusrat'
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  {nusratLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSenderFilter('rahul')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                    senderFilter === 'rahul'
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  {rahulLabel}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSenderFilter('rahul')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                    senderFilter === 'rahul'
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  {rahulLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSenderFilter('nusrat')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                    senderFilter === 'nusrat'
+                      ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                      : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)]'
+                  }`}
+                >
+                  {nusratLabel}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
