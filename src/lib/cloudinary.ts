@@ -15,8 +15,36 @@ export interface CloudinaryAccount {
   id: string;
   cloudName: string;
   uploadPreset: string;
+  apiKey?: string;
+  apiSecret?: string;
   label?: string;
   isActive: boolean;
+}
+
+/**
+ * Verify Cloudinary API Key & Secret via the delete-cloudinary Edge Function
+ */
+export async function verifyCloudinaryCredentials(
+  cloudName: string,
+  apiKey: string,
+  apiSecret: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-cloudinary', {
+      body: {
+        action: 'verify',
+        cloud_name: cloudName,
+        apiKey,
+        apiSecret,
+      },
+    });
+    if (error) {
+      return { success: false, error: error.message || 'Verification failed' };
+    }
+    return data || { success: false, error: 'Unknown response' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
 }
 
 const STORAGE_KEY = 'onlyus_cloudinary_accounts';

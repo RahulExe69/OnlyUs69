@@ -41,6 +41,7 @@ High-priority Firebase Cloud Messaging (FCM v1) for zero-latency background/lock
 - **Edge Function**: `send-push` (`/supabase/functions/send-push/index.ts`) generates short-lived Google OAuth2 tokens (RS256) and calls FCM v1 REST API.
 - **DB Trigger**: `on_message_inserted_fcm_push` on `public.messages` calls `send-push` asynchronously via `pg_net` (`net.http_post`).
 - **Token Registration**: Client calls `syncFcmTokenToSupabase` on initial login to store tokens in `public.fcm_tokens`.
+- **Cloud Storage & Deletion**: Multi-account Cloudinary vault with unsigned presets for client uploads and Edge Function `delete-cloudinary` (`/supabase/functions/delete-cloudinary/index.ts`) for authenticated media destruction. Reads account API credentials dynamically from `app_config.cloudinary_config` or env secrets (`CLOUDINARY_ACCOUNTS_JSON`), iterating across accounts and resource types (image/video/raw) upon mutual partner deletion consent.
 
 ---
 
