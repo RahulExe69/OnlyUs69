@@ -1283,9 +1283,12 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
         ctx.save();
         ctx.globalAlpha = p.alpha;
-        ctx.font = `bold ${p.size}px sans-serif`;
+        ctx.font = `600 ${p.size}px ui-rounded, system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(255, 126, 169, 0.35)';
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = p.text === 'zzz' ? 'rgba(120, 105, 170, 0.9)' : 'rgba(238, 92, 145, 0.95)';
         ctx.fillText(p.text, p.x, p.y);
         ctx.restore();
 
@@ -1594,7 +1597,21 @@ export function drawCuteKitten2D(
     pawColor,
   } = palette;
 
-  // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
+      // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
+  // A restrained aura makes Mochi feel present without competing with messages.
+  if (state === 'purring' || state === 'peeking' || state === 'loaf') {
+    const auraPulse = 0.5 + Math.sin(breathePhase * 1.6) * 0.15;
+    const aura = ctx.createRadialGradient(0, -10, 2, 0, -10, 25);
+    aura.addColorStop(0, `rgba(255, 170, 196, ${0.18 * auraPulse})`);
+    aura.addColorStop(1, 'rgba(255, 170, 196, 0)');
+    ctx.save();
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, -10, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.save();
   ctx.beginPath();
   const shadowScale = state === 'pre_jump' ? 1.2 : (state === 'loaf' ? 1.1 : (state === 'jumping' ? 0.65 : 1.0));
