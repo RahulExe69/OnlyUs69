@@ -588,13 +588,15 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Retina / High-DPI Canvas Scaling
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = CANVAS_WIDTH * dpr;
-    canvas.height = CANVAS_HEIGHT * dpr;
-    canvas.style.width = `${CANVAS_WIDTH}px`;
-    canvas.style.height = `${CANVAS_HEIGHT}px`;
-    ctx.scale(dpr, dpr);
+  // Retina / High-DPI Canvas Scaling
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = CANVAS_WIDTH * dpr;
+  canvas.height = CANVAS_HEIGHT * dpr;
+  canvas.style.width = `${CANVAS_WIDTH}px`;
+  canvas.style.height = `${CANVAS_HEIGHT}px`;
+  // setTransform is idempotent; unlike scale(), it cannot compound after a
+  // resize, HMR refresh, or a second animation setup.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Initial placement: Start perched on latest visible message bubble or bottom anchor
     if (!hasInitializedRef.current) {
