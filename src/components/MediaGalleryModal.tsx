@@ -1511,9 +1511,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
       {/* Top Header */}
       <header className="flex-shrink-0 px-4 py-3 border-b border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md z-20">
-        <div className="flex items-center justify-between gap-3">
-          {/* Top Left: Navigation / Archived Button */}
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="relative flex items-center justify-between gap-2 min-h-[36px]">
+          {/* Top Left: Navigation */}
+          <div className="flex items-center gap-1.5 shrink-0 z-10">
             {activeTab === 'archived' ? (
               <button
                 type="button"
@@ -1525,42 +1525,26 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 <span>Gallery</span>
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer shrink-0"
-                  title="Back"
-                >
-                  <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('archived')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--theme-surface)] border border-[var(--theme-border)]/80 text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Archived Media"
-                >
-                  <Archive className="w-3.5 h-3.5 stroke-[2.2] text-[var(--theme-accent)]" />
-                  <span>Archived</span>
-                  {archivedItems.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[var(--theme-accent)]/15 text-[var(--theme-accent)]">
-                      {archivedItems.length}
-                    </span>
-                  )}
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all -ml-1 cursor-pointer shrink-0"
+                title="Back"
+              >
+                <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
+              </button>
             )}
           </div>
 
-          {/* Center Title */}
-          <div className="min-w-0 text-center flex-1">
-            <h1 className="text-base sm:text-lg font-bold text-[var(--theme-text)] leading-tight truncate">
+          {/* Center Title - Perfectly Centered */}
+          <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none px-16 sm:px-24">
+            <h1 className="text-base sm:text-lg font-bold text-[var(--theme-text)] leading-tight truncate text-center pointer-events-auto">
               {activeTab === 'archived' ? 'Archived Media' : 'Media Gallery'}
             </h1>
           </div>
 
-          {/* Action Controls: Multi-select button & Sender Filter */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action Controls: Multi-select button, Recycle Bin Icon & Sender Filter */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 z-10">
             {currentViewItems.length > 0 && (
               <button
                 type="button"
@@ -1580,6 +1564,24 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               >
                 <CheckSquare className="w-3.5 h-3.5" />
                 <span>{isSelectionMode ? 'Done' : 'Select'}</span>
+              </button>
+            )}
+
+            {/* Recycle Bin Icon Button at top right (only in main gallery) */}
+            {activeTab !== 'archived' && (
+              <button
+                type="button"
+                onClick={() => handleTabChange('archived')}
+                className="relative w-9 h-9 rounded-full flex items-center justify-center text-[var(--theme-text)]/80 hover:text-[var(--theme-accent)] hover:bg-[var(--theme-accent)]/10 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Archived Media (Recycle Bin)"
+                aria-label="Archived Media"
+              >
+                <Trash2 className="w-5 h-5 stroke-[2]" />
+                {archivedItems.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-mono font-bold bg-[var(--theme-accent)] text-white flex items-center justify-center shadow-xs">
+                    {archivedItems.length}
+                  </span>
+                )}
               </button>
             )}
 
@@ -1716,9 +1718,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
       {/* Sub-filters row when in Archived view */}
       {activeTab === 'archived' && (
-        <div className="flex-shrink-0 px-4 py-2.5 border-b border-[var(--theme-border)]/40 bg-[var(--theme-surface)]/80 flex items-center justify-between overflow-x-auto no-scrollbar gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-[var(--theme-text)]/50 mr-1">Filter:</span>
+        <div className="flex-shrink-0 px-2 sm:px-4 py-2 border-b border-[var(--theme-border)]/40 bg-[var(--theme-surface)]/80">
+          <div className="grid grid-cols-5 gap-1 sm:gap-1.5 w-full max-w-lg mx-auto">
             {(['all', 'photos', 'videos', 'audio', 'links'] as const).map((sub) => {
               const count =
                 sub === 'all'
@@ -1730,19 +1731,29 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   : sub === 'audio'
                   ? archivedAudiosCount
                   : archivedLinksCount;
+              const label =
+                sub === 'all'
+                  ? 'All'
+                  : sub === 'photos'
+                  ? 'Photos'
+                  : sub === 'videos'
+                  ? 'Videos'
+                  : sub === 'audio'
+                  ? 'Audios'
+                  : 'Links';
               return (
                 <button
                   key={sub}
                   type="button"
                   onClick={() => setArchivedSubFilter(sub)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                  className={`py-1.5 px-0.5 sm:px-1 rounded-xl text-[11px] sm:text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1 text-center whitespace-nowrap min-w-0 ${
                     archivedSubFilter === sub
                       ? 'bg-[var(--theme-accent)] text-white shadow-xs'
                       : 'bg-[var(--theme-bg)] border border-[var(--theme-border)]/60 text-[var(--theme-text)]/70 hover:text-[var(--theme-text)]'
                   }`}
                 >
-                  <span>{sub}</span>
-                  <span className="text-[10px] font-mono opacity-80 font-normal">({count})</span>
+                  <span className="truncate">{label}</span>
+                  <span className="text-[10px] font-mono opacity-80 font-normal shrink-0">({count})</span>
                 </button>
               );
             })}
@@ -2024,73 +2035,75 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       </div>
 
       {/* Bottom Navigation Bar */}
-      <nav className="flex-shrink-0 border-t border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
-        <div className="max-w-md mx-auto grid grid-cols-4 gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleTabChange('photos')}
-            className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeTab === 'photos'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            <span className="text-[11px] leading-none">Photos</span>
-            <span className={`text-[10px] font-mono leading-none ${activeTab === 'photos' ? 'text-white/80' : 'opacity-60'}`}>
-              ({photos.length})
-            </span>
-          </button>
+      {activeTab !== 'archived' && (
+        <nav className="flex-shrink-0 border-t border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
+          <div className="max-w-md mx-auto grid grid-cols-4 gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleTabChange('photos')}
+              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'photos'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+              }`}
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span className="text-[11px] leading-none">Photos</span>
+              <span className={`text-[10px] font-mono leading-none ${activeTab === 'photos' ? 'text-white/80' : 'opacity-60'}`}>
+                ({photos.length})
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange('videos')}
-            className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeTab === 'videos'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-            }`}
-          >
-            <Film className="w-4 h-4" />
-            <span className="text-[11px] leading-none">Videos</span>
-            <span className={`text-[10px] font-mono leading-none ${activeTab === 'videos' ? 'text-white/80' : 'opacity-60'}`}>
-              ({videos.length})
-            </span>
-          </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange('videos')}
+              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'videos'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+              }`}
+            >
+              <Film className="w-4 h-4" />
+              <span className="text-[11px] leading-none">Videos</span>
+              <span className={`text-[10px] font-mono leading-none ${activeTab === 'videos' ? 'text-white/80' : 'opacity-60'}`}>
+                ({videos.length})
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange('audio')}
-            className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeTab === 'audio'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-            }`}
-          >
-            <Mic className="w-4 h-4" />
-            <span className="text-[11px] leading-none">Audio</span>
-            <span className={`text-[10px] font-mono leading-none ${activeTab === 'audio' ? 'text-white/80' : 'opacity-60'}`}>
-              ({audios.length})
-            </span>
-          </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange('audio')}
+              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'audio'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+              }`}
+            >
+              <Mic className="w-4 h-4" />
+              <span className="text-[11px] leading-none">Audio</span>
+              <span className={`text-[10px] font-mono leading-none ${activeTab === 'audio' ? 'text-white/80' : 'opacity-60'}`}>
+                ({audios.length})
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange('links')}
-            className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeTab === 'links'
-                ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-            }`}
-          >
-            <Link2 className="w-4 h-4" />
-            <span className="text-[11px] leading-none">Links</span>
-            <span className={`text-[10px] font-mono leading-none ${activeTab === 'links' ? 'text-white/80' : 'opacity-60'}`}>
-              ({links.length})
-            </span>
-          </button>
-        </div>
-      </nav>
+            <button
+              type="button"
+              onClick={() => handleTabChange('links')}
+              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'links'
+                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+              }`}
+            >
+              <Link2 className="w-4 h-4" />
+              <span className="text-[11px] leading-none">Links</span>
+              <span className={`text-[10px] font-mono leading-none ${activeTab === 'links' ? 'text-white/80' : 'opacity-60'}`}>
+                ({links.length})
+              </span>
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Confirmation Dialog Modal */}
       <AnimatePresence>

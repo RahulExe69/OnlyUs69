@@ -158,6 +158,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const platformsCacheRef = useRef<Platform[]>([]);
   const lastScanTimeRef = useRef<number>(0);
   const lastEscapeJumpTimeRef = useRef<number>(0);
+  const lastHopTimeRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
   const initAttemptsRef = useRef<number>(0);
 
@@ -399,6 +400,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         ? 15
         : Math.max(22, Math.min(60, Math.abs(dy) * 0.32 + 20));
 
+      lastHopTimeRef.current = Date.now();
       jumpPlanRef.current = {
         startX,
         startY,
@@ -964,29 +966,65 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           });
           const otherBubbles = visibleBubbles.filter((p) => p.id.replace(/^msg-/, '') !== curIdClean);
 
-          // Sequential navigation towards new message goal (one-by-one, strictly no skipping!)
+          // Sequential navigation towards new message goal (deliberate, cat-like pacing)
           if (targetGoalIdRef.current && targetGoalIdRef.current !== curIdClean) {
-            const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
-            const currentIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
-            const goalIdx = allBubbles.findIndex(
-              (p) => p.id.replace(/^msg-/, '') === targetGoalIdRef.current?.replace(/^msg-/, '')
-            );
+            // Only hop towards goal if she has rested/explored on this platform for at least 2.5s
+            if (Date.now() - lastHopTimeRef.current > 2500) {
+              const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
+              const currentIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
+              const goalIdx = allBubbles.findIndex(
+                (p) => p.id.replace(/^msg-/, '') === targetGoalIdRef.current?.replace(/^msg-/, '')
+              );
 
-            if (currentIdx !== -1 && goalIdx !== -1 && currentIdx !== goalIdx) {
-              const stepDir = goalIdx > currentIdx ? 1 : -1;
-              const nextPlat = allBubbles[currentIdx + stepDir];
-              if (nextPlat) {
-                startJump(nextPlat, false);
-                return;
+              if (currentIdx !== -1 && goalIdx !== -1 && currentIdx !== goalIdx) {
+                const stepDir = goalIdx > currentIdx ? 1 : -1;
+                const nextPlat = allBubbles[currentIdx + stepDir];
+                if (nextPlat) {
+                  startJump(nextPlat, false);
+                  return;
+                }
               }
+              targetGoalIdRef.current = null;
             }
-            targetGoalIdRef.current = null;
           }
 
           const roll = Math.random();
 
-          // 1. Playful Hop strictly one-by-one between adjacent message bubbles (no skipping!)
-          if (roll < 0.45 && otherBubbles.length > 0) {
+          // 1. Walking along current message platform (~55% chance - cats love to stroll & patrol!)
+          if (roll < 0.55) {
+            stateRef.current = 'walking';
+            stateTimerRef.current = 80 + Math.floor(Math.random() * 80);
+            facingRightRef.current = Math.random() > 0.5;
+            return;
+          }
+
+          // 2. Cozy bread loaf nap (~15% chance - relaxed feline bread loaf)
+          if (roll < 0.70) {
+            stateRef.current = 'loaf';
+            stateTimerRef.current = 140 + Math.floor(Math.random() * 120);
+            addParticle('zzz', 1);
+            return;
+          }
+
+          // 3. Face grooming (~10% chance)
+          if (roll < 0.80) {
+            stateRef.current = 'grooming';
+            stateTimerRef.current = 75 + Math.floor(Math.random() * 40);
+            groomPhaseRef.current = 0;
+            return;
+          }
+
+          // 4. Cat stretch (~8% chance)
+          if (roll < 0.88) {
+            stateRef.current = 'stretching';
+            stateTimerRef.current = 65;
+            stretchPhaseRef.current = 0;
+            squashRef.current = { sx: 1.25, sy: 0.78 };
+            return;
+          }
+
+          // 5. Deliberate, rare cat hop strictly between adjacent message bubbles (~12% chance with 4s cooldown)
+          if (otherBubbles.length > 0 && Date.now() - lastHopTimeRef.current > 4000) {
             const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
             const curIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
 
@@ -1007,35 +1045,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             }
           }
 
-          // 2. Walking along current message platform (~25% chance)
-          if (roll < 0.70) {
-            stateRef.current = 'walking';
-            stateTimerRef.current = 45 + Math.floor(Math.random() * 65);
-            facingRightRef.current = Math.random() > 0.5;
-            return;
-          }
-
-          // 3. Face grooming (~10% chance)
-          if (roll < 0.80) {
-            stateRef.current = 'grooming';
-            stateTimerRef.current = 75 + Math.floor(Math.random() * 40);
-            groomPhaseRef.current = 0;
-            return;
-          }
-
-          // 4. Cat stretch (~10% chance)
-          if (roll < 0.90) {
-            stateRef.current = 'stretching';
-            stateTimerRef.current = 65;
-            stretchPhaseRef.current = 0;
-            squashRef.current = { sx: 1.25, sy: 0.78 };
-            return;
-          }
-
-          // 5. Cozy bread loaf nap (~10% chance)
-          stateRef.current = 'loaf';
-          stateTimerRef.current = 120 + Math.floor(Math.random() * 120);
-          addParticle('zzz', 1);
+          // Default fallback: continue leisurely sitting and looking around
+          stateRef.current = 'idle';
+          stateTimerRef.current = 80 + Math.floor(Math.random() * 60);
         }
       } else if (state === 'walking') {
         tailWaveRef.current += 0.08;
@@ -1144,10 +1156,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         if (stateTimerRef.current <= 0) {
           stateRef.current = 'idle';
           if (targetGoalIdRef.current && targetGoalIdRef.current !== attachedPlatformIdRef.current) {
-            stateTimerRef.current = 16; // Cute short pause before taking the next one-by-one hop!
+            stateTimerRef.current = 75 + Math.floor(Math.random() * 40); // Calm cat pause to look around before considering next hop
           } else {
             targetGoalIdRef.current = null;
-            stateTimerRef.current = 45 + Math.floor(Math.random() * 45);
+            stateTimerRef.current = 80 + Math.floor(Math.random() * 60);
           }
         }
       } else if (state === 'peeking') {
@@ -1519,6 +1531,38 @@ export function getPetPalette(breed: PetBreed): KittenPalette {
   };
 }
 
+const lerp = (a: number, b: number, factor: number) => a + (b - a) * factor;
+
+/**
+ * Draws an organic, gracefully curved and tapered whisker following facial curvature.
+ * Tapers from a defined base thickness at the cheek root to a fine, delicate point at the tip.
+ */
+function drawTaperedWhisker(
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  cpX: number,
+  cpY: number,
+  endX: number,
+  endY: number,
+  baseWidth: number = 1.15,
+  color: string = '#1E1B2E'
+) {
+  const dx = cpX - startX;
+  const dy = cpY - startY;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * (baseWidth * 0.5);
+  const ny = (dx / len) * (baseWidth * 0.5);
+
+  ctx.beginPath();
+  ctx.moveTo(startX + nx, startY + ny);
+  ctx.quadraticCurveTo(cpX + nx * 0.35, cpY + ny * 0.35, endX, endY);
+  ctx.quadraticCurveTo(cpX - nx * 0.35, cpY - ny * 0.35, startX - nx, startY - ny);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
 export function drawCuteKitten2D(
   ctx: CanvasRenderingContext2D,
   state: CatState,
@@ -1870,25 +1914,25 @@ export function drawCuteKitten2D(
     ctx.lineCap = 'round';
     ctx.stroke();
   } else {
-    // --- LEFT EYE ---
+    // --- EYES: Classic Cute Circular Eyes 👁️👁️ (Never bent when facing user) ---
     const eyeXL = -5.6 + lookShiftX * 0.45;
     const eyeYL = eyeY + lookShiftY * 0.45;
 
-    // Solid glossy eye
+    // --- LEFT EYE ---
     ctx.beginPath();
     ctx.ellipse(eyeXL, eyeYL, 3.6, 3.9, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeColor;
     ctx.fill();
 
-    // Big Top-Right Specular Highlight
+    // Primary Specular Highlight (top right)
     ctx.beginPath();
-    ctx.arc(eyeXL + 1.2, eyeYL - 1.1, 1.35, 0, Math.PI * 2);
+    ctx.ellipse(eyeXL + 1.2, eyeYL - 1.1, 1.35, 1.35, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
-    // Small Bottom-Left Specular Highlight
+    // Secondary Specular Highlight (bottom left)
     ctx.beginPath();
-    ctx.arc(eyeXL - 1.2, eyeYL + 1.2, 0.65, 0, Math.PI * 2);
+    ctx.ellipse(eyeXL - 1.2, eyeYL + 1.2, 0.65, 0.65, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
@@ -1896,21 +1940,20 @@ export function drawCuteKitten2D(
     const eyeXR = 5.6 + lookShiftX * 0.45;
     const eyeYR = eyeY + lookShiftY * 0.45;
 
-    // Solid glossy eye
     ctx.beginPath();
     ctx.ellipse(eyeXR, eyeYR, 3.6, 3.9, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeColor;
     ctx.fill();
 
-    // Big Top-Right Specular Highlight
+    // Primary Specular Highlight (top right)
     ctx.beginPath();
-    ctx.arc(eyeXR + 1.2, eyeYR - 1.1, 1.35, 0, Math.PI * 2);
+    ctx.ellipse(eyeXR + 1.2, eyeYR - 1.1, 1.35, 1.35, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
-    // Small Bottom-Left Specular Highlight
+    // Secondary Specular Highlight (bottom left)
     ctx.beginPath();
-    ctx.arc(eyeXR - 1.2, eyeYR + 1.2, 0.65, 0, Math.PI * 2);
+    ctx.ellipse(eyeXR - 1.2, eyeYR + 1.2, 0.65, 0.65, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
   }
@@ -1924,38 +1967,58 @@ export function drawCuteKitten2D(
   ctx.fillStyle = noseColor;
   ctx.fill();
 
-  // MOUTH: Iconic ':3' Feline Smile branching down from nose tip
+  // MOUTH: Smaller, delicate feline smile slightly separated from nose (not a big block)
+  const mouthStemX = 0;
+  const mouthSplitY = 4.1; // Cute ~0.9px gap below nose tip (3.2)
+
+  // Subtle delicate center notch
   ctx.beginPath();
-  // Stem connecting nose to mouth center
-  ctx.moveTo(0, 3.2);
-  ctx.lineTo(0, 4.2);
-  // Left curved lip
-  ctx.arc(-1.6, 4.4, 1.6, 0.05, Math.PI - 0.15);
-  // Right curved lip
-  ctx.arc(1.6, 4.4, 1.6, 0.15, Math.PI - 0.05);
+  ctx.moveTo(mouthStemX, 3.85);
+  ctx.lineTo(mouthStemX, mouthSplitY);
   ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = 1.1;
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  // DELICATE DUAL WHISKERS (Two clean lines per cheek)
-  const whiskerTwitch = Math.sin(tailWave * 0.7) * 0.35;
+  // Left curved lip arc (smaller, natural gentle curve)
   ctx.beginPath();
-  // Left Whiskers
-  ctx.moveTo(-9.5, 2.8);
-  ctx.lineTo(-16.8, 2.2 + whiskerTwitch);
-  ctx.moveTo(-9.5, 4.8);
-  ctx.lineTo(-16.2, 6.2 + whiskerTwitch);
-
-  // Right Whiskers
-  ctx.moveTo(9.5, 2.8);
-  ctx.lineTo(16.8, 2.2 - whiskerTwitch);
-  ctx.moveTo(9.5, 4.8);
-  ctx.lineTo(16.2, 6.2 - whiskerTwitch);
-
-  ctx.strokeStyle = whiskerColor;
+  ctx.ellipse(-1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
+  ctx.strokeStyle = outlineColor;
   ctx.lineWidth = 1.1;
+  ctx.lineCap = 'round';
   ctx.stroke();
+
+  // Right curved lip arc (smaller, natural gentle curve)
+  ctx.beginPath();
+  ctx.ellipse(1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Sweet purr tongue peek (matching delicate mouth scale)
+  if (state === 'purring') {
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX, 4.75, 1.05, 0.8, 0, 0.1, Math.PI - 0.1, false);
+    ctx.fillStyle = '#FB7185';
+    ctx.fill();
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 0.95;
+    ctx.stroke();
+  }
+
+  // =========================================================
+  // 🐱 WHISKERS (Slightly curved and tapered, following cheek contour)
+  // =========================================================
+  const whiskerTwitch = Math.sin(tailWave * 0.7) * 0.35;
+
+  // Left Whiskers (curved & tapered from cheek root to fine tip)
+  drawTaperedWhisker(ctx, -8.6, 3.2, -13.0, 2.7, -16.8, 3.6 + whiskerTwitch, 1.15, whiskerColor);
+  drawTaperedWhisker(ctx, -8.4, 4.9, -12.6, 5.1, -16.2, 6.7 + whiskerTwitch, 1.15, whiskerColor);
+
+  // Right Whiskers (curved & tapered from cheek root to fine tip)
+  drawTaperedWhisker(ctx, 8.6, 3.2, 13.0, 2.7, 16.8, 3.6 - whiskerTwitch, 1.15, whiskerColor);
+  drawTaperedWhisker(ctx, 8.4, 4.9, 12.6, 5.1, 16.2, 6.7 - whiskerTwitch, 1.15, whiskerColor);
 
   // ACCESSORIES (Rendered cleanly on head)
   drawAccessory(ctx, accessory, false);
@@ -2090,14 +2153,17 @@ export function drawCuteKitten25D(
     farShadeColor,
   } = palette;
 
-  // 1. Soft Dynamic Ground Drop Shadow in 2.5D Perspective
+  const t = Math.max(0, Math.min(1, yawProgress));
+
+  // 1. Soft Dynamic Ground Drop Shadow (Interpolates seamlessly with 2D)
   ctx.save();
   ctx.beginPath();
-  const shadowScale = state === 'pre_jump' ? 1.25 : (state === 'loaf' ? 1.15 : (state === 'jumping' ? 0.55 : 1.0));
-  const shadowAlpha = state === 'jumping' ? 0.08 : 0.20;
-  const shadowOffsetX = state === 'walking' ? Math.sin(walkPhase) * 0.6 : 0;
-  ctx.ellipse(shadowOffsetX - 0.5, 0.5, 17.0 * shadowScale, 4.2 * shadowScale, 0, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(28, 22, 38, ${shadowAlpha})`;
+  const shadowScale = state === 'pre_jump' ? lerp(1.2, 1.25, t) : (state === 'loaf' ? lerp(1.1, 1.15, t) : (state === 'jumping' ? lerp(0.65, 0.55, t) : 1.0));
+  const shadowAlpha = state === 'jumping' ? 0.08 : lerp(0.22, 0.20, t);
+  const shadowOffsetX = lerp(0, (state === 'walking' ? Math.sin(walkPhase) * 0.6 : 0) - 0.5, t);
+  const shadowWidth = lerp(16.0, 17.0, t) * shadowScale;
+  ctx.ellipse(shadowOffsetX, 0.5, shadowWidth, 4.2 * shadowScale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(30, 24, 40, ${shadowAlpha})`;
   ctx.fill();
   ctx.restore();
 
@@ -2242,7 +2308,7 @@ export function drawCuteKitten25D(
 
   // -------------------------------------------------------------
   // 2. FAR LIMBS (Z < 0: BACKGROUND DEPTH LAYER)
-  // Seamless continuous limb contours with soft depth shading (Zero segmented borders)
+  // Seamless continuous limb contours with soft depth shading
   // -------------------------------------------------------------
   if (state !== 'loaf') {
     ctx.save();
@@ -2277,46 +2343,141 @@ export function drawCuteKitten25D(
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      // --- FAR FRONT LEG & PAW (Continuous flowing arm during trot) ---
-      const fFrontPawX = 1.2 + farFrontStep;
+      // --- FAR FRONT LEG & PAW (Behind her, at the same place as her other front limb) ---
+      const fFrontPawX = lerp(-3.8, 3.8, t) + farFrontStep + buttX * 0.3;
       const fFrontPawY = -1.6 - farFrontLift;
-      const fElbowX = 1.0 + farFrontStep * 0.4 + farFrontGait.kneeFlexX - 0.8;
-      const fElbowY = -7.5 + farFrontGait.kneeFlexY;
+      const fShoulderX = lerp(-3.8, 4.0, t);
+      const fShoulderY = -8.5;
+      const fWristX = fFrontPawX;
+      const fWristY = fFrontPawY - 1.2;
+      const fElbowX = (fShoulderX + fWristX) * 0.5 + farFrontStep * 0.25 + farFrontGait.kneeFlexX - 0.4;
+      const fElbowY = (fShoulderY + fWristY) * 0.5 + 0.6 + farFrontGait.kneeFlexY;
 
       ctx.beginPath();
-      ctx.moveTo(-0.5, -9.0);
-      ctx.quadraticCurveTo(fElbowX - 1.6, fElbowY, fFrontPawX - 2.4, fFrontPawY - 0.4);
-      ctx.quadraticCurveTo(fFrontPawX - 2.8, fFrontPawY + 2.4, fFrontPawX, fFrontPawY + 2.6);
-      ctx.quadraticCurveTo(fFrontPawX + 2.8, fFrontPawY + 2.4, fFrontPawX + 2.4, fFrontPawY - 0.4);
-      ctx.quadraticCurveTo(fElbowX + 1.6, fElbowY, 2.8, -8.5);
+      ctx.moveTo(fShoulderX - 2.4, fShoulderY);
+      ctx.quadraticCurveTo(fElbowX - 2.0, fElbowY, fFrontPawX - 2.8, fWristY);
+      ctx.quadraticCurveTo(fFrontPawX - 3.2, fFrontPawY + 2.6, fFrontPawX, fFrontPawY + 2.8);
+      ctx.quadraticCurveTo(fFrontPawX + 3.2, fFrontPawY + 2.6, fFrontPawX + 2.8, fWristY);
+      ctx.quadraticCurveTo(fElbowX + 2.0, fElbowY, fShoulderX + 2.4, fShoulderY);
       ctx.fillStyle = bodyColor;
       ctx.fill();
       ctx.fillStyle = farShadeColor;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.moveTo(-0.5, -9.0);
-      ctx.quadraticCurveTo(fElbowX - 1.6, fElbowY, fFrontPawX - 2.4, fFrontPawY - 0.4);
-      ctx.quadraticCurveTo(fFrontPawX - 2.8, fFrontPawY + 2.4, fFrontPawX, fFrontPawY + 2.6);
-      ctx.quadraticCurveTo(fFrontPawX + 2.8, fFrontPawY + 2.4, fFrontPawX + 2.4, fFrontPawY - 0.4);
-      ctx.quadraticCurveTo(fElbowX + 1.6, fElbowY, 2.8, -8.5);
+      ctx.moveTo(fShoulderX - 2.4, fShoulderY);
+      ctx.quadraticCurveTo(fElbowX - 2.0, fElbowY, fFrontPawX - 2.8, fWristY);
+      ctx.quadraticCurveTo(fFrontPawX - 3.2, fFrontPawY + 2.6, fFrontPawX, fFrontPawY + 2.8);
+      ctx.quadraticCurveTo(fFrontPawX + 3.2, fFrontPawY + 2.6, fFrontPawX + 2.8, fWristY);
+      ctx.quadraticCurveTo(fElbowX + 2.0, fElbowY, fShoulderX + 2.4, fShoulderY);
       ctx.strokeStyle = outlineColor;
       ctx.lineWidth = 1.3;
       ctx.lineCap = 'round';
       ctx.stroke();
+
+      if (t > 0.08) {
+        ctx.beginPath();
+        ctx.moveTo(fFrontPawX - 0.9, fFrontPawY + 0.6);
+        ctx.lineTo(fFrontPawX - 0.9, fFrontPawY + 2.4);
+        ctx.moveTo(fFrontPawX + 0.9, fFrontPawY + 0.6);
+        ctx.lineTo(fFrontPawX + 0.9, fFrontPawY + 2.4);
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+
+      if (farFrontGait.isAirborne && farFrontLift > 1.0) {
+        ctx.beginPath();
+        ctx.arc(fFrontPawX, fFrontPawY + 0.5, 1.1, 0, Math.PI * 2);
+        ctx.fillStyle = padColor;
+        ctx.fill();
+      }
     } else {
-      // Resting far front paw beside near paw in 3/4 sitting pose
-      const fPawX = 2.0;
-      const fPawY = -1.8;
+      // Seated Haunches & Rear Paws (Rendered behind torso in depth buffer, matching 2D symmetry at t=0)
+
+      // Far / Left Haunch Bulge (Sitting hip) - aligns with 2D (-9.2) at t=0
+      const haunchLX = lerp(-9.2, -7.6, t);
+      const haunchLY = lerp(-6.5, -6.2, t);
+      const haunchLRx = lerp(5.2, 4.6, t);
+      const haunchLRy = lerp(5.8, 5.5, t);
+      const haunchLRot = lerp(-0.18, -0.12, t);
+
       ctx.beginPath();
-      ctx.ellipse(fPawX, fPawY, 3.2, 3.0, 0, 0, Math.PI * 2);
-      ctx.fillStyle = pawColor;
+      ctx.ellipse(haunchLX, haunchLY, haunchLRx, haunchLRy, haunchLRot, 0, Math.PI * 2);
+      ctx.fillStyle = bodyColor;
       ctx.fill();
-      ctx.fillStyle = farShadeColor;
-      ctx.fill();
-      ctx.lineWidth = 1.3;
+      if (t > 0.05) {
+        ctx.save();
+        ctx.globalAlpha = t * 0.35;
+        ctx.fillStyle = farShadeColor;
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.lineWidth = 1.6;
       ctx.strokeStyle = outlineColor;
       ctx.stroke();
+
+      // Near / Right Haunch Bulge (Sitting hip) - aligns with 2D (+9.2) at t=0
+      const haunchRX = lerp(9.2, 7.2, t) + buttX * 0.3;
+      const haunchRY = lerp(-6.5, -6.0, t);
+      const haunchRRx = lerp(5.2, 5.0, t);
+      const haunchRRy = lerp(5.8, 5.6, t);
+      const haunchRRot = lerp(0.18, 0.10, t);
+
+      ctx.beginPath();
+      ctx.ellipse(haunchRX, haunchRY, haunchRRx, haunchRRy, haunchRRot, 0, Math.PI * 2);
+      ctx.fillStyle = bodyColor;
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Far / Left Rear Paw - aligns with 2D (-9.5) at t=0
+      const pawLRX = lerp(-9.5, -7.8, t);
+      const pawLRY = -1.8;
+      const pawLRRx = lerp(4.2, 3.5, t);
+      const pawLRRy = lerp(2.6, 2.8, t);
+
+      ctx.beginPath();
+      ctx.ellipse(pawLRX, pawLRY, pawLRRx, pawLRRy, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      if (t > 0.05) {
+        ctx.save();
+        ctx.globalAlpha = t * 0.35;
+        ctx.fillStyle = farShadeColor;
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.lineWidth = lerp(1.5, 1.4, t);
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Near / Right Rear Paw - aligns with 2D (+9.5) at t=0
+      const pawRRX = lerp(9.5, 7.4, t) + buttX * 0.3;
+      const pawRRY = -1.8;
+      const pawRRRx = lerp(4.2, 3.8, t);
+      const pawRRRy = lerp(2.6, 2.8, t);
+
+      ctx.beginPath();
+      ctx.ellipse(pawRRX, pawRRY, pawRRRx, pawRRRy, lerp(0, 0.05, t), 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = lerp(1.5, 1.4, t);
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Far rear toe notches only in 3D perspective
+      if (t > 0.08) {
+        ctx.beginPath();
+        ctx.moveTo(pawLRX - 1.1, pawLRY + 0.3);
+        ctx.lineTo(pawLRX - 1.1, pawLRY + 2.3);
+        ctx.moveTo(pawLRX + 1.1, pawLRY + 0.3);
+        ctx.lineTo(pawLRX + 1.1, pawLRY + 2.3);
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+      }
     }
 
     ctx.restore();
@@ -2324,21 +2485,22 @@ export function drawCuteKitten25D(
 
   // -------------------------------------------------------------
   // 3. 3/4 VECTOR TAIL (Skeletal Multi-Segment Lagging Harmonic Pendulum)
+  // Perfectly interpolates between 2D right-side tail (t=0) and 3/4 left-side tail (t=1)
   // -------------------------------------------------------------
   ctx.save();
-  const tailBaseX = -7.8 + buttX;
-  const tailBaseY = -10.0 + buttY + walkBob * 0.4 + pelvisBob * 0.5;
+  const tailBaseX = lerp(8.5, -7.8, t) + buttX;
+  const tailBaseY = lerp(-8.5, -10.0, t) + buttY + (walkBob * 0.4 * t) + (pelvisBob * 0.5 * t);
 
   ctx.beginPath();
   ctx.moveTo(tailBaseX, tailBaseY);
 
   if (state === 'loaf') {
-    // Cozy curled tail wrapping around near flank
+    // Cozy curled tail wrapping around flank
     const breatheNap = Math.sin(Date.now() * 0.003) * 0.5;
     ctx.bezierCurveTo(
-      tailBaseX - 3, tailBaseY + 3,
-      -2, tailBaseY + 7 + breatheNap,
-      7, tailBaseY + 4 + breatheNap
+      lerp(tailBaseX + 7, tailBaseX - 3, t), lerp(tailBaseY + 4, tailBaseY + 3, t),
+      lerp(tailBaseX + 4, -2, t), lerp(tailBaseY + 7, tailBaseY + 7 + breatheNap, t),
+      lerp(tailBaseX - 2, 7, t), lerp(tailBaseY + 4, tailBaseY + 4 + breatheNap, t)
     );
   } else if (state === 'clinging') {
     ctx.bezierCurveTo(
@@ -2347,96 +2509,117 @@ export function drawCuteKitten25D(
       tailBaseX - 18, tailBaseY - 7
     );
   } else {
-    // Multi-segment lagging physics:
-    // Base lags slightly, mid segment arches, tip swishes with delayed whip follow-through
+    // 2D right-facing tail harmonic at t=0
+    const wave2D = Math.sin(tailWave) * 6;
+    const cp1x_2D = tailBaseX + 7;
+    const cp1y_2D = tailBaseY - 6 + wave2D * 0.3;
+    const cp2x_2D = tailBaseX + 10 + wave2D * 0.7;
+    const cp2y_2D = tailBaseY - 16;
+    const tipX_2D = tailBaseX + 4 + wave2D * 1.1;
+    const tipY_2D = tailBaseY - 23;
+
+    // 3/4 multi-segment lagging physics at t=1
     const waveBase = Math.sin(tailWave) * 2.2;
     const waveMid = Math.sin(tailWave - 0.45) * 4.2;
     const waveTip = Math.sin(tailWave - 0.95) * 6.8;
 
-    // Lower caudal vertebrae
-    const cp1x = tailBaseX - 5.0 + waveBase * 0.35;
-    const cp1y = tailBaseY - 4.5;
-    // Mid tail arch
-    const cp2x = tailBaseX - 9.2 + waveMid * 0.65;
-    const cp2y = tailBaseY - 15.0;
-    // Flexible tip follow-through
-    const tipX = tailBaseX - 4.2 + waveTip * 0.85;
-    const tipY = tailBaseY - 22.0 + Math.abs(waveTip) * 0.25;
+    const cp1x_3D = tailBaseX - 5.0 + waveBase * 0.35;
+    const cp1y_3D = tailBaseY - 4.5;
+    const cp2x_3D = tailBaseX - 9.2 + waveMid * 0.65;
+    const cp2y_3D = tailBaseY - 15.0;
+    const tipX_3D = tailBaseX - 4.2 + waveTip * 0.85;
+    const tipY_3D = tailBaseY - 22.0 + Math.abs(waveTip) * 0.25;
 
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY);
+    ctx.bezierCurveTo(
+      lerp(cp1x_2D, cp1x_3D, t),
+      lerp(cp1y_2D, cp1y_3D, t),
+      lerp(cp2x_2D, cp2x_3D, t),
+      lerp(cp2y_2D, cp2y_3D, t),
+      lerp(tipX_2D, tipX_3D, t),
+      lerp(tipY_2D, tipY_3D, t)
+    );
   }
 
   ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 4.6;
+  ctx.lineWidth = lerp(4.8, 4.6, t);
   ctx.lineCap = 'round';
   ctx.stroke();
 
   ctx.strokeStyle = breed === 'siamese' ? '#4A3531' : bodyColor;
-  ctx.lineWidth = 3.0;
+  ctx.lineWidth = lerp(3.2, 3.0, t);
   ctx.lineCap = 'round';
   ctx.stroke();
   ctx.restore();
 
   // -------------------------------------------------------------
   // 4. VOLUMETRIC 3/4 TORSO & FLANK (Plump, Chubby, Harmonious)
+  // Seamlessly interpolates between 2D front view and 2.5D 3/4 perspective
   // -------------------------------------------------------------
   ctx.save();
   const bodyX = buttX * 0.3;
-  const bodyY = -12.2 + (state === 'pre_jump' ? 2.2 : 0) + walkBob - breath * 0.35 + purrRumble;
+  const bodyY = lerp(-12.0, -12.2, t) + (state === 'pre_jump' ? 2.2 : 0) + walkBob * t - breath * 0.35 + purrRumble;
 
   ctx.translate(bodyX, bodyY);
-  ctx.rotate(walkPitch);
+  ctx.rotate(walkPitch * t);
 
-  // Chubby 3/4 Torso (Smooth continuous curve)
-  const bodyRadiusX = 13.5 - breath * 0.2;
-  const bodyRadiusY = 10.6 + breath * 0.4;
+  // Chubby Torso (Matches 2D dimensions at t=0, smoothly forms 3/4 volume)
+  const bodyRadiusX = lerp(13.2, 13.5, t) - breath * 0.2;
+  const bodyRadiusY = lerp(10.8, 10.6, t) + breath * 0.4;
+  const bodyOffsetX = lerp(0, -1.0, t);
+  const bodyRot = lerp(0, 0.06, t);
   ctx.beginPath();
-  ctx.ellipse(-1.0, 0, bodyRadiusX, bodyRadiusY, 0.06, 0, Math.PI * 2);
+  ctx.ellipse(bodyOffsetX, 0, bodyRadiusX, bodyRadiusY, bodyRot, 0, Math.PI * 2);
   ctx.fillStyle = bodyColor;
   ctx.fill();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
 
-  // Soft Ambient Underbelly Shading (Gently contoured, not a harsh band)
-  ctx.save();
-  ctx.clip();
-  ctx.beginPath();
-  ctx.ellipse(-1.0, 8.2, bodyRadiusX * 0.95, 3.8, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(28, 22, 38, 0.08)';
-  ctx.fill();
-  ctx.restore();
+  // Soft Ambient Underbelly Shading (Only appears as 3D volume develops)
+  if (t > 0.05) {
+    ctx.save();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(-1.0, 8.2, bodyRadiusX * 0.95, 3.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(28, 22, 38, ${0.08 * t})`;
+    ctx.fill();
+    ctx.restore();
+  }
 
-  // Tabby Flank Stripes in 3/4 Perspective
+  // Tabby Flank Stripes in Perspective
   if (spotColor1 && (breed === 'caramel' || breed === 'cinnamon')) {
     ctx.save();
     ctx.strokeStyle = spotColor1;
     ctx.lineWidth = 1.3;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-5.5, -6.5);
-    ctx.quadraticCurveTo(-4.5, -1.5, -3.0, 2.5);
-    ctx.moveTo(-1.0, -7.5);
-    ctx.quadraticCurveTo(0.2, -1.5, 2.0, 2.5);
-    ctx.moveTo(3.8, -6.5);
-    ctx.quadraticCurveTo(4.8, -1.5, 5.8, 1.8);
+    ctx.moveTo(lerp(-5.0, -5.5, t), lerp(-7.0, -6.5, t));
+    ctx.quadraticCurveTo(lerp(-4.0, -4.5, t), lerp(-5.0, -1.5, t), lerp(-3.0, -3.0, t), lerp(-3.0, 2.5, t));
+    ctx.moveTo(lerp(0.0, -1.0, t), lerp(-8.0, -7.5, t));
+    ctx.quadraticCurveTo(lerp(0.0, 0.2, t), lerp(-5.5, -1.5, t), lerp(0.0, 2.0, t), lerp(-3.0, 2.5, t));
+    ctx.moveTo(lerp(5.0, 3.8, t), lerp(-7.0, -6.5, t));
+    ctx.quadraticCurveTo(lerp(4.0, 4.8, t), lerp(-5.0, -1.5, t), lerp(3.0, 5.8, t), lerp(-3.0, 1.8, t));
     ctx.stroke();
     ctx.restore();
   }
 
-  // Calico Body Patches in 3/4 Perspective (Soft rounded flank markings)
+  // Calico Body Patches in Perspective
   if (spotColor1 && breed === 'calico') {
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(-4.2, -3.0, 4.8, 3.8, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(lerp(-4.0, -4.2, t), -3.0, lerp(5.0, 4.8, t), lerp(4.0, 3.8, t), 0.2, 0, Math.PI * 2);
     ctx.fillStyle = spotColor1;
     ctx.fill();
     ctx.restore();
   }
 
-  // Soft White Creamy Belly & Chest Bib (Wrapping gracefully forward in 3/4 view)
+  // Soft White Creamy Belly & Chest Bib (Smoothly gliding into 3/4 position)
+  const bellyBibX = lerp(0, 3.0, t);
+  const bellyBibRadiusX = lerp(7.8, 7.6, t) - breath * 0.2;
+  const bellyBibRadiusY = lerp(6.5, 6.2, t) + breath * 0.38;
+  const bellyBibRot = lerp(0, 0.16, t);
   ctx.beginPath();
-  ctx.ellipse(3.0, 1.2, 7.6 - breath * 0.2, 6.2 + breath * 0.35, 0.16, 0, Math.PI * 2);
+  ctx.ellipse(bellyBibX, 1.2, bellyBibRadiusX, bellyBibRadiusY, bellyBibRot, 0, Math.PI * 2);
   ctx.fillStyle = bellyColor;
   ctx.fill();
 
@@ -2449,23 +2632,32 @@ export function drawCuteKitten25D(
   if (state !== 'loaf') {
     ctx.save();
 
-    // --- NEAR REAR HAUNCH (Seamless Thigh Fold - ZERO Closed Drumstick Border) ---
+    // --- NEAR REAR HAUNCH (Seamless Thigh Fold) ---
     const haunchY = bodyY + 2.8 + pelvisBob * 0.4;
     ctx.save();
-    // Gentle open crease curve suggesting where the chubby thigh naturally rests
-    ctx.beginPath();
-    ctx.arc(-5.2 + buttX * 0.3, haunchY + 0.6, 3.8, -Math.PI * 0.42, Math.PI * 0.12);
-    ctx.strokeStyle = outlineColor;
-    ctx.lineWidth = 1.1;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    if (state === 'walking') {
+      // Gentle open crease curve suggesting where the chubby thigh naturally rests during trot
+      ctx.beginPath();
+      ctx.arc(-5.2 + buttX * 0.3, haunchY + 0.6, 3.8, -Math.PI * 0.42, Math.PI * 0.12);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    } else if (t > 0.15) {
+      // Subtle open thigh fold crease on torso side in 3/4 perspective (zero closed borders over belly)
+      ctx.beginPath();
+      ctx.arc(lerp(6.5, 4.8, t) + buttX * 0.3, haunchY + 0.6, 3.4, Math.PI * 0.60, Math.PI * 1.15);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.0;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
     ctx.restore();
 
-    // --- NEAR REAR LEG & PAW ---
-    const nHindPawX = -6.0 + nearHindStep + buttX * 0.3;
-    const nHindPawY = -1.5 - nearHindLift;
-
+    // --- NEAR REAR LEG & PAW (Active during walking trot) ---
     if (state === 'walking') {
+      const nHindPawX = -6.0 + nearHindStep + buttX * 0.3;
+      const nHindPawY = -1.5 - nearHindLift;
       const kneeX = -6.0 + nearHindStep * 0.5 + nearHindGait.kneeFlexX;
       const kneeY = haunchY + 3.2 + nearHindGait.kneeFlexY;
 
@@ -2509,28 +2701,6 @@ export function drawCuteKitten25D(
         ctx.fill();
       }
       ctx.restore();
-    } else {
-      // Seated rear paw resting snugly beside haunch
-      ctx.save();
-      ctx.translate(nHindPawX, nHindPawY);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 3.8, 2.8, 0.05, 0, Math.PI * 2);
-      ctx.fillStyle = pawColor;
-      ctx.fill();
-      ctx.lineWidth = 1.4;
-      ctx.strokeStyle = outlineColor;
-      ctx.stroke();
-
-      // Toe notches
-      ctx.beginPath();
-      ctx.moveTo(-1.1, 0.3);
-      ctx.lineTo(-1.1, 2.3);
-      ctx.moveTo(1.1, 0.3);
-      ctx.lineTo(1.1, 2.3);
-      ctx.strokeStyle = outlineColor;
-      ctx.lineWidth = 0.9;
-      ctx.stroke();
-      ctx.restore();
     }
 
     // --- NEAR FRONT LEG & PAW ---
@@ -2554,47 +2724,57 @@ export function drawCuteKitten25D(
       ctx.fill();
       ctx.restore();
     } else if (state === 'walking') {
-      const nFrontPawX = 5.2 + nearFrontStep + buttX * 0.3;
+      // Organic feline foreground arm & paw
+      const nFrontPawX = lerp(3.8, 5.4, t) + nearFrontStep + buttX * 0.3;
       const nFrontPawY = -1.5 - nearFrontLift;
-      const shoulderX = 5.0;
+      const shoulderX = lerp(3.8, 5.6, t);
       const shoulderY = bodyY + 3.0 + shoulderBob * 0.5;
-      const elbowX = 5.0 + nearFrontStep * 0.45 + nearFrontGait.kneeFlexX;
-      const elbowY = shoulderY + 4.5 + nearFrontGait.kneeFlexY;
+      const outerShoulderX = shoulderX + lerp(2.8, 3.6, t);
+      const outerShoulderY = shoulderY + 0.6;
+      const armpitX = shoulderX - lerp(2.2, 1.8, t);
+      const armpitY = shoulderY + 4.6;
+      const wristX = nFrontPawX;
+      const wristY = nFrontPawY - 1.2;
+      const elbowX = (shoulderX + wristX) * 0.5 + nearFrontStep * 0.25 + nearFrontGait.kneeFlexX;
+      const elbowY = (shoulderY + wristY) * 0.5 + 0.6 + nearFrontGait.kneeFlexY;
 
-      // Unified foreground arm and paw (Single continuous contour without dividing lines)
       ctx.save();
+      // 1. Organic limb polygon (seamlessly merges with torso at shoulder and armpit)
       ctx.beginPath();
-      ctx.moveTo(shoulderX - 2.0, shoulderY);
-      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, nFrontPawX - 2.8, nFrontPawY - 0.6);
-      ctx.quadraticCurveTo(nFrontPawX - 3.2, nFrontPawY + 3.0, nFrontPawX, nFrontPawY + 3.2);
-      ctx.quadraticCurveTo(nFrontPawX + 3.2, nFrontPawY + 3.0, nFrontPawX + 2.8, nFrontPawY - 0.6);
-      ctx.quadraticCurveTo(elbowX + 2.0, elbowY, shoulderX + 2.0, shoulderY);
+      ctx.moveTo(outerShoulderX, outerShoulderY);
+      ctx.quadraticCurveTo(elbowX + 2.5, elbowY, nFrontPawX + 3.2, wristY);
+      ctx.quadraticCurveTo(nFrontPawX + 3.4, nFrontPawY + 2.8, nFrontPawX, nFrontPawY + 3.0);
+      ctx.quadraticCurveTo(nFrontPawX - 3.4, nFrontPawY + 2.8, nFrontPawX - 2.8, wristY);
+      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, armpitX, armpitY);
+      ctx.quadraticCurveTo(shoulderX, shoulderY, outerShoulderX, outerShoulderY);
+      ctx.closePath();
       ctx.fillStyle = bodyColor;
       ctx.fill();
 
-      // Stroke ONLY the outer contour (left, around paw, right) - NO line across shoulder or wrist
+      // 2. Outline stroke: flows from outer shoulder down around the paw and terminates at armpit
+      // ZERO line cutting through the upper chest/neck!
       ctx.beginPath();
-      ctx.moveTo(shoulderX - 1.8, shoulderY);
-      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, nFrontPawX - 2.8, nFrontPawY - 0.6);
-      ctx.quadraticCurveTo(nFrontPawX - 3.2, nFrontPawY + 3.0, nFrontPawX, nFrontPawY + 3.2);
-      ctx.quadraticCurveTo(nFrontPawX + 3.2, nFrontPawY + 3.0, nFrontPawX + 2.8, nFrontPawY - 0.6);
-      ctx.quadraticCurveTo(elbowX + 2.0, elbowY, shoulderX + 1.8, shoulderY);
+      ctx.moveTo(outerShoulderX, outerShoulderY);
+      ctx.quadraticCurveTo(elbowX + 2.5, elbowY, nFrontPawX + 3.2, wristY);
+      ctx.quadraticCurveTo(nFrontPawX + 3.4, nFrontPawY + 2.8, nFrontPawX, nFrontPawY + 3.0);
+      ctx.quadraticCurveTo(nFrontPawX - 3.4, nFrontPawY + 2.8, nFrontPawX - 2.8, wristY);
+      ctx.quadraticCurveTo(elbowX - 2.0, elbowY, armpitX, armpitY);
       ctx.strokeStyle = outlineColor;
       ctx.lineWidth = 1.4;
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      // Near front toe notches
+      // 3. Near front toe notches on paw
       ctx.beginPath();
-      ctx.moveTo(nFrontPawX - 1.1, nFrontPawY + 0.6);
-      ctx.lineTo(nFrontPawX - 1.1, nFrontPawY + 2.8);
-      ctx.moveTo(nFrontPawX + 1.1, nFrontPawY + 0.6);
-      ctx.lineTo(nFrontPawX + 1.1, nFrontPawY + 2.8);
+      ctx.moveTo(nFrontPawX - 1.0, nFrontPawY + 0.6);
+      ctx.lineTo(nFrontPawX - 1.0, nFrontPawY + 2.6);
+      ctx.moveTo(nFrontPawX + 1.0, nFrontPawY + 0.6);
+      ctx.lineTo(nFrontPawX + 1.0, nFrontPawY + 2.6);
       ctx.strokeStyle = outlineColor;
       ctx.lineWidth = 0.9;
       ctx.stroke();
 
-      // Pink paw pad peek during trot swing lift
+      // 4. Pink paw pad peek during trot swing lift
       if (nearFrontGait.isAirborne && nearFrontLift > 1.0) {
         ctx.beginPath();
         ctx.arc(nFrontPawX, nFrontPawY + 0.5, 1.35, 0, Math.PI * 2);
@@ -2603,29 +2783,67 @@ export function drawCuteKitten25D(
       }
       ctx.restore();
     } else {
-      // Resting foreground front paw nestled at the base of the creamy chest bib
-      // (NO floating bone tube on the chest in sitting/idle pose)
-      const nPawX = 6.0 + buttX * 0.3;
-      const nPawY = -1.8;
+      // Resting front paws nestled at the base of the creamy chest bib
+      // EXACT 2D SYMMETRY AT t=0: Both paws in front of chest, matching 2D coordinates & strokes!
+
+      // --- LEFT / FAR FRONT PAW ---
+      const pawLFX = lerp(-3.6, 1.8, t) + buttX * 0.3;
+      const pawLFY = -2.0;
+      const pawLFRx = lerp(3.5, 3.2, t);
+      const pawLFRy = lerp(3.8, 3.3, t);
+
+      ctx.save();
+      ctx.translate(pawLFX, pawLFY);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, pawLFRx, pawLFRy, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      if (t > 0.08) {
+        ctx.save();
+        ctx.globalAlpha = t * 0.35;
+        ctx.fillStyle = farShadeColor;
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.lineWidth = lerp(1.5, 1.4, t);
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      // Left front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
+      ctx.beginPath();
+      ctx.moveTo(-1.0, 1.4);
+      ctx.lineTo(-1.0, 3.0);
+      ctx.moveTo(1.0, 1.4);
+      ctx.lineTo(1.0, 3.0);
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1.0;
+      ctx.stroke();
+      ctx.restore();
+
+      // --- RIGHT / NEAR FRONT PAW ---
+      const nPawX = lerp(3.6, 5.8, t) + buttX * 0.3;
+      const nPawY = -2.0;
+      const nPawRx = lerp(3.5, 3.6, t);
+      const nPawRy = lerp(3.8, 3.4, t);
 
       ctx.save();
       ctx.translate(nPawX, nPawY);
       ctx.beginPath();
-      ctx.ellipse(0, 0, 3.6, 3.4, 0.05, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, nPawRx, nPawRy, lerp(0, 0.05, t), 0, Math.PI * 2);
       ctx.fillStyle = pawColor;
       ctx.fill();
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = lerp(1.5, 1.4, t);
       ctx.strokeStyle = outlineColor;
       ctx.stroke();
 
-      // Near front toe notches
+      // Right front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
       ctx.beginPath();
-      ctx.moveTo(-1.0, 0.3);
-      ctx.lineTo(-1.0, 2.3);
-      ctx.moveTo(1.0, 0.3);
-      ctx.lineTo(1.0, 2.3);
+      ctx.moveTo(-1.0, 1.4);
+      ctx.lineTo(-1.0, 3.0);
+      ctx.moveTo(1.0, 1.4);
+      ctx.lineTo(1.0, 3.0);
       ctx.strokeStyle = outlineColor;
-      ctx.lineWidth = 0.9;
+      ctx.lineWidth = 1.0;
       ctx.stroke();
       ctx.restore();
     }
@@ -2634,17 +2852,15 @@ export function drawCuteKitten25D(
   }
 
   // -------------------------------------------------------------
+  // 6. CHIBI HEAD, PERSPECTIVE FORESHORTENED EYES, SNOUT & ':3' MOUTH
+  // Truly responds to 3D perspective rotation: as Mochi turns, the receding side
+  // naturally foreshortens in width (far eye becomes a sleek perspective ellipse,
+  // far lip and snout curve around the muzzle, far cheek recedes), while the near
+  // foreground features remain large, open, luminous, and sparkling.
+  // When t = 0, perfectly matches 2D Mochi for seamless transition without morphing!
   // -------------------------------------------------------------
-  // 6. CHIBI HEAD & HYBRID 2.5D + 2D DYNAMIC GAZE SYSTEM
-  // In 2.5D mode, Mochi combines volumetric 3/4 body kinematics with the ability
-  // to turn her head forward to look directly at the user with sparkling eye contact!
-  // Both ears are strictly layered behind the cranium so no ear strokes cross the forehead.
-  // -------------------------------------------------------------
-  const t = Math.max(0, Math.min(1, yawProgress));
-  const lerp = (a: number, b: number, factor: number) => a + (b - a) * factor;
-
-  const headBob = state === 'walking' ? Math.sin(walkPhase * 2) * 0.45 : 0;
-  const headX = lerp(0.5, 3.0, t);
+  const headBob = state === 'walking' ? Math.sin(walkPhase * 2) * 0.45 * t : 0;
+  const headX = lerp(0, 2.4, t);
   const headY = -22.5 + (state === 'pre_jump' ? 3.0 : 0) + headBob - breath * 0.45 + purrRumble * 0.5;
 
   ctx.save();
@@ -2654,58 +2870,71 @@ export function drawCuteKitten25D(
   const twitchR = (earTwitchTimer % 240 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
 
   // =========================================================
-  // 🐾 CONTINUOUSLY INTERPOLATED EARS (Strictly behind cranium)
+  // 🐾 EARS (Strictly layered behind cranium - Canonical Mochi Anatomy)
+  // Shared underlying geometry rotating in 3D perspective without morphing
   // =========================================================
 
-  // Far/Left Ear
-  const earLX = lerp(-7.8, -2.6, t);
-  const earLY = lerp(-7.5, -9.2, t);
-  const earLRot = lerp(-0.14, -0.30, t) + twitchL;
+  // Far/Left Ear (Rotates into depth, foreshortening horizontally)
+  const earLX = lerp(-8.2, -3.6, t);
+  const earLY = lerp(-7.5, -8.6, t);
+  const earLRot = lerp(-0.14, -0.22, t) + twitchL;
+  const earLSx = lerp(1.0, 0.72, t);
+  const earLSy = lerp(1.0, 0.95, t);
 
   ctx.save();
   ctx.translate(earLX, earLY);
   ctx.rotate(earLRot);
+  ctx.scale(earLSx, earLSy);
+
+  // Canonical Mochi Ear Contour
   ctx.beginPath();
-  ctx.moveTo(lerp(-1, -4.5, t), lerp(5, 3.5, t));
-  ctx.quadraticCurveTo(lerp(-6.8, -4.8, t), lerp(1, -7.5, t), lerp(-6.8, 0, t), lerp(-10.5, -8.2, t));
-  ctx.quadraticCurveTo(lerp(0, 4.5, t), lerp(-8.5, -6.5, t), lerp(6.5, 3.5, t), lerp(-4.5, 3.5, t));
-  ctx.quadraticCurveTo(lerp(3, 1.5, t), lerp(1.5, 3.5, t), lerp(1, -4.5, t), lerp(5, 3.5, t));
+  ctx.moveTo(-1, 5);
+  ctx.quadraticCurveTo(-6.8, 1, -6.8, -10.5);
+  ctx.quadraticCurveTo(0, -8.5, 6.5, -4.5);
+  ctx.quadraticCurveTo(3, 1.5, 1, 5);
   ctx.closePath();
   ctx.fillStyle = breed === "siamese" ? "#4A3531" : (spotColor2 && breed === "calico" ? spotColor2 : bodyColor);
   ctx.fill();
-  ctx.lineWidth = lerp(1.6, 1.4, t);
+  ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
 
-  // Left Inner Ear Pink
+  // Canonical Mochi Inner Ear Pastel Pink
   ctx.beginPath();
-  ctx.moveTo(lerp(0.2, -2.5, t), lerp(2.5, 2.5, t));
-  ctx.quadraticCurveTo(lerp(-2.0, -2.5, t), lerp(-2.5, -4.8, t), lerp(-4.0, 0, t), lerp(-7.5, -5.4, t));
-  ctx.quadraticCurveTo(lerp(0.1, 2.5, t), lerp(-6.0, -4.5, t), lerp(4.2, 2.0, t), lerp(-4.0, 2.5, t));
+  ctx.moveTo(0.2, 2.5);
+  ctx.lineTo(-4.0, -7.5);
+  ctx.lineTo(4.2, -4.0);
   ctx.closePath();
   ctx.fillStyle = earPink;
   ctx.fill();
+
   if (t > 0.05) {
     ctx.save();
-    ctx.globalAlpha = t * 0.42;
+    ctx.globalAlpha = t * 0.35;
     ctx.fillStyle = farShadeColor;
     ctx.fill();
     ctx.restore();
   }
   ctx.restore();
 
-  // Near/Right Ear
-  const earRX = lerp(7.8, 6.2, t);
-  const earRY = lerp(-7.5, -9.4, t);
-  const earRRot = lerp(0.14, 0.24, t) + twitchR;
+  // Near/Right Ear (Foreground Ear)
+  const earRX = lerp(8.2, 7.4, t);
+  const earRY = lerp(-7.5, -8.0, t);
+  const earRRot = lerp(0.14, 0.18, t) + twitchR;
+  const earRSx = lerp(1.0, 0.98, t);
+  const earRSy = lerp(1.0, 0.98, t);
 
   ctx.save();
   ctx.translate(earRX, earRY);
   ctx.rotate(earRRot);
+  ctx.scale(earRSx, earRSy);
+
+  // Canonical Mochi Ear Contour
   ctx.beginPath();
-  ctx.moveTo(lerp(1, -4.5, t), lerp(5, 3.5, t));
-  ctx.quadraticCurveTo(lerp(6.8, -4.0, t), lerp(1, -8.0, t), lerp(6.8, 0, t), lerp(-10.5, -8.8, t));
-  ctx.quadraticCurveTo(lerp(0, 4.5, t), lerp(-8.5, -7.0, t), lerp(-6.5, 4.0, t), lerp(-4.5, 3.5, t));
+  ctx.moveTo(1, 5);
+  ctx.quadraticCurveTo(6.8, 1, 6.8, -10.5);
+  ctx.quadraticCurveTo(0, -8.5, -6.5, -4.5);
+  ctx.quadraticCurveTo(-3, 1.5, -1, 5);
   ctx.closePath();
   ctx.fillStyle = breed === "siamese" ? "#4A3531" : (spotColor1 && breed === "calico" ? spotColor1 : bodyColor);
   ctx.fill();
@@ -2713,22 +2942,22 @@ export function drawCuteKitten25D(
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
 
-  // Right Inner Ear Pink
+  // Canonical Mochi Inner Ear Pastel Pink
   ctx.beginPath();
-  ctx.moveTo(lerp(-0.2, -2.8, t), lerp(2.5, 2.5, t));
-  ctx.quadraticCurveTo(lerp(2.0, -2.2, t), lerp(-2.5, -5.5, t), lerp(4.0, 0, t), lerp(-7.5, -6.2, t));
-  ctx.quadraticCurveTo(lerp(-0.1, 2.8, t), lerp(-6.0, -5.0, t), lerp(-4.2, 2.2, t), lerp(-4.0, 2.5, t));
+  ctx.moveTo(-0.2, 2.5);
+  ctx.lineTo(4.0, -7.5);
+  ctx.lineTo(-4.2, -4.0);
   ctx.closePath();
   ctx.fillStyle = earPink;
   ctx.fill();
   ctx.restore();
 
   // =========================================================
-  // 🐱 CRANIUM (Head Silhouette layered ON TOP of ear roots)
+  // 🐱 CRANIUM & CHUBBY CHEEKS (Canonical Head Shape in Perspective)
   // =========================================================
-  const cranX = lerp(0, 1.5, t);
-  const cranW = lerp(14.0, 11.8, t);
-  const cranH = lerp(11.4, 9.8, t);
+  const cranX = lerp(0, 1.4, t);
+  const cranW = lerp(14.6, 13.8, t);
+  const cranH = lerp(12.0, 11.8, t);
   const cranRot = lerp(0, 0.04, t);
 
   ctx.beginPath();
@@ -2739,41 +2968,38 @@ export function drawCuteKitten25D(
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
 
-  // Chubby cheeks softly blending with yaw rotation
-  if (t < 0.85) {
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, 1 - t * 1.25);
-    ctx.beginPath();
-    ctx.moveTo(-11.5, -0.5);
-    ctx.quadraticCurveTo(-14.4, 2.5, -11.8, 4.8);
-    ctx.fillStyle = bodyColor;
-    ctx.fill();
-    ctx.strokeStyle = outlineColor;
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
+  // Chubby Cheeks (Slightly foreshortened on far side, plumper in foreground)
+  ctx.beginPath();
+  ctx.moveTo(lerp(-12.0, -10.5, t), -0.5);
+  ctx.quadraticCurveTo(lerp(-15.2, -12.4, t), 2.5, lerp(-12.5, -10.5, t), 5.0);
+  ctx.fillStyle = bodyColor;
+  ctx.fill();
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = lerp(1.3, 1.1, t);
+  ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(11.5, -0.5);
-    ctx.quadraticCurveTo(14.4, 2.5, 11.8, 4.8);
-    ctx.fillStyle = bodyColor;
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-  }
+  ctx.beginPath();
+  ctx.moveTo(lerp(12.0, 11.2, t), -0.5);
+  ctx.quadraticCurveTo(lerp(15.2, 15.6, t), 2.5, lerp(12.5, 12.8, t), 5.0);
+  ctx.fillStyle = bodyColor;
+  ctx.fill();
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
 
-  // Breed Markings smoothly sliding with perspective
+  // Breed Forehead Markings
   if (breed === "caramel" || breed === "cinnamon") {
     ctx.save();
     ctx.strokeStyle = spotColor1 || "#C2410C";
     ctx.lineWidth = 1.2;
     ctx.lineCap = "round";
-    const shiftM = lerp(0, 2.0, t);
+    const shiftM = lerp(0, 1.8, t);
     ctx.beginPath();
-    ctx.moveTo(-4 + shiftM, lerp(-7, -6.5, t));
-    ctx.lineTo(-2 + shiftM, lerp(-3.5, -3.5, t));
-    ctx.lineTo(0 + shiftM, lerp(-5.5, -5.5, t));
-    ctx.lineTo(2 + shiftM, lerp(-3.5, -3.5, t));
-    ctx.lineTo(4 + shiftM, lerp(-7, -6.5, t));
+    ctx.moveTo(-4 + shiftM, -7);
+    ctx.lineTo(-2 + shiftM, -3.5);
+    ctx.lineTo(0 + shiftM, -5.5);
+    ctx.lineTo(2 + shiftM, -3.5);
+    ctx.lineTo(4 + shiftM, -7);
     ctx.stroke();
     ctx.restore();
   }
@@ -2781,7 +3007,7 @@ export function drawCuteKitten25D(
   if (spotColor2 && breed === "calico") {
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(lerp(-5.5, -3.5, t), -3.5, lerp(4.8, 4.5, t), lerp(5.2, 4.5, t), -0.2, 0, Math.PI * 2);
+    ctx.ellipse(lerp(-6.0, -3.8, t), -3.5, lerp(5.0, 4.5, t), lerp(5.5, 4.8, t), -0.2, 0, Math.PI * 2);
     ctx.fillStyle = spotColor2;
     ctx.fill();
     ctx.restore();
@@ -2790,7 +3016,7 @@ export function drawCuteKitten25D(
   if (breed === "siamese") {
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(lerp(0, 2.5, t), 1.0, 7.2, 5.4, lerp(0, 0.05, t), 0, Math.PI * 2);
+    ctx.ellipse(lerp(0, 2.2, t), 1.0, lerp(7.6, 6.8, t), lerp(5.6, 5.2, t), lerp(0, 0.05, t), 0, Math.PI * 2);
     ctx.fillStyle = "#4A3531";
     ctx.fill();
     ctx.restore();
@@ -2799,124 +3025,254 @@ export function drawCuteKitten25D(
   if (breed === "tuxedo") {
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(lerp(0, 2.5, t), lerp(3.4, 3.2, t), lerp(6.2, 6.0, t), 4.2, lerp(0, 0.05, t), 0, Math.PI * 2);
+    ctx.ellipse(lerp(0, 2.4, t), lerp(3.4, 3.2, t), lerp(6.4, 6.0, t), lerp(4.4, 4.2, t), lerp(0, 0.05, t), 0, Math.PI * 2);
     ctx.fillStyle = "#FFFFFF";
     ctx.fill();
     ctx.restore();
   }
 
-  // Rosy Blush Cheeks
+  // Rosy Blush Cheeks (Far blush naturally foreshortens against silhouette)
   ctx.beginPath();
-  ctx.ellipse(lerp(-7.5, -4.2, t), lerp(3.5, 3.6, t), lerp(3.0, 2.6, t), lerp(1.8, 1.6, t), 0, 0, Math.PI * 2);
-  ctx.ellipse(lerp(7.5, 7.2, t), lerp(3.5, 3.6, t), lerp(3.0, 3.4, t), lerp(1.8, 1.8, t), 0, 0, Math.PI * 2);
+  ctx.ellipse(lerp(-7.8, -3.8, t), lerp(3.5, 3.6, t), lerp(3.2, 1.6, t), lerp(1.8, 1.6, t), 0, 0, Math.PI * 2);
+  ctx.ellipse(lerp(7.8, 7.8, t), lerp(3.5, 3.6, t), lerp(3.2, 3.4, t), lerp(1.8, 1.8, t), 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(255, 140, 175, 0.48)";
   ctx.fill();
 
   // =========================================================
-  // ✨ EYES WITH INTERPOLATED PERSPECTIVE & DUAL SPARKLES
+  // ✨ EYES: CIRCULAR CUTE EYES (👁️👁️) WHEN FACING US,
+  // BENT SIDE-GLANCE WITH IDENTICAL EYE SIZE (👀) WHEN WALKING
   // =========================================================
   const eyeY = lerp(-0.4, -0.5, t);
   const lookShiftX = Math.max(-1.4, Math.min(1.4, eyeOffset.dx));
   const lookShiftY = Math.max(-1.4, Math.min(1.4, eyeOffset.dy));
 
-  const eyeXL = lerp(-5.4, -2.2, t) + lookShiftX * lerp(0.45, 0.35, t);
-  const eyeYL = eyeY + lookShiftY * 0.45;
-  const eyeLRx = lerp(3.6, 3.1, t);
-  const eyeLRy = 3.9;
+  // Eye side-glance factor:
+  // - NEVER active when facing the user (idle, sitting, loafing, purring, or looking at user) -> 100% unbent circular eyes 👁️👁️
+  // - ONLY active when actively walking sideways in 3/4 perspective (state === 'walking' && t > 0.2)
+  const isWalkingTurn = state === 'walking' && t > 0.2;
+  const sideFactor = isWalkingTurn ? Math.min(1, (t - 0.2) / 0.8) : 0;
 
-  const eyeXR = lerp(5.4, 5.6, t) + lookShiftX * 0.45;
+  // IDENTICAL EYE SIZE: When walking, both eyes have the EXACT same oval dimensions!
+  const eyeWidth = lerp(3.6, 2.15, sideFactor);
+  const eyeHeight = lerp(3.9, 4.25, sideFactor);
+
+  // BENT IN PERSPECTIVE: When walking, both eyes bend/tilt together in direction of gaze like 👀
+  const eyeTilt = lerp(0, 0.08, sideFactor);
+
+  // Far Eye (Left) & Near Eye (Right) positions across face
+  const eyeXL = lerp(-5.6, -1.2, t) + lookShiftX * 0.45;
+  const eyeYL = eyeY + lookShiftY * 0.45;
+  const eyeXR = lerp(5.6, 6.2, t) + lookShiftX * 0.45;
   const eyeYR = eyeY + lookShiftY * 0.45;
-  const eyeRRx = 3.6;
-  const eyeRRy = lerp(3.9, 4.0, t);
 
   if (isBlinking || state === "loaf" || state === "purring") {
+    // Closed happy eye arcs (⌒   ⌒) bending together in perspective
+    ctx.save();
+    ctx.translate(eyeXL, eyeY + 0.6);
+    ctx.rotate(eyeTilt);
+    ctx.scale(lerp(1.0, 0.72, sideFactor), 1.0);
     ctx.beginPath();
-    ctx.arc(eyeXL, eyeY + 0.6, lerp(3.2, 2.8, t), 0.15, Math.PI - 0.15, false);
-    ctx.arc(eyeXR, eyeY + 0.6, lerp(3.2, 3.4, t), 0.15, Math.PI - 0.15, false);
+    ctx.arc(0, 0, 3.2, 0.15, Math.PI - 0.15, false);
     ctx.strokeStyle = outlineColor;
     ctx.lineWidth = 1.8;
     ctx.lineCap = "round";
     ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(eyeXR, eyeY + 0.6);
+    ctx.rotate(eyeTilt);
+    ctx.scale(lerp(1.0, 0.72, sideFactor), 1.0);
+    ctx.beginPath();
+    ctx.arc(0, 0, 3.2, 0.15, Math.PI - 0.15, false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.restore();
   } else {
-    // Far Eye (Left)
+    // Shared highlight parameters for identical anime gaze 👀
+    const hl1X = lerp(1.2, 0.55, sideFactor);
+    const hl1Y = lerp(-1.1, -1.2, sideFactor);
+    const hl1Rx = lerp(1.35, 0.70, sideFactor);
+    const hl1Ry = lerp(1.35, 1.25, sideFactor);
+
+    const hl2X = lerp(-1.2, -0.45, sideFactor);
+    const hl2Y = lerp(1.2, 1.25, sideFactor);
+    const hl2Rx = lerp(0.65, 0.35, sideFactor);
+    const hl2Ry = lerp(0.65, 0.55, sideFactor);
+
+    // --- FAR EYE (LEFT): Same size & bent like 👀 ---
+    ctx.save();
+    ctx.translate(eyeXL, eyeYL);
+    ctx.rotate(eyeTilt);
+
     ctx.beginPath();
-    ctx.ellipse(eyeXL, eyeYL, eyeLRx, eyeLRy, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, eyeWidth, eyeHeight, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeColor;
     ctx.fill();
 
-    // Far Eye primary sparkle
+    // Primary highlight
     ctx.beginPath();
-    ctx.arc(eyeXL + lerp(1.2, 1.0, t), eyeYL - 1.1, lerp(1.35, 1.15, t), 0, Math.PI * 2);
+    ctx.ellipse(hl1X, hl1Y, hl1Rx, hl1Ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
-    // Far Eye secondary sparkle
+    // Secondary highlight
     ctx.beginPath();
-    ctx.arc(eyeXL - lerp(1.1, 0.9, t), eyeYL + 1.2, lerp(0.65, 0.55, t), 0, Math.PI * 2);
+    ctx.ellipse(hl2X, hl2Y, hl2Rx, hl2Ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
+    ctx.restore();
 
-    // Near Eye (Right)
+    // --- NEAR EYE (RIGHT): Same size & bent like 👀 ---
+    ctx.save();
+    ctx.translate(eyeXR, eyeYR);
+    ctx.rotate(eyeTilt);
+
     ctx.beginPath();
-    ctx.ellipse(eyeXR, eyeYR, eyeRRx, eyeRRy, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, eyeWidth, eyeHeight, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeColor;
     ctx.fill();
 
-    // Near Eye primary sparkle
+    // Primary highlight
     ctx.beginPath();
-    ctx.arc(eyeXR + 1.2, eyeYR - 1.1, 1.35, 0, Math.PI * 2);
+    ctx.ellipse(hl1X, hl1Y, hl1Rx, hl1Ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
-    // Near Eye secondary sparkle
+    // Secondary highlight
     ctx.beginPath();
-    ctx.arc(eyeXR - 1.1, eyeYR + lerp(1.2, 1.3, t), 0.65, 0, Math.PI * 2);
+    ctx.ellipse(hl2X, hl2Y, hl2Rx, hl2Ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
+    ctx.restore();
   }
 
   // =========================================================
-  // 🐾 SNOUT, NOSE & SWEET ":3" MOUTH
+  // 🐾 SNOUT, NOSE & 3D PERSPECTIVE ':3' FELINE SMILE
   // =========================================================
-  const noseCenterX = lerp(0, 2.5, t);
+  const noseCenterX = lerp(0, 2.6, t);
+  const noseTopY = 1.8;
+  const noseTipY = 3.2;
+
+  // 3D Nose Pad (Receding nostril foreshortens, near nostril projects forward)
   ctx.beginPath();
-  ctx.moveTo(noseCenterX - 1.3, 1.8);
-  ctx.lineTo(noseCenterX + 1.3, 1.8);
-  ctx.lineTo(noseCenterX, 3.2);
+  ctx.moveTo(noseCenterX - lerp(1.4, 0.85, t), noseTopY);
+  ctx.lineTo(noseCenterX + lerp(1.4, 1.55, t), noseTopY);
+  ctx.lineTo(noseCenterX + lerp(0, 0.25, t), noseTipY);
   ctx.closePath();
   ctx.fillStyle = noseColor;
   ctx.fill();
 
+  // Subtle gleam along 3D nose bridge ridge
+  if (t > 0.15) {
+    ctx.beginPath();
+    ctx.moveTo(noseCenterX + 0.3, 2.0);
+    ctx.lineTo(noseCenterX + 0.35, 3.0);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.40)";
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
+  // Feline Smile: Smaller, delicate feline smile slightly separated from nose tip
+  const mouthStemX = noseCenterX + lerp(0, 0.25, t);
+  const mouthSplitY = lerp(4.1, 4.15, t); // Clear separation below nose tip (3.2)
+
+  // Subtle delicate center notch
   ctx.beginPath();
-  ctx.moveTo(noseCenterX, 3.2);
-  ctx.lineTo(noseCenterX, 4.2);
-  ctx.arc(lerp(-1.4, 0.9, t), 4.4, lerp(1.4, 1.5, t), 0.1, Math.PI - lerp(0.1, 0.2, t));
-  ctx.arc(lerp(1.4, 3.9, t), 4.4, lerp(1.4, 1.6, t), 0.15, Math.PI - 0.05);
+  ctx.moveTo(mouthStemX, lerp(3.85, 3.9, t));
+  ctx.lineTo(mouthStemX, mouthSplitY);
   ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = 1.1;
   ctx.lineCap = "round";
   ctx.stroke();
 
+  // Far / Back lip arc (-X trailing side: gently foreshortens along receding muzzle)
+  const farLipRx = lerp(1.2, 0.8, t);
+  const farLipRy = lerp(0.85, 0.75, t);
+  const farLipCenterX = mouthStemX - farLipRx;
+  ctx.beginPath();
+  ctx.ellipse(farLipCenterX, 4.15, farLipRx, farLipRy, 0, 0.08, Math.PI - lerp(0.1, 0.35, t), false);
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // Near / Front lip arc (+X leading side: natural delicate curve in direction of walking)
+  const nearLipRx = lerp(1.2, 1.25, t);
+  const nearLipRy = lerp(0.85, 0.95, t);
+  const nearLipCenterX = mouthStemX + nearLipRx;
+  ctx.beginPath();
+  ctx.ellipse(nearLipCenterX, 4.15, nearLipRx, nearLipRy, 0, lerp(0.1, -0.15, t), Math.PI - 0.05, false);
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // Sweet purr tongue peek
+  if (state === "purring") {
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX + lerp(0, 0.3, t), 4.75, lerp(1.05, 1.1, t), lerp(0.8, 0.85, t), 0, 0.1, Math.PI - 0.1, false);
+    ctx.fillStyle = "#FB7185";
+    ctx.fill();
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 0.95;
+    ctx.stroke();
+  }
+
   // =========================================================
-  // 🐱 WHISKERS (Interpolated with playful twitch)
+  // 🐱 WHISKERS (Shifted forward along movement direction, curved & tapered)
   // =========================================================
   const whiskerTwitch = Math.sin(tailWave * 0.7) * 0.35;
-  ctx.beginPath();
-  // Left whiskers
-  ctx.moveTo(lerp(-7.5, -5.5, t), 2.5);
-  ctx.lineTo(lerp(-15.5, -11.5, t), lerp(1.5, 2.2, t) + whiskerTwitch);
-  ctx.moveTo(lerp(-7.5, -5.5, t), 4.5);
-  ctx.lineTo(lerp(-14.5, -11.0, t), lerp(5.5, 5.8, t) + whiskerTwitch);
 
-  // Right whiskers
-  ctx.moveTo(lerp(7.5, 9.5, t), lerp(2.5, 2.8, t));
-  ctx.lineTo(lerp(15.5, 17.2, t), lerp(1.5, 2.2, t) - whiskerTwitch);
-  ctx.moveTo(lerp(7.5, 9.5, t), lerp(4.5, 4.8, t));
-  ctx.lineTo(lerp(14.5, 16.5, t), lerp(5.5, 6.2, t) - whiskerTwitch);
+  // Left / Back Whiskers (-X trailing cheek: shifted forward to wrap snugly along cheek contour)
+  drawTaperedWhisker(
+    ctx,
+    lerp(-8.6, -4.0, t),
+    lerp(3.2, 3.1, t),
+    lerp(-13.0, -8.6, t),
+    lerp(2.7, 2.8, t),
+    lerp(-16.8, -13.0, t),
+    lerp(3.6, 3.8, t) + whiskerTwitch,
+    lerp(1.15, 1.10, t),
+    whiskerColor
+  );
+  drawTaperedWhisker(
+    ctx,
+    lerp(-8.4, -3.8, t),
+    lerp(4.9, 4.8, t),
+    lerp(-12.6, -8.2, t),
+    lerp(5.1, 5.2, t),
+    lerp(-16.2, -12.4, t),
+    lerp(6.7, 6.7, t) + whiskerTwitch,
+    lerp(1.15, 1.10, t),
+    whiskerColor
+  );
 
-  ctx.strokeStyle = whiskerColor;
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
+  // Right / Front Whiskers (+X leading snout: shifted forward to project clearly from front cheek)
+  drawTaperedWhisker(
+    ctx,
+    lerp(8.6, 10.2, t),
+    lerp(3.2, 3.3, t),
+    lerp(13.0, 14.6, t),
+    lerp(2.7, 2.9, t),
+    lerp(16.8, 17.8, t),
+    lerp(3.6, 4.1, t) - whiskerTwitch,
+    lerp(1.15, 1.05, t),
+    whiskerColor
+  );
+  drawTaperedWhisker(
+    ctx,
+    lerp(8.4, 9.8, t),
+    lerp(4.9, 5.0, t),
+    lerp(12.6, 14.0, t),
+    lerp(5.1, 5.4, t),
+    lerp(16.2, 17.2, t),
+    lerp(6.7, 6.9, t) - whiskerTwitch,
+    lerp(1.15, 1.05, t),
+    whiskerColor
+  );
 
   // =========================================================
   // 🎀 ACCESSORIES (Smooth glide with perspective value t)
@@ -3165,9 +3521,11 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory, i
 
     ctx.restore();
   } else if (accessory === 'crown') {
-    // Tiny Golden Royal Crown with Ruby Studs
+    // Tiny Golden Royal Crown with Ruby Studs - Consistent 3D Perspective
     ctx.save();
-    ctx.translate(lerp(0, 2.0, t), -11);
+    ctx.translate(lerp(0, 1.4, t), -11);
+    ctx.rotate(lerp(0, 0.04, t));
+    ctx.scale(lerp(1.0, 0.88, t), 1.0);
     ctx.beginPath();
     ctx.moveTo(-6, 2);
     ctx.lineTo(-6, -3);
@@ -3192,46 +3550,55 @@ function drawAccessory(ctx: CanvasRenderingContext2D, accessory: PetAccessory, i
     ctx.fill();
     ctx.restore();
   } else if (accessory === 'glasses') {
-    // 👓 Cute Round Golden Wireframe Glasses
+    // 👓 Cute Round Golden Wireframe Glasses (Aligned precisely with eye centers)
     ctx.save();
-    ctx.translate(lerp(0, 2.0, t), -0.4);
+    ctx.translate(0, -0.4);
     ctx.strokeStyle = '#F59E0B';
     ctx.lineWidth = 1.2;
 
-    // Left Lens Frame
+    const eyeLeftX = lerp(-5.6, -2.0, t);
+    const eyeRightX = lerp(5.6, 6.1, t);
+
+    // Left Lens Frame (Foreshortens horizontally with far eye)
+    ctx.save();
+    ctx.translate(eyeLeftX, 0);
     ctx.beginPath();
-    ctx.arc(lerp(-5.6, -4.0, t), 0, lerp(4.4, 3.6, t), 0, Math.PI * 2);
+    ctx.ellipse(0, 0, lerp(4.4, 2.5, t), lerp(4.4, 4.3, t), 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 
-    // Right Lens Frame
+    // Right Lens Frame (Near foreground eye)
+    ctx.save();
+    ctx.translate(eyeRightX, 0);
     ctx.beginPath();
-    ctx.arc(lerp(5.6, 4.2, t), 0, 4.4, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, lerp(4.4, 4.5, t), lerp(4.4, 4.5, t), 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 
-    // Nose Bridge
+    // Nose Bridge connecting lenses
     ctx.beginPath();
-    ctx.moveTo(lerp(-1.2, -0.4, t), -0.6);
-    ctx.quadraticCurveTo(lerp(0, 0.8, t), -1.8, lerp(1.2, 2.0, t), -0.6);
+    ctx.moveTo(eyeLeftX + lerp(4.4, 2.5, t) * 0.8, -0.6);
+    ctx.quadraticCurveTo(lerp(0, 2.2, t), -1.8, eyeRightX - lerp(4.4, 4.5, t) * 0.8, -0.6);
     ctx.stroke();
 
     // Side Temples
     ctx.beginPath();
-    ctx.moveTo(lerp(-10.0, -7.6, t), 0);
-    ctx.lineTo(lerp(-13.5, -11.0, t), -1.5);
-    ctx.moveTo(lerp(10.0, 8.6, t), 0);
-    ctx.lineTo(lerp(13.5, 12.0, t), -1.5);
+    ctx.moveTo(eyeLeftX - lerp(4.4, 2.5, t), 0);
+    ctx.lineTo(eyeLeftX - lerp(8.0, 5.5, t), -1.5);
+    ctx.moveTo(eyeRightX + lerp(4.4, 4.5, t), 0);
+    ctx.lineTo(eyeRightX + lerp(8.0, 7.0, t), -1.5);
     ctx.stroke();
 
     // Glass shine gleam
     ctx.beginPath();
-    ctx.moveTo(lerp(-7.5, -5.5, t), -2.2);
-    ctx.lineTo(lerp(-4.5, -3.0, t), -3.4);
-    ctx.moveTo(lerp(3.8, 2.8, t), -2.2);
-    ctx.lineTo(lerp(6.8, 5.8, t), -3.4);
+    ctx.moveTo(eyeLeftX - lerp(2.0, 1.0, t), -2.2);
+    ctx.lineTo(eyeLeftX + lerp(1.0, 0.5, t), -3.4);
+    ctx.moveTo(eyeRightX - 2.0, -2.2);
+    ctx.lineTo(eyeRightX + 1.0, -3.4);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.lineWidth = 0.9;
     ctx.stroke();
