@@ -1597,6 +1597,14 @@ export function drawCuteKitten2D(
     pawColor,
   } = palette;
 
+  // Small animated value noise gives the flat vector coat a soft, tactile finish
+  // without adding image assets or expensive per-frame filters.
+  const coatSheen = 0.5 + Math.sin(breathePhase * 0.7) * 0.5;
+  const coatTexture = ctx.createLinearGradient(-14, -28, 14, 2);
+  coatTexture.addColorStop(0, `rgba(255, 255, 255, ${0.16 + coatSheen * 0.05})`);
+  coatTexture.addColorStop(0.42, 'rgba(255, 255, 255, 0)');
+  coatTexture.addColorStop(1, 'rgba(38, 25, 42, 0.08)');
+
       // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
   // A restrained aura makes Mochi feel present without competing with messages.
   if (state === 'purring' || state === 'peeking' || state === 'loaf') {
@@ -1739,6 +1747,21 @@ export function drawCuteKitten2D(
   ctx.ellipse(0 + buttX * 0.3, bodyY, bodyRadiusX, bodyRadiusY, 0, 0, Math.PI * 2);
   ctx.fillStyle = bodyColor;
   ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = coatTexture;
+  ctx.globalAlpha = 0.78;
+  ctx.fillRect(-16, bodyY - 12, 32, 24);
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.lineWidth = 0.55;
+  for (let tuft = -10; tuft <= 10; tuft += 4) {
+    ctx.beginPath();
+    ctx.moveTo(tuft, bodyY - 8);
+    ctx.quadraticCurveTo(tuft + 1.2, bodyY - 5, tuft - 0.4, bodyY - 2);
+    ctx.stroke();
+  }
+  ctx.restore();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
@@ -1936,22 +1959,34 @@ export function drawCuteKitten2D(
     const eyeYL = eyeY + lookShiftY * 0.45;
 
     // --- LEFT EYE ---
+    const pupilPulse = 1 + Math.sin(breathePhase * 2.2) * 0.07;
+    const gazeTilt = lookShiftX * 0.035;
+    ctx.save();
+    ctx.translate(eyeXL, eyeYL);
+    ctx.rotate(gazeTilt);
     ctx.beginPath();
-    ctx.ellipse(eyeXL, eyeYL, 3.6, 3.9, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 3.6, 3.9, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeColor;
     ctx.fill();
 
     // Primary Specular Highlight (top right)
     ctx.beginPath();
-    ctx.ellipse(eyeXL + 1.2, eyeYL - 1.1, 1.35, 1.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(1.2, -1.1, 1.35, 1.35, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
 
     // Secondary Specular Highlight (bottom left)
     ctx.beginPath();
-    ctx.ellipse(eyeXL - 1.2, eyeYL + 1.2, 0.65, 0.65, 0, 0, Math.PI * 2);
+    ctx.ellipse(-1.2, 1.2, 0.65, 0.65, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
+    ctx.globalAlpha = 0.22 + coatSheen * 0.12;
+    ctx.strokeStyle = eyeHighlight;
+    ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 1.5 * pupilPulse, 2.15 * pupilPulse, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
     // --- RIGHT EYE ---
     const eyeXR = 5.6 + lookShiftX * 0.45;
@@ -1973,6 +2008,13 @@ export function drawCuteKitten2D(
     ctx.ellipse(eyeXR - 1.2, eyeYR + 1.2, 0.65, 0.65, 0, 0, Math.PI * 2);
     ctx.fillStyle = eyeHighlight;
     ctx.fill();
+    ctx.globalAlpha = 0.22 + coatSheen * 0.12;
+    ctx.strokeStyle = eyeHighlight;
+    ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    ctx.ellipse(eyeXR, eyeYR, 1.5 * pupilPulse, 2.15 * pupilPulse, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // NOSE: Cute Inverted Soft Pink Triangle
@@ -2588,6 +2630,21 @@ export function drawCuteKitten25D(
   ctx.ellipse(bodyOffsetX, 0, bodyRadiusX, bodyRadiusY, bodyRot, 0, Math.PI * 2);
   ctx.fillStyle = bodyColor;
   ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = coatTexture;
+  ctx.globalAlpha = 0.82;
+  ctx.fillRect(-16, -12, 32, 24);
+  ctx.globalAlpha = 0.13 + t * 0.08;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.lineWidth = 0.55;
+  for (let tuft = -10; tuft <= 10; tuft += 4) {
+    ctx.beginPath();
+    ctx.moveTo(tuft, -8);
+    ctx.quadraticCurveTo(tuft + 1.2, -5, tuft - 0.4, -2);
+    ctx.stroke();
+  }
+  ctx.restore();
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = outlineColor;
   ctx.stroke();
@@ -3120,9 +3177,11 @@ export function drawCuteKitten25D(
     const hl2Ry = lerp(0.65, 0.55, sideFactor);
 
     // --- FAR EYE (LEFT): Same size & bent like 👀 ---
+    const pupilPulse = 1 + Math.sin(breathePhase * 2.2) * 0.07;
+    const gazeTilt = lookShiftX * 0.035;
     ctx.save();
     ctx.translate(eyeXL, eyeYL);
-    ctx.rotate(eyeTilt);
+    ctx.rotate(eyeTilt + gazeTilt);
 
     ctx.beginPath();
     ctx.ellipse(0, 0, eyeWidth, eyeHeight, 0, 0, Math.PI * 2);
