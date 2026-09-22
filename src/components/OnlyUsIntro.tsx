@@ -71,15 +71,12 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200, themeN
   const isDark = dualTone.isDark;
 
   const triggerFinish = useCallback(() => {
-    if (hasFinishedRef.current) {
-      onFinishRef.current?.();
-      return;
-    }
+    if (hasFinishedRef.current) return;
     hasFinishedRef.current = true;
     setIsFadingOut(true);
     setTimeout(() => {
       onFinishRef.current?.();
-    }, 450);
+    }, 550);
   }, []);
 
   // Stroke drawing animation - draws ALL letters in parallel simultaneously for the authentic unhurried vibe
@@ -143,15 +140,9 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200, themeN
       }
     }, minDuration);
 
-    // Hard safety timeout: guarantee intro never hangs indefinitely under any network condition
-    const safetyTimer = setTimeout(() => {
-      triggerFinish();
-    }, Math.max(minDuration + 400, 2600));
-
     return () => {
       isCancelled = true;
       clearTimeout(timer);
-      clearTimeout(safetyTimer);
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }

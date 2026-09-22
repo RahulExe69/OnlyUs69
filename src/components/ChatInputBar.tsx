@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Smile, Heart, Send, X, Mic, Square, Trash2, Play, Pause } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
-import { TypingPeekAvatar } from './TypingPeekAvatar';
-import { RAHUL_CHARACTER, NUSRAT_CHARACTER } from './typing-peek/typingPeekConfig';
 
 export interface ChatInputBarHandle {
   focusInput: () => void;
@@ -21,16 +19,9 @@ interface ChatInputBarProps {
   onSendVoiceNote?: (audioBlob: Blob, durationSeconds: number) => Promise<void> | void;
   onEditMessage: (id: string, text: string) => Promise<void> | void;
   onBroadcastTyping: (isTyping: boolean) => void;
-  onBroadcastComposerFocus?: (isFocused: boolean) => void;
   onOpenAttachmentMenu: () => void;
   onOpenNudgeMenu: () => void;
   userProfile: UserProfile | null;
-  partnerProfile?: UserProfile | null;
-  isPartnerInChat?: boolean;
-  isPartnerComposerFocused?: boolean;
-  isPartnerTyping?: boolean;
-  partnerJustSentMessage?: boolean;
-  typingPeekEnabled?: boolean;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   externalTriggerVoiceRecord?: boolean;
   onClearExternalVoiceRecordTrigger?: () => void;
@@ -55,13 +46,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   onOpenAttachmentMenu,
   onOpenNudgeMenu,
   userProfile,
-  partnerProfile,
-  isPartnerInChat,
-  isPartnerComposerFocused,
-  isPartnerTyping,
-  partnerJustSentMessage,
-  onBroadcastComposerFocus,
-  typingPeekEnabled,
   inputRef,
   externalTriggerVoiceRecord,
   onClearExternalVoiceRecordTrigger,
@@ -70,43 +54,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Typing Peek preference & test preview state
-  const [typingPeekPref, setTypingPeekPref] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return localStorage.getItem('onlyus_typing_peek_enabled') !== 'false';
-  });
-  const [previewTypingPeek, setPreviewTypingPeek] = useState<boolean>(false);
-
-  useEffect(() => {
-    const handleToggle = (e: any) => {
-      const enabled = e?.detail ?? (localStorage.getItem('onlyus_typing_peek_enabled') !== 'false');
-      setTypingPeekPref(enabled);
-    };
-    const handleTest = () => {
-      setPreviewTypingPeek(true);
-      setTimeout(() => {
-        setPreviewTypingPeek(false);
-      }, 5500);
-    };
-    window.addEventListener('onlyus_typing_peek_toggle', handleToggle);
-    window.addEventListener('onlyus_test_typing_peek', handleTest);
-    return () => {
-      window.removeEventListener('onlyus_typing_peek_toggle', handleToggle);
-      window.removeEventListener('onlyus_test_typing_peek', handleTest);
-    };
-  }, []);
-
-  const effectiveTypingPeekEnabled = typingPeekEnabled ?? typingPeekPref;
-
-  // Symmetrical Dual-User Presence & Character Selection:
-  // Nusrat (role === 'partner') views Rahul's character (RAHUL_CHARACTER).
-  // Rahul (role === 'owner') views Nusrat's character (NUSRAT_CHARACTER).
-  // In settings test preview, display Rahul's character so it can be previewed.
-  const targetCharacter = role === 'partner' ? RAHUL_CHARACTER : NUSRAT_CHARACTER;
-  const partnerDisplayName = role === 'owner' 
-    ? (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || 'Nusrat')
-    : (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || 'Rahul');
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
   const placeholderContainerRef = useRef<HTMLDivElement>(null);
@@ -583,20 +530,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       </AnimatePresence>
 
       <div className="relative flex items-end px-3 lg:px-4 gap-2 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] pt-1.5">
-        {/* Animated Typing Peek Avatar (Positioned behind the chat input capsule) */}
-        <div className="absolute left-14 sm:left-18 md:left-20 bottom-[calc(100%-6px)] pointer-events-auto z-0">
-          <TypingPeekAvatar
-            character={previewTypingPeek ? RAHUL_CHARACTER : targetCharacter}
-            isPartnerInChat={previewTypingPeek || Boolean(isPartnerInChat)}
-            isPartnerComposerFocused={previewTypingPeek || Boolean(isPartnerComposerFocused)}
-            isPartnerTyping={previewTypingPeek || Boolean(isPartnerTyping)}
-            partnerJustSentMessage={partnerJustSentMessage}
-            enabled={effectiveTypingPeekEnabled}
-            scale={0.95}
-            label={partnerDisplayName}
-          />
-        </div>
-
         {/* Attachment menu button (hidden while actively recording) */}
         {!isRecording && !isPreviewing && (
           <button
@@ -607,7 +540,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
               }
             }}
             onClick={onOpenAttachmentMenu}
-            className="relative z-10 flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/15 transition-all active:scale-95 shadow-md cursor-pointer"
+            className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/15 transition-all active:scale-95 shadow-md cursor-pointer"
             aria-label="Open attachments menu"
           >
             <Plus className="w-5 h-5" />
@@ -620,7 +553,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         {isRecording ? (
           <div 
             id="chat-input-capsule"
-            className="relative z-10 chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
+            className="chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
           >
             {/* Pulsing red recording dot */}
             <div className="relative flex items-center justify-center w-5 h-5">
@@ -670,7 +603,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           /* --------------------------------------------------------- */
           <div 
             id="chat-input-capsule"
-            className="relative z-10 chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
+            className="chat-input-perch flex-1 flex items-center bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-[1.6rem] px-3.5 py-2 shadow-md gap-3 min-h-[44px]"
           >
             {recordedAudioUrl && (
               <audio
@@ -727,7 +660,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           /* --------------------------------------------------------- */
           <div 
             id="chat-input-capsule"
-            className="chat-input-perch relative z-10 flex-1 flex items-end bg-[var(--theme-input-bg)]/85 backdrop-blur-md border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden"
+            className="chat-input-perch relative flex-1 flex items-end bg-[var(--theme-input-bg)]/85 backdrop-blur-md border border-[var(--theme-border)] rounded-[1.6rem] shadow-sm focus-within:ring-4 focus-within:ring-[var(--theme-accent)]/15 focus-within:border-[var(--theme-accent)]/40 transition-[box-shadow,border-color] duration-150 overflow-hidden"
           >
             {/* WhatsApp emoji toggle button */}
             <button
@@ -782,13 +715,11 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                     (window as any).__isChatInputFocused = true;
                   }
                   setShowEmojiPicker(false);
-                  onBroadcastComposerFocus?.(true);
                 }}
                 onBlur={() => {
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = false;
                   }
-                  onBroadcastComposerFocus?.(false);
                 }}
                 inputMode="text"
                 enterKeyHint="send"
@@ -834,7 +765,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           <button
             type="button"
             onClick={handleDirectSendRecording}
-            className="relative z-10 flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
+            className="flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
             style={{
               background: 'var(--theme-accent)',
               boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)',
@@ -848,7 +779,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             type="button"
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => handleSubmit()}
-            className="relative z-10 flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
+            className="flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
             style={{
               background: 'var(--theme-accent)',
               boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)',
@@ -862,7 +793,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             type="button"
             onPointerDown={(event) => event.preventDefault()}
             onClick={handleStartRecording}
-            className="relative z-10 flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
+            className="flex-shrink-0 w-10 h-10 lg:w-11 lg:h-11 mb-0.5 flex items-center justify-center text-white rounded-full hover:opacity-90 transition-transform duration-100 active:scale-95 shadow-lg touch-manipulation cursor-pointer"
             style={{
               background: 'var(--theme-accent)',
               boxShadow: '0 8px 20px color-mix(in srgb, var(--theme-accent) 30%, transparent)',

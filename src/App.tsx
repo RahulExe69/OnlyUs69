@@ -153,14 +153,6 @@ export default function App() {
     setShowIntro(false);
   }, []);
 
-  // Failsafe safety timeout: loading must never stay true indefinitely under any network condition
-  useEffect(() => {
-    const safetyTimer = setTimeout(() => {
-      setLoading(false);
-    }, 2800);
-    return () => clearTimeout(safetyTimer);
-  }, []);
-
   // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
     CapApp.getInfo().then(info => {
@@ -291,24 +283,6 @@ export default function App() {
     partnerProfile,
     isOwner,
   });
-
-  // Pulse partner character reaction when a new message arrives from partner
-  const latestMessage = messages && messages.length > 0 ? messages[messages.length - 1] : null;
-  useEffect(() => {
-    if (!latestMessage) return;
-    if (lastKnownMessageIdRef.current && latestMessage.id !== lastKnownMessageIdRef.current) {
-      const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
-      const isFromPartner = latestMessage.sender_role !== myRole;
-      if (isFromPartner) {
-        setPartnerJustSentMessage(true);
-        if (partnerJustSentTimeoutRef.current) clearTimeout(partnerJustSentTimeoutRef.current);
-        partnerJustSentTimeoutRef.current = setTimeout(() => {
-          setPartnerJustSentMessage(false);
-        }, 1800);
-      }
-    }
-    lastKnownMessageIdRef.current = latestMessage.id;
-  }, [latestMessage?.id, userProfile?.role, isOwner]);
 
   const {
     activeCall,
@@ -478,13 +452,6 @@ export default function App() {
   const [isPartnerInGameRoom, setIsPartnerInGameRoom] = useState(false);
   const [minimizedCountdown, setMinimizedCountdown] = useState(60);
   const minimizedTimerRef = useRef<any>(null);
-
-  // Real-time Partner Typing Peek & Presence Tracking
-  const [isPartnerInChatRoom, setIsPartnerInChatRoom] = useState(false);
-  const [isPartnerComposerFocused, setIsPartnerComposerFocused] = useState(false);
-  const [partnerJustSentMessage, setPartnerJustSentMessage] = useState(false);
-  const partnerJustSentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastKnownMessageIdRef = useRef<string | null>(null);
 
   const activeGameRef = useRef(activeGame);
   activeGameRef.current = activeGame;
@@ -928,144 +895,109 @@ export default function App() {
       }
     }
 
-    const resolveAuthSession = async () => {
-      try {
-        const { data: { session } } = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<{ data: { session: any } }>((resolve) =>
-            setTimeout(() => resolve({ data: { session: null } }), 3000)
-          )
-        ]);
-
-        if (session?.user) {
-          const email = (session.user.email || "").trim().toLowerCase();
-          
-          let currentConfig = appConfig;
-          if (!currentConfig) {
-            try {
-              const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
-              if (cfg) {
-                currentConfig = cfg as AppConfig;
-                setAppConfig(cfg as AppConfig);
-              }
-            } catch (e) {}
-          }
-
-          const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-          const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
-
-          if (!isOwner && !isPartner) {
-            console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
-            await supabase.auth.signOut().catch(() => {});
-            localStorage.removeItem('onlyus_partner_session');
-            localStorage.removeItem('onlyus_partner_passcode');
-            setUser(null);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setIsOwner(false);
-            setIsPartner(false);
-            setLoading(false);
-            setUnauthorizedEmail(email);
-            setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
-            cleanUrlHash();
-            return;
-          }
-
-          // Optimistically hydrate profile from cache if available so UI never hangs
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const email = (session.user.email || "").trim().toLowerCase();
+        
+        let currentConfig = appConfig;
+        if (!currentConfig) {
           try {
-            const cachedProfileStr = localStorage.getItem('onlyus_cached_profile');
-            if (cachedProfileStr) {
-              const cachedProfile = JSON.parse(cachedProfileStr);
-              if (cachedProfile && (cachedProfile.id === session.user.id || cachedProfile.uid === session.user.id)) {
-                setUserProfile(cachedProfile);
-              }
+            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+            if (cfg) {
+              currentConfig = cfg as AppConfig;
+              setAppConfig(cfg as AppConfig);
             }
-          } catch (_) {}
-
-          setUnauthorizedEmail(null);
-          setError(null);
-          setUser(session.user);
-          setLoading(false);
-          cleanUrlHash();
-        } else {
-          const cached = localStorage.getItem('onlyus_partner_session');
-          if (!cached) {
-            setUser(null);
-            setLoading(false);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setAppConfig(null);
-            setIsOwner(false);
-            setIsPartner(false);
-          } else {
-            setLoading(false);
-          }
+          } catch (e) {}
         }
-      } catch (err) {
-        console.warn("[Auth] getSession error or timeout:", err);
-        setLoading(false);
-      }
-    };
 
-    resolveAuthSession();
+        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+
+        if (!isOwner && !isPartner) {
+          console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
+          await supabase.auth.signOut().catch(() => {});
+          localStorage.removeItem('onlyus_partner_session');
+          localStorage.removeItem('onlyus_partner_passcode');
+          setUser(null);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setIsOwner(false);
+          setIsPartner(false);
+          setLoading(false);
+          setUnauthorizedEmail(email);
+          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+          cleanUrlHash();
+          return;
+        }
+
+        setUnauthorizedEmail(null);
+        setError(null);
+        setUser(session.user);
+        cleanUrlHash();
+      } else {
+        const cached = localStorage.getItem('onlyus_partner_session');
+        if (!cached) {
+          setUser(null);
+          setLoading(false);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setAppConfig(null);
+          setIsOwner(false);
+          setIsPartner(false);
+        }
+      }
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (session?.user) {
-          const email = (session.user.email || "").trim().toLowerCase();
-          
-          let currentConfig = appConfig;
-          if (!currentConfig) {
-            try {
-              const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
-              if (cfg) {
-                currentConfig = cfg as AppConfig;
-                setAppConfig(cfg as AppConfig);
-              }
-            } catch (e) {}
-          }
-
-          const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-          const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
-
-          if (!isOwner && !isPartner) {
-            console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
-            await supabase.auth.signOut().catch(() => {});
-            localStorage.removeItem('onlyus_partner_session');
-            localStorage.removeItem('onlyus_partner_passcode');
-            setUser(null);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setIsOwner(false);
-            setIsPartner(false);
-            setLoading(false);
-            setUnauthorizedEmail(email);
-            setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
-            cleanUrlHash();
-            return;
-          }
-
-          setUnauthorizedEmail(null);
-          setError(null);
-          setUser(session.user);
-          setLoading(false);
-          cleanUrlHash();
-        } else {
-          const cached = localStorage.getItem('onlyus_partner_session');
-          if (!cached) {
-            setUser(null);
-            setLoading(false);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setAppConfig(null);
-            setIsOwner(false);
-            setIsPartner(false);
-          } else {
-            setLoading(false);
-          }
+      if (session?.user) {
+        const email = (session.user.email || "").trim().toLowerCase();
+        
+        let currentConfig = appConfig;
+        if (!currentConfig) {
+          try {
+            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+            if (cfg) {
+              currentConfig = cfg as AppConfig;
+              setAppConfig(cfg as AppConfig);
+            }
+          } catch (e) {}
         }
-      } catch (err) {
-        setLoading(false);
+
+        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+
+        if (!isOwner && !isPartner) {
+          console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
+          await supabase.auth.signOut().catch(() => {});
+          localStorage.removeItem('onlyus_partner_session');
+          localStorage.removeItem('onlyus_partner_passcode');
+          setUser(null);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setIsOwner(false);
+          setIsPartner(false);
+          setLoading(false);
+          setUnauthorizedEmail(email);
+          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+          cleanUrlHash();
+          return;
+        }
+
+        setUnauthorizedEmail(null);
+        setError(null);
+        setUser(session.user);
+        cleanUrlHash();
+      } else {
+        const cached = localStorage.getItem('onlyus_partner_session');
+        if (!cached) {
+          setUser(null);
+          setLoading(false);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setAppConfig(null);
+          setIsOwner(false);
+          setIsPartner(false);
+        }
       }
     });
 
@@ -1248,18 +1180,6 @@ export default function App() {
     // Instant update on session start
     supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then(undefined, () => {});
 
-    // Optimistic profile hydration from local cache
-    try {
-      const cachedProfileStr = localStorage.getItem('onlyus_cached_profile');
-      if (cachedProfileStr) {
-        const parsed = JSON.parse(cachedProfileStr);
-        if (parsed && (parsed.id === user.id || parsed.uid === user.id)) {
-          setUserProfile(parsed);
-          setLoading(false);
-        }
-      }
-    } catch (_) {}
-
     const fetchProfile = async () => {
       try {
         const { data, error } = await supabase.from('users').select('*').eq('id', user.id).single();
@@ -1433,17 +1353,6 @@ export default function App() {
       );
       setIsPartnerInGameRoom(prev => (prev !== isPartnerInGame ? isPartnerInGame : prev));
 
-      // Symmetrical partner chat presence check for Typing Peek
-      const isPartnerInChat = Boolean(
-        partnerPres &&
-        partnerPres.is_active !== false &&
-        partnerPres.location === 'chat'
-      );
-      setIsPartnerInChatRoom(prev => (prev !== isPartnerInChat ? isPartnerInChat : prev));
-      if (!isPartnerInChat) {
-        setIsPartnerComposerFocused(false);
-      }
-
       // If this user is minimized in chat, and partner presence reports they are NOT in the game room (e.g. partner also in chat, left, or offline):
       // Then both players are outside the game arena, so automatically terminate the game session for both!
       if (activeGameRef.current && isGameMinimizedRef.current) {
@@ -1463,12 +1372,6 @@ export default function App() {
       .on('broadcast', { event: 'game_closed' }, ({ payload }) => {
         if (activeGameRef.current && (!payload?.sessionId || payload.sessionId === activeGameRef.current.id)) {
           handleTerminateGame(false);
-        }
-      })
-      .on('broadcast', { event: 'composer_focus' }, ({ payload }) => {
-        const { userId, isFocused } = payload || {};
-        if (userId && userId !== user?.id) {
-          setIsPartnerComposerFocused(Boolean(isFocused));
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -1622,15 +1525,6 @@ export default function App() {
       event: 'typing',
       payload: { userId: user.id, isTyping }
     });
-  }, [user, isTabActive]);
-
-  const broadcastComposerFocus = useCallback((isFocused: boolean) => {
-    if (!mainChannelRef.current || !user || !isTabActive) return;
-    mainChannelRef.current.send({
-      type: 'broadcast',
-      event: 'composer_focus',
-      payload: { userId: user.id, isFocused }
-    }).catch(() => {});
   }, [user, isTabActive]);
 
   const sendNudge = async (type: string = 'hug') => {
@@ -2202,7 +2096,7 @@ export default function App() {
     return <StealthNotepadView onUnlock={handleUnlockVault} />;
   }
 
-  if (showIntro) {
+  if (showIntro || loading) {
     const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
       <OnlyUsIntro
@@ -2210,15 +2104,6 @@ export default function App() {
         onFinish={handleFinishIntro}
         themeName={activeIntroTheme}
       />
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
-        <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-accent)]/30 border-t-[var(--theme-accent)] animate-spin mb-3" />
-        <span className="text-xs font-medium text-[var(--theme-text)]/50 tracking-wider">Entering sanctuary...</span>
-      </div>
     );
   }
 
@@ -2528,10 +2413,6 @@ export default function App() {
                 selectedMessagesCount={selectedMessages.length}
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
-                isPartnerInChat={isPartnerInChatRoom}
-                isPartnerComposerFocused={isPartnerComposerFocused}
-                partnerJustSentMessage={partnerJustSentMessage}
-                onBroadcastComposerFocus={broadcastComposerFocus}
                 onViewImage={(url) => setShowFullImage(url)}
                 isOverlayOpen={showProfileModal || showPartnerInfo || showCallHistoryModal || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
                 showAttachmentMenu={showAttachmentMenu}
@@ -2771,10 +2652,6 @@ const ChatView = React.memo(function ChatView({
   selectedMessagesCount, 
   userProfile, 
   partnerProfile, 
-  isPartnerInChat,
-  isPartnerComposerFocused,
-  partnerJustSentMessage,
-  onBroadcastComposerFocus,
   onViewImage, 
   isOverlayOpen,
   showAttachmentMenu,
@@ -2814,10 +2691,6 @@ const ChatView = React.memo(function ChatView({
   selectedMessagesCount: number,
   userProfile: UserProfile | null,
   partnerProfile: UserProfile | null,
-  isPartnerInChat?: boolean,
-  isPartnerComposerFocused?: boolean,
-  partnerJustSentMessage?: boolean,
-  onBroadcastComposerFocus?: (isFocused: boolean) => void,
   onViewImage: (url: string) => void,
   isOverlayOpen?: boolean,
   showAttachmentMenu: boolean,
@@ -3790,7 +3663,7 @@ const ChatView = React.memo(function ChatView({
       </div>
 
       <AnimatePresence>
-        {socketTypingUsers.includes(partnerProfile?.uid || '') && (role === 'owner' || (typeof window !== 'undefined' && localStorage.getItem('onlyus_typing_peek_enabled') === 'false')) && (
+        {socketTypingUsers.includes(partnerProfile?.uid || '') && (
           <motion.div 
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
@@ -3814,12 +3687,6 @@ const ChatView = React.memo(function ChatView({
         inputRef={messageInputRef}
         role={role}
         userProfile={userProfile}
-        partnerProfile={partnerProfile}
-        isPartnerInChat={isPartnerInChat}
-        isPartnerComposerFocused={isPartnerComposerFocused}
-        isPartnerTyping={socketTypingUsers.includes(partnerProfile?.uid || '')}
-        partnerJustSentMessage={partnerJustSentMessage}
-        onBroadcastComposerFocus={onBroadcastComposerFocus}
         replyingTo={replyingTo}
         editingMessage={editingMessage}
         onClearReply={() => onSetReplyingTo(null)}
