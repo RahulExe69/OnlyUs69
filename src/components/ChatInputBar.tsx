@@ -4,6 +4,7 @@ import { Plus, Smile, Heart, Send, X, Mic, Square, Trash2, Play, Pause } from 'l
 import { Message, UserProfile } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { TypingPeekAvatar } from './TypingPeekAvatar';
+import { RAHUL_CHARACTER, NUSRAT_CHARACTER } from './typing-peek/typingPeekConfig';
 
 export interface ChatInputBarHandle {
   focusInput: () => void;
@@ -20,11 +21,15 @@ interface ChatInputBarProps {
   onSendVoiceNote?: (audioBlob: Blob, durationSeconds: number) => Promise<void> | void;
   onEditMessage: (id: string, text: string) => Promise<void> | void;
   onBroadcastTyping: (isTyping: boolean) => void;
+  onBroadcastComposerFocus?: (isFocused: boolean) => void;
   onOpenAttachmentMenu: () => void;
   onOpenNudgeMenu: () => void;
   userProfile: UserProfile | null;
   partnerProfile?: UserProfile | null;
+  isPartnerInChat?: boolean;
+  isPartnerComposerFocused?: boolean;
   isPartnerTyping?: boolean;
+  partnerJustSentMessage?: boolean;
   typingPeekEnabled?: boolean;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   externalTriggerVoiceRecord?: boolean;
@@ -51,7 +56,11 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   onOpenNudgeMenu,
   userProfile,
   partnerProfile,
+  isPartnerInChat,
+  isPartnerComposerFocused,
   isPartnerTyping,
+  partnerJustSentMessage,
+  onBroadcastComposerFocus,
   typingPeekEnabled,
   inputRef,
   externalTriggerVoiceRecord,
@@ -88,14 +97,16 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     };
   }, []);
 
-  const isLocalTyping = inputText.trim().length > 0;
-  // If user is owner (Rahul), local typing triggers his peek.
-  // If user is partner (Nusrat), partner typing (Rahul) triggers his peek.
-  const isRahulTyping = role === 'owner'
-    ? (isLocalTyping || previewTypingPeek)
-    : (Boolean(isPartnerTyping) || previewTypingPeek);
-
   const effectiveTypingPeekEnabled = typingPeekEnabled ?? typingPeekPref;
+
+  // Symmetrical Dual-User Presence & Character Selection:
+  // Nusrat (role === 'partner') views Rahul's character (RAHUL_CHARACTER).
+  // Rahul (role === 'owner') views Nusrat's character (NUSRAT_CHARACTER).
+  // In settings test preview, display Rahul's character so it can be previewed.
+  const targetCharacter = role === 'partner' ? RAHUL_CHARACTER : NUSRAT_CHARACTER;
+  const partnerDisplayName = role === 'owner' 
+    ? (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || partnerProfile?.display_name || 'Nusrat')
+    : (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || 'Rahul');
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
   const placeholderContainerRef = useRef<HTMLDivElement>(null);
@@ -572,12 +583,17 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       </AnimatePresence>
 
       <div className="relative flex items-end px-3 lg:px-4 gap-2 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] pt-1.5">
-        {/* Animated Typing Peek Avatar (Rahul peeking from behind the chat input capsule) */}
-        <div className="absolute left-16 sm:left-20 bottom-[calc(100%-8px)] pointer-events-auto z-0">
+        {/* Animated Typing Peek Avatar (Positioned behind the chat input capsule) */}
+        <div className="absolute left-14 sm:left-18 md:left-20 bottom-[calc(100%-6px)] pointer-events-auto z-0">
           <TypingPeekAvatar
-            isTyping={!isRecording && !isPreviewing && isRahulTyping}
+            character={previewTypingPeek ? RAHUL_CHARACTER : targetCharacter}
+            isPartnerInChat={previewTypingPeek || Boolean(isPartnerInChat)}
+            isPartnerComposerFocused={previewTypingPeek || Boolean(isPartnerComposerFocused)}
+            isPartnerTyping={previewTypingPeek || Boolean(isPartnerTyping)}
+            partnerJustSentMessage={partnerJustSentMessage}
             enabled={effectiveTypingPeekEnabled}
-            label={role === 'owner' ? 'Rahul' : (userProfile?.partnerNicknames?.[partnerProfile?.uid || ''] || 'Rahul')}
+            scale={0.95}
+            label={partnerDisplayName}
           />
         </div>
 
@@ -766,11 +782,13 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                     (window as any).__isChatInputFocused = true;
                   }
                   setShowEmojiPicker(false);
+                  onBroadcastComposerFocus?.(true);
                 }}
                 onBlur={() => {
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = false;
                   }
+                  onBroadcastComposerFocus?.(false);
                 }}
                 inputMode="text"
                 enterKeyHint="send"

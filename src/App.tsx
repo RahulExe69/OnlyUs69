@@ -292,6 +292,24 @@ export default function App() {
     isOwner,
   });
 
+  // Pulse partner character reaction when a new message arrives from partner
+  const latestMessage = messages && messages.length > 0 ? messages[messages.length - 1] : null;
+  useEffect(() => {
+    if (!latestMessage) return;
+    if (lastKnownMessageIdRef.current && latestMessage.id !== lastKnownMessageIdRef.current) {
+      const myRole = userProfile?.role || (isOwner ? 'owner' : 'partner');
+      const isFromPartner = latestMessage.sender_role !== myRole;
+      if (isFromPartner) {
+        setPartnerJustSentMessage(true);
+        if (partnerJustSentTimeoutRef.current) clearTimeout(partnerJustSentTimeoutRef.current);
+        partnerJustSentTimeoutRef.current = setTimeout(() => {
+          setPartnerJustSentMessage(false);
+        }, 1800);
+      }
+    }
+    lastKnownMessageIdRef.current = latestMessage.id;
+  }, [latestMessage?.id, userProfile?.role, isOwner]);
+
   const {
     activeCall,
     localStream,
@@ -460,6 +478,13 @@ export default function App() {
   const [isPartnerInGameRoom, setIsPartnerInGameRoom] = useState(false);
   const [minimizedCountdown, setMinimizedCountdown] = useState(60);
   const minimizedTimerRef = useRef<any>(null);
+
+  // Real-time Partner Typing Peek & Presence Tracking
+  const [isPartnerInChatRoom, setIsPartnerInChatRoom] = useState(false);
+  const [isPartnerComposerFocused, setIsPartnerComposerFocused] = useState(false);
+  const [partnerJustSentMessage, setPartnerJustSentMessage] = useState(false);
+  const partnerJustSentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastKnownMessageIdRef = useRef<string | null>(null);
 
   const activeGameRef = useRef(activeGame);
   activeGameRef.current = activeGame;
@@ -1408,6 +1433,17 @@ export default function App() {
       );
       setIsPartnerInGameRoom(prev => (prev !== isPartnerInGame ? isPartnerInGame : prev));
 
+      // Symmetrical partner chat presence check for Typing Peek
+      const isPartnerInChat = Boolean(
+        partnerPres &&
+        partnerPres.is_active !== false &&
+        partnerPres.location === 'chat'
+      );
+      setIsPartnerInChatRoom(prev => (prev !== isPartnerInChat ? isPartnerInChat : prev));
+      if (!isPartnerInChat) {
+        setIsPartnerComposerFocused(false);
+      }
+
       // If this user is minimized in chat, and partner presence reports they are NOT in the game room (e.g. partner also in chat, left, or offline):
       // Then both players are outside the game arena, so automatically terminate the game session for both!
       if (activeGameRef.current && isGameMinimizedRef.current) {
@@ -1427,6 +1463,12 @@ export default function App() {
       .on('broadcast', { event: 'game_closed' }, ({ payload }) => {
         if (activeGameRef.current && (!payload?.sessionId || payload.sessionId === activeGameRef.current.id)) {
           handleTerminateGame(false);
+        }
+      })
+      .on('broadcast', { event: 'composer_focus' }, ({ payload }) => {
+        const { userId, isFocused } = payload || {};
+        if (userId && userId !== user?.id) {
+          setIsPartnerComposerFocused(Boolean(isFocused));
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -1580,6 +1622,15 @@ export default function App() {
       event: 'typing',
       payload: { userId: user.id, isTyping }
     });
+  }, [user, isTabActive]);
+
+  const broadcastComposerFocus = useCallback((isFocused: boolean) => {
+    if (!mainChannelRef.current || !user || !isTabActive) return;
+    mainChannelRef.current.send({
+      type: 'broadcast',
+      event: 'composer_focus',
+      payload: { userId: user.id, isFocused }
+    }).catch(() => {});
   }, [user, isTabActive]);
 
   const sendNudge = async (type: string = 'hug') => {
@@ -2477,6 +2528,10 @@ export default function App() {
                 selectedMessagesCount={selectedMessages.length}
                 userProfile={userProfile}
                 partnerProfile={partnerProfile}
+                isPartnerInChat={isPartnerInChatRoom}
+                isPartnerComposerFocused={isPartnerComposerFocused}
+                partnerJustSentMessage={partnerJustSentMessage}
+                onBroadcastComposerFocus={broadcastComposerFocus}
                 onViewImage={(url) => setShowFullImage(url)}
                 isOverlayOpen={showProfileModal || showPartnerInfo || showCallHistoryModal || showPetModal || !!showFullImage || showDeleteChoices || showAttachmentMenu || showGamesMenu || (!!activeGame && !isGameMinimized)}
                 showAttachmentMenu={showAttachmentMenu}
@@ -2716,6 +2771,10 @@ const ChatView = React.memo(function ChatView({
   selectedMessagesCount, 
   userProfile, 
   partnerProfile, 
+  isPartnerInChat,
+  isPartnerComposerFocused,
+  partnerJustSentMessage,
+  onBroadcastComposerFocus,
   onViewImage, 
   isOverlayOpen,
   showAttachmentMenu,
@@ -2755,6 +2814,10 @@ const ChatView = React.memo(function ChatView({
   selectedMessagesCount: number,
   userProfile: UserProfile | null,
   partnerProfile: UserProfile | null,
+  isPartnerInChat?: boolean,
+  isPartnerComposerFocused?: boolean,
+  partnerJustSentMessage?: boolean,
+  onBroadcastComposerFocus?: (isFocused: boolean) => void,
   onViewImage: (url: string) => void,
   isOverlayOpen?: boolean,
   showAttachmentMenu: boolean,
@@ -3752,7 +3815,11 @@ const ChatView = React.memo(function ChatView({
         role={role}
         userProfile={userProfile}
         partnerProfile={partnerProfile}
+        isPartnerInChat={isPartnerInChat}
+        isPartnerComposerFocused={isPartnerComposerFocused}
         isPartnerTyping={socketTypingUsers.includes(partnerProfile?.uid || '')}
+        partnerJustSentMessage={partnerJustSentMessage}
+        onBroadcastComposerFocus={onBroadcastComposerFocus}
         replyingTo={replyingTo}
         editingMessage={editingMessage}
         onClearReply={() => onSetReplyingTo(null)}
