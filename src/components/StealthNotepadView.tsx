@@ -4,6 +4,7 @@ import {
   Archive, ArrowLeft, Pin, Check, MoreVertical
 } from 'lucide-react';
 import { App } from '@capacitor/app';
+import { useOverlayBack } from '../lib/overlayManager';
 
 export interface NoteItem {
   id: string;
@@ -158,6 +159,10 @@ export function StealthNotepadView({ onUnlock }: StealthNotepadViewProps) {
 
     setEditingNote(null);
   };
+
+  // Hardware back navigation for stealth overlays
+  useOverlayBack(Boolean(editingNote), handleCloseEditor, 'stealth-note-editor');
+  useOverlayBack(showArchive, () => setShowArchive(false), 'stealth-notepad-archive');
 
   // Delete active note
   const handleDeleteActiveNote = () => {

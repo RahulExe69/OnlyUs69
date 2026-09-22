@@ -769,6 +769,11 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
               posRef.current.x = Math.max(minWalk, Math.min(maxWalk, targetPx));
             }
 
+            if (msgCont) {
+              const maxSafeX = Math.max(28, msgCont.clientWidth - 28);
+              posRef.current.x = Math.max(28, Math.min(maxSafeX, posRef.current.x));
+            }
+
             // Check typing box collision when scrolling pushes Mochi down towards the input box
             checkTypingBoxCollision();
           }
@@ -1061,18 +1066,22 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           const speedRatio = 0.65 / walkWidth;
 
           let ratio = platformOffsetRatioRef.current;
+          const msgCont = document.getElementById('message-container');
+          const isAtRightBound = Boolean(msgCont && posRef.current.x >= msgCont.clientWidth - 32);
+          const isAtLeftBound = Boolean(msgCont && posRef.current.x <= 32);
+
           if (facingRightRef.current) {
             ratio += speedRatio;
-            if (ratio >= 0.95) {
-              ratio = 0.95;
+            if (ratio >= 0.95 || isAtRightBound) {
+              ratio = Math.min(0.95, ratio);
               facingRightRef.current = false;
               stateRef.current = 'peeking';
               stateTimerRef.current = 35;
             }
           } else {
             ratio -= speedRatio;
-            if (ratio <= 0.05) {
-              ratio = 0.05;
+            if (ratio <= 0.05 || isAtLeftBound) {
+              ratio = Math.max(0.05, ratio);
               facingRightRef.current = true;
               stateRef.current = 'peeking';
               stateTimerRef.current = 35;
@@ -1355,6 +1364,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         overflowAnchor: 'none',
         WebkitBackfaceVisibility: 'hidden',
         backfaceVisibility: 'hidden',
+        contain: 'layout style',
       }}
     >
       <canvas

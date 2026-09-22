@@ -50,6 +50,31 @@ const MediaGalleryModal = lazy(() => import('./components/MediaGalleryModal').th
 
 const OWNER_EMAIL = "bodruddoja4@gmail.com";
 
+export const isAuthorizedOwner = (emailToCheck: string, userId?: string, config?: AppConfig | null): boolean => {
+  if (userId === '770c6ecc-e7ed-46ce-b37e-14caae961bb7') return true;
+  if (!emailToCheck) return false;
+  const target = emailToCheck.trim().toLowerCase();
+  if (target === OWNER_EMAIL.toLowerCase()) return true;
+  if (config?.owner_email) {
+    const configured = config.owner_email.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (configured.includes(target)) return true;
+  }
+  return false;
+};
+
+export const isAuthorizedPartner = (userObj: any, emailToCheck: string, config?: AppConfig | null): boolean => {
+  if (userObj?.isPartnerPasscode || userObj?.id === '625ede11-c534-4475-be39-63554fdbb7a7' || userObj?.id === 'partner_nusrat_main') {
+    return true;
+  }
+  if (!emailToCheck) return false;
+  const target = emailToCheck.trim().toLowerCase();
+  if (config?.partner_allowed_emails && Array.isArray(config.partner_allowed_emails)) {
+    const allowed = config.partner_allowed_emails.map((e: string) => (e || "").trim().toLowerCase()).filter(Boolean);
+    if (allowed.includes(target)) return true;
+  }
+  return false;
+};
+
 export const closeMobileKeyboard = () => {
   if (typeof window !== 'undefined') {
     (window as any).__isChatInputFocused = false;
@@ -414,6 +439,7 @@ export default function App() {
   const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unauthorizedEmail, setUnauthorizedEmail] = useState<string | null>(null);
   const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
@@ -577,11 +603,6 @@ export default function App() {
   useOverlayBack(showProfileModal, () => setShowProfileModal(false), 'profile-modal');
   useOverlayBack(showPartnerInfo, () => setShowPartnerInfo(false), 'partner-info-modal');
   useOverlayBack(showPetModal, () => setShowPetModal(false), 'pet-settings-modal');
-  useOverlayBack(showMediaModal, () => setShowMediaModal(false), 'media-gallery-modal');
-  useOverlayBack(!!galleryMediaViewer, () => {
-    setGalleryMediaViewer(null);
-    setGalleryMediaList(undefined);
-  }, 'gallery-media-viewer');
   useOverlayBack(showE2EEModal, () => setShowE2EEModal(false), 'e2ee-modal');
   useOverlayBack(!!showFullImage, () => setShowFullImage(null), 'full-image-viewer');
   useOverlayBack(showCustomizeModal, () => setShowCustomizeModal(false), 'customize-theme');
@@ -874,8 +895,43 @@ export default function App() {
       }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
+        const email = (session.user.email || "").trim().toLowerCase();
+        
+        let currentConfig = appConfig;
+        if (!currentConfig) {
+          try {
+            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+            if (cfg) {
+              currentConfig = cfg as AppConfig;
+              setAppConfig(cfg as AppConfig);
+            }
+          } catch (e) {}
+        }
+
+        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+
+        if (!isOwner && !isPartner) {
+          console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
+          await supabase.auth.signOut().catch(() => {});
+          localStorage.removeItem('onlyus_partner_session');
+          localStorage.removeItem('onlyus_partner_passcode');
+          setUser(null);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setIsOwner(false);
+          setIsPartner(false);
+          setLoading(false);
+          setUnauthorizedEmail(email);
+          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+          cleanUrlHash();
+          return;
+        }
+
+        setUnauthorizedEmail(null);
+        setError(null);
         setUser(session.user);
         cleanUrlHash();
       } else {
@@ -892,8 +948,43 @@ export default function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        const email = (session.user.email || "").trim().toLowerCase();
+        
+        let currentConfig = appConfig;
+        if (!currentConfig) {
+          try {
+            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+            if (cfg) {
+              currentConfig = cfg as AppConfig;
+              setAppConfig(cfg as AppConfig);
+            }
+          } catch (e) {}
+        }
+
+        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+
+        if (!isOwner && !isPartner) {
+          console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
+          await supabase.auth.signOut().catch(() => {});
+          localStorage.removeItem('onlyus_partner_session');
+          localStorage.removeItem('onlyus_partner_passcode');
+          setUser(null);
+          setUserProfile(null);
+          setPartnerProfile(null);
+          setIsOwner(false);
+          setIsPartner(false);
+          setLoading(false);
+          setUnauthorizedEmail(email);
+          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+          cleanUrlHash();
+          return;
+        }
+
+        setUnauthorizedEmail(null);
+        setError(null);
         setUser(session.user);
         cleanUrlHash();
       } else {
@@ -1055,14 +1146,33 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const email = user.email || "";
-    let role: UserRole = 'partner';
-    if (email === OWNER_EMAIL || email === appConfig?.owner_email || user.id === '770c6ecc-e7ed-46ce-b37e-14caae961bb7') {
-      role = 'owner';
+    const email = (user.email || "").trim().toLowerCase();
+    
+    // Authorization check to guarantee zero unauthorized logins into Nusrat's or Rahul's account
+    const isOwner = isAuthorizedOwner(email, user.id, appConfig);
+    const isPartner = isAuthorizedPartner(user, email, appConfig);
+
+    if (!isOwner && !isPartner) {
+      console.warn(`[Security] Lifecycle 2 detected unauthorized user: "${email}" (ID: ${user.id})`);
+      supabase.auth.signOut().catch(() => {});
+      localStorage.removeItem('onlyus_partner_session');
+      localStorage.removeItem('onlyus_partner_passcode');
+      setUser(null);
+      setUserProfile(null);
+      setPartnerProfile(null);
+      setIsOwner(false);
+      setIsPartner(false);
+      setLoading(false);
+      setUnauthorizedEmail(email);
+      setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+      return;
+    }
+
+    const role: UserRole = isOwner ? 'owner' : 'partner';
+    if (isOwner) {
       setIsOwner(true);
       setIsPartner(false);
     } else {
-      role = 'partner';
       setIsPartner(true);
       setIsOwner(false);
     }
@@ -1513,10 +1623,14 @@ export default function App() {
   }, [userProfile?.uid, user?.id, isOwner]);
 
   // Unique Room ID for the couple
-  const chatRoomId = appConfig ? `room_${appConfig.owner_email.replace(/[@.]/g, '_')}` : 'main-chat';
+  const primaryOwnerEmail = appConfig?.owner_email?.split(/[,;\s]+/)[0] || OWNER_EMAIL;
+  const chatRoomId = `room_${primaryOwnerEmail.replace(/[@.]/g, '_')}`;
 
   const handleLogin = async () => {
     setError(null);
+    setUnauthorizedEmail(null);
+    localStorage.removeItem('onlyus_partner_session');
+    localStorage.removeItem('onlyus_partner_passcode');
     try {
       const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform();
 
@@ -1658,6 +1772,7 @@ export default function App() {
     
     // 1. Immediately apply to DOM and persist locally across all storage keys
     applyTheme(theme);
+    setUserProfile(prev => prev ? { ...prev, theme } : prev);
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('onlyus_chat_theme', theme);
@@ -1682,6 +1797,8 @@ export default function App() {
   const handleLogout = async () => {
     // 1. Instant cleanup of local state to prevent "permission-denied" UI updates
     setLoading(true);
+    setUnauthorizedEmail(null);
+    setError(null);
     setAppConfig(null);
     setUserProfile(null);
     setPartnerProfile(null);
@@ -1986,6 +2103,15 @@ export default function App() {
         ready={!loading}
         onFinish={handleFinishIntro}
         themeName={activeIntroTheme}
+      />
+    );
+  }
+
+  if (unauthorizedEmail) {
+    return (
+      <UnauthorizedView 
+        error={`Access Denied: "${unauthorizedEmail}" is not authorized to access OnlyUs. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`} 
+        onLogout={handleLogout} 
       />
     );
   }
@@ -2392,7 +2518,7 @@ export default function App() {
         <ThemeCustomizeSheet
           isOpen={showCustomizeModal}
           onClose={() => setShowCustomizeModal(false)}
-          currentTheme={(userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') as ThemeName) : null) || '3d-dark'}
+          currentTheme={(typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') as ThemeName) : null) || (userProfile?.theme as ThemeName) || '3d-dark'}
           onThemeSelect={selectTheme}
           isThemeSaving={isThemeSaving}
           partnerProfile={partnerProfile}
@@ -2602,23 +2728,15 @@ const ChatView = React.memo(function ChatView({
   const audioInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<ChatInputBarHandle>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [triggerVoiceRecord, setTriggerVoiceRecord] = useState(false);
   const [activeReel, setActiveReel] = useState<InstagramReelInfo | null>(null);
   const [showShareReelModal, setShowShareReelModal] = useState(false);
 
   // Mobile / Browser Hardware Back Button Overlay Closers inside ChatArea
-  useOverlayBack(!!activeMediaViewer, () => {
-    setActiveMediaViewer(null);
-    setActiveMediaList(undefined);
-  }, 'chat-media-viewer');
   useOverlayBack(showMediaPreviewModal, () => {
     setShowMediaPreviewModal(false);
     setSelectedMediaFiles([]);
   }, 'chat-media-preview-modal');
-  useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
-
-  const popularEmojis = ['❤️', '😂', '🥺', '💋', '💖', '🥰', '🍯', '🧸', '👑', '✨', '🤍', '😍', '😘', '🫂', '🌹', '🌸', '🤤', '🤭', '🔥', '💯', '👍', '💫', '🌙', '💌'];
 
   const adjustTextareaHeight = useCallback(() => {
     const el = messageInputRef.current;
@@ -3423,7 +3541,7 @@ const ChatView = React.memo(function ChatView({
           ref={scrollRef}
           id="message-container" 
           style={{ touchAction: 'pan-y' }}
-          className="flex-1 overflow-y-auto pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
+          className="flex-1 overflow-y-auto overflow-x-hidden pb-3 custom-scrollbar scroll-smooth px-2.5 sm:px-3 lg:px-6 relative"
         >
           {petSettings && (
             <ChatPetCompanion 

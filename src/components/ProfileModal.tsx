@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud } from 'lucide-react';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud, ShieldCheck } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig, APP_VERSION } from '../types';
@@ -62,6 +62,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [emails, setEmails] = useState<string[]>(config?.partner_allowed_emails || []);
   const [newEmail, setNewEmail] = useState('');
 
+  // Owner Management Logic (Primary + Backup Owner Google Accounts)
+  const [ownerEmails, setOwnerEmails] = useState<string[]>(() => {
+    const raw = config?.owner_email || 'bodruddoja4@gmail.com';
+    return raw.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
+  });
+  const [newOwnerEmail, setNewOwnerEmail] = useState('');
+
   const generateRandomPin = () => {
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     setPartnerPasscode(randomPin);
@@ -83,6 +90,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const removeEmail = (email: string) => {
     setEmails(emails.filter((e) => e !== email));
+  };
+
+  const addOwnerEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newOwnerEmail.trim().toLowerCase();
+    if (trimmed && !ownerEmails.map(e => e.toLowerCase()).includes(trimmed)) {
+      setOwnerEmails([...ownerEmails, trimmed]);
+      setNewOwnerEmail('');
+    }
+  };
+
+  const removeOwnerEmail = (emailToRemove: string) => {
+    // Keep master bodruddoja4@gmail.com safe
+    if (emailToRemove.toLowerCase() === 'bodruddoja4@gmail.com') return;
+    setOwnerEmails(ownerEmails.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase()));
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,6 +184,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     try {
       if (isOwner) {
         await supabase.from('app_config').update({
+          owner_email: ownerEmails.join(', '),
           partner_allowed_emails: emails,
           partner_passcode: partnerPasscode.trim(),
         }).eq('id', 'main');
@@ -451,12 +474,68 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </p>
             </section>
 
+            {/* Owner Google Accounts Section (Rahul) */}
+            {isOwner && (
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60">
+                    Owner Google Accounts (Rahul)
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {ownerEmails.map((email) => {
+                    const isMaster = email.toLowerCase() === 'bodruddoja4@gmail.com';
+                    return (
+                      <div
+                        key={email}
+                        className="flex items-center justify-between p-3.5 bg-[var(--theme-surface)] rounded-2xl border border-[var(--theme-border)]"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-mono text-[var(--theme-text)] truncate">{email}</span>
+                          {isMaster && (
+                            <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 rounded-md">
+                              Primary Master
+                            </span>
+                          )}
+                        </div>
+                        {!isMaster && (
+                          <button
+                            onClick={() => removeOwnerEmail(email)}
+                            className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <form onSubmit={addOwnerEmail} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={newOwnerEmail}
+                    onChange={(e) => setNewOwnerEmail(e.target.value)}
+                    placeholder="Add secondary Owner Gmail (e.g. Rahul)..."
+                    className="flex-1 bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-xl px-4 py-2.5 text-xs focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    Add
+                  </button>
+                </form>
+              </section>
+            )}
+
             {/* Email Authorizations (Optional backup) */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <UserPlus className="w-4 h-4 text-[var(--theme-accent)]" />
                 <h3 className="text-[10px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60">
-                  Backup Email Access (Optional)
+                  Backup Partner Email Access (Nusrat)
                 </h3>
               </div>
               <div className="space-y-2">
@@ -481,7 +560,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="Optional Google Email..."
+                  placeholder="Optional Partner Google Email..."
                   className="flex-1 bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-xl px-4 py-2.5 text-xs focus:outline-none"
                 />
                 <button

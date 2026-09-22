@@ -121,6 +121,7 @@ body {
   }
 
   #message-container {
+    overflow-x: hidden !important;
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
     transform: translateZ(0);
@@ -150,6 +151,12 @@ body {
   /* Custom Scrollbar for a cleaner look */
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
+    height: 0px;
+  }
+  .custom-scrollbar::-webkit-scrollbar:horizontal {
+    height: 0px !important;
+    display: none !important;
+    background: transparent !important;
   }
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;

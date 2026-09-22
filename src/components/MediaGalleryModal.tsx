@@ -1403,6 +1403,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         // Handle Media permanent deletion
         if (mediaItems.length > 0) {
           const selectedMediaIds = new Set(mediaItems.map((m) => m.id));
+          const hasText = Boolean(nextMsg.text && nextMsg.text.trim().length > 0);
 
           if (Array.isArray(nextMsg.mediaList) && nextMsg.mediaList.length > 0) {
             const remainingMedia = nextMsg.mediaList.filter((m) => !selectedMediaIds.has(m.id));
@@ -1414,9 +1415,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               nextMsg.deleted_from_media = true;
               nextMsg.deleted_from_media_by = myRole;
               nextMsg.deleted_from_media_at = nowIso;
-              nextMsg.deleted = true;
-              nextMsg.deletedBy = myRole;
-              nextMsg.text = '';
+              if (!hasText) {
+                nextMsg.deleted = true;
+                nextMsg.deletedBy = myRole;
+                nextMsg.text = '';
+              }
             }
           } else {
             // Single media or audio attachment
@@ -1426,9 +1429,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             nextMsg.deleted_from_media = true;
             nextMsg.deleted_from_media_by = myRole;
             nextMsg.deleted_from_media_at = nowIso;
-            nextMsg.deleted = true;
-            nextMsg.deletedBy = myRole;
-            nextMsg.text = '';
+            if (!hasText) {
+              nextMsg.deleted = true;
+              nextMsg.deletedBy = myRole;
+              nextMsg.text = '';
+            }
           }
         }
 

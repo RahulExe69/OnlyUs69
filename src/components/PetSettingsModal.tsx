@@ -128,7 +128,8 @@ const MiniMochiCanvas: React.FC<{
       0,
       { dx: 0, dy: 0 },
       0,
-      is25D
+      is25D,
+      is25D ? 1.0 : 0.0
     );
     ctx.restore();
   }, [breed, accessory, is25D, scale, width, height]);
@@ -155,6 +156,7 @@ const HeroMochiCanvas: React.FC<{
   const isBlinkingRef = useRef(false);
   const earTwitchRef = useRef(0);
   const breatheRef = useRef(0);
+  const yawProgressRef = useRef(is25D ? 1.0 : 0.0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -171,6 +173,9 @@ const HeroMochiCanvas: React.FC<{
     const render = () => {
       tailRef.current += 0.05;
       breatheRef.current += 0.035;
+      const targetYaw = is25D ? 1.0 : 0.0;
+      yawProgressRef.current += (targetYaw - yawProgressRef.current) * 0.12;
+
       blinkRef.current--;
       if (blinkRef.current <= 0) {
         isBlinkingRef.current = true;
@@ -205,7 +210,8 @@ const HeroMochiCanvas: React.FC<{
         0,
         { dx: 0, dy: 0 },
         breatheRef.current,
-        is25D
+        is25D,
+        yawProgressRef.current
       );
       ctx.restore();
 
