@@ -3663,7 +3663,7 @@ const ChatView = React.memo(function ChatView({
       </div>
 
       <AnimatePresence>
-        {socketTypingUsers.includes(partnerProfile?.uid || '') && (
+        {socketTypingUsers.includes(partnerProfile?.uid || '') && (role === 'owner' || (typeof window !== 'undefined' && localStorage.getItem('onlyus_typing_peek_enabled') === 'false')) && (
           <motion.div 
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
@@ -3687,6 +3687,8 @@ const ChatView = React.memo(function ChatView({
         inputRef={messageInputRef}
         role={role}
         userProfile={userProfile}
+        partnerProfile={partnerProfile}
+        isPartnerTyping={socketTypingUsers.includes(partnerProfile?.uid || '')}
         replyingTo={replyingTo}
         editingMessage={editingMessage}
         onClearReply={() => onSetReplyingTo(null)}

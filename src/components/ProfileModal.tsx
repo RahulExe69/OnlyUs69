@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud, ShieldCheck, Sparkles, Play } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig, APP_VERSION } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { ImageCropperModal } from './ImageCropperModal';
 import { CloudinarySettingsSection } from './CloudinarySettingsModal';
+import { TypingPeekAvatar } from './TypingPeekAvatar';
 
 interface ProfileModalProps {
   profile: UserProfile;
@@ -38,6 +39,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     const next = !stealthEnabled;
     setStealthEnabled(next);
     localStorage.setItem('onlyus_stealth_mode', next ? 'true' : 'false');
+  };
+
+  // Typing Peek Avatar preference
+  const [typingPeekEnabled, setTypingPeekEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('onlyus_typing_peek_enabled') !== 'false';
+  });
+  const [isTestingPeek, setIsTestingPeek] = useState<boolean>(false);
+
+  const toggleTypingPeek = () => {
+    const next = !typingPeekEnabled;
+    setTypingPeekEnabled(next);
+    localStorage.setItem('onlyus_typing_peek_enabled', next ? 'true' : 'false');
+    window.dispatchEvent(new CustomEvent('onlyus_typing_peek_toggle', { detail: next }));
+  };
+
+  const triggerTestPeek = () => {
+    if (isTestingPeek) return;
+    setIsTestingPeek(true);
+    window.dispatchEvent(new CustomEvent('onlyus_test_typing_peek'));
+    setTimeout(() => {
+      setIsTestingPeek(false);
+    }, 5500);
   };
 
   // My profile state
@@ -380,6 +403,75 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   )}
                 </div>
               )}
+
+              {/* Typing Peek Animated Avatar Setting Card */}
+              <div className="bg-[var(--theme-surface)] p-4 sm:p-5 rounded-3xl border border-[var(--theme-border)] shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-[var(--theme-accent)]/15 flex items-center justify-center text-[var(--theme-accent)] shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-[var(--theme-text)] flex items-center gap-1.5">
+                        <span>Typing Peek</span>
+                        <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-full bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] font-semibold">
+                          Animated
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-[var(--theme-text)]/60">
+                        Rahul peeks over the chat bar when typing
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleTypingPeek}
+                    className={`w-12 h-7 rounded-full transition-colors relative p-0.5 cursor-pointer shrink-0 ${
+                      typingPeekEnabled ? 'bg-[var(--theme-accent)]' : 'bg-[var(--theme-border)]'
+                    }`}
+                    aria-label="Toggle Typing Peek animation"
+                  >
+                    <div
+                      className={`w-6 h-6 rounded-full bg-white shadow-md transition-transform transform ${
+                        typingPeekEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {typingPeekEnabled && (
+                  <div className="pt-2 border-t border-[var(--theme-border)]/60 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-[var(--theme-text)]/60">
+                      Tap avatar anytime to trigger playful reactions!
+                    </span>
+                    <button
+                      type="button"
+                      onClick={triggerTestPeek}
+                      className="px-3 py-1.5 bg-[var(--theme-accent)]/10 hover:bg-[var(--theme-accent)]/20 text-[var(--theme-accent)] font-bold text-xs rounded-xl border border-[var(--theme-accent)]/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>{isTestingPeek ? 'Previewing...' : 'Test Animation'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Live In-Settings Interactive Preview when Test is active */}
+                {typingPeekEnabled && isTestingPeek && (
+                  <div className="relative mt-2 p-3 bg-[var(--theme-bg)]/60 rounded-2xl border border-[var(--theme-border)]/50 flex flex-col items-center overflow-hidden">
+                    <span className="text-[10px] font-semibold text-[var(--theme-accent)] uppercase tracking-wider mb-2">
+                      Live Preview (Tap him!)
+                    </span>
+                    <div className="relative w-48 h-24 flex flex-col justify-end items-center">
+                      <div className="absolute bottom-4 z-0 pointer-events-auto">
+                        <TypingPeekAvatar isTyping={true} enabled={true} scale={0.8} />
+                      </div>
+                      <div className="relative z-10 w-full h-8 bg-[var(--theme-surface)] border border-[var(--theme-border)] rounded-full px-3 flex items-center shadow-xs">
+                        <span className="text-[10px] text-[var(--theme-text)]/40 italic">Whisper to Rahul...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="pt-4 border-t border-[var(--theme-border)] flex flex-col gap-3.5">
                 <button
