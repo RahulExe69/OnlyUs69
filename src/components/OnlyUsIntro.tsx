@@ -140,9 +140,15 @@ export function OnlyUsIntro({ onFinish, ready = true, minDuration = 2200, themeN
       }
     }, minDuration);
 
+    // Absolute fail-safe max timer: dismiss intro after 2.5s regardless of network/loading state
+    const maxTimer = setTimeout(() => {
+      triggerFinish();
+    }, Math.max(minDuration + 300, 2500));
+
     return () => {
       isCancelled = true;
       clearTimeout(timer);
+      clearTimeout(maxTimer);
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }

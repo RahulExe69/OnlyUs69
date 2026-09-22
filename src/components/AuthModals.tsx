@@ -51,16 +51,26 @@ export function LoginView({
     if (codeToVerify.length !== 6 || isVerifying) return;
     setLocalError(null);
     setIsVerifying(true);
+    
+    // Safety timeout to prevent indefinite spinning under any circumstances
+    const safetyTimer = setTimeout(() => {
+      setIsVerifying(false);
+      setLocalError("Verification timed out. Please try again.");
+    }, 5000);
+
     try {
       const ok = await onPasscodeLogin(codeToVerify);
+      clearTimeout(safetyTimer);
       if (!ok) {
-        setLocalError("Incorrect passcode");
+        setLocalError("Incorrect passcode. Please enter the active 6-digit PIN.");
         setPasscode('');
       }
     } catch (err: any) {
+      clearTimeout(safetyTimer);
       setLocalError(err.message || "Verification failed");
       setPasscode('');
     } finally {
+      clearTimeout(safetyTimer);
       setIsVerifying(false);
     }
   }, [isVerifying, onPasscodeLogin]);
