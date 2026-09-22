@@ -153,6 +153,14 @@ export default function App() {
     setShowIntro(false);
   }, []);
 
+  // Failsafe safety timeout: loading must never stay true indefinitely under any network condition
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 2800);
+    return () => clearTimeout(safetyTimer);
+  }, []);
+
   // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
     CapApp.getInfo().then(info => {
@@ -895,109 +903,144 @@ export default function App() {
       }
     }
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const email = (session.user.email || "").trim().toLowerCase();
-        
-        let currentConfig = appConfig;
-        if (!currentConfig) {
+    const resolveAuthSession = async () => {
+      try {
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: any } }>((resolve) =>
+            setTimeout(() => resolve({ data: { session: null } }), 3000)
+          )
+        ]);
+
+        if (session?.user) {
+          const email = (session.user.email || "").trim().toLowerCase();
+          
+          let currentConfig = appConfig;
+          if (!currentConfig) {
+            try {
+              const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+              if (cfg) {
+                currentConfig = cfg as AppConfig;
+                setAppConfig(cfg as AppConfig);
+              }
+            } catch (e) {}
+          }
+
+          const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+          const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+
+          if (!isOwner && !isPartner) {
+            console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
+            await supabase.auth.signOut().catch(() => {});
+            localStorage.removeItem('onlyus_partner_session');
+            localStorage.removeItem('onlyus_partner_passcode');
+            setUser(null);
+            setUserProfile(null);
+            setPartnerProfile(null);
+            setIsOwner(false);
+            setIsPartner(false);
+            setLoading(false);
+            setUnauthorizedEmail(email);
+            setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+            cleanUrlHash();
+            return;
+          }
+
+          // Optimistically hydrate profile from cache if available so UI never hangs
           try {
-            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
-            if (cfg) {
-              currentConfig = cfg as AppConfig;
-              setAppConfig(cfg as AppConfig);
+            const cachedProfileStr = localStorage.getItem('onlyus_cached_profile');
+            if (cachedProfileStr) {
+              const cachedProfile = JSON.parse(cachedProfileStr);
+              if (cachedProfile && (cachedProfile.id === session.user.id || cachedProfile.uid === session.user.id)) {
+                setUserProfile(cachedProfile);
+              }
             }
-          } catch (e) {}
-        }
+          } catch (_) {}
 
-        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
-
-        if (!isOwner && !isPartner) {
-          console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
-          await supabase.auth.signOut().catch(() => {});
-          localStorage.removeItem('onlyus_partner_session');
-          localStorage.removeItem('onlyus_partner_passcode');
-          setUser(null);
-          setUserProfile(null);
-          setPartnerProfile(null);
-          setIsOwner(false);
-          setIsPartner(false);
+          setUnauthorizedEmail(null);
+          setError(null);
+          setUser(session.user);
           setLoading(false);
-          setUnauthorizedEmail(email);
-          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
           cleanUrlHash();
-          return;
+        } else {
+          const cached = localStorage.getItem('onlyus_partner_session');
+          if (!cached) {
+            setUser(null);
+            setLoading(false);
+            setUserProfile(null);
+            setPartnerProfile(null);
+            setAppConfig(null);
+            setIsOwner(false);
+            setIsPartner(false);
+          } else {
+            setLoading(false);
+          }
         }
-
-        setUnauthorizedEmail(null);
-        setError(null);
-        setUser(session.user);
-        cleanUrlHash();
-      } else {
-        const cached = localStorage.getItem('onlyus_partner_session');
-        if (!cached) {
-          setUser(null);
-          setLoading(false);
-          setUserProfile(null);
-          setPartnerProfile(null);
-          setAppConfig(null);
-          setIsOwner(false);
-          setIsPartner(false);
-        }
+      } catch (err) {
+        console.warn("[Auth] getSession error or timeout:", err);
+        setLoading(false);
       }
-    });
+    };
+
+    resolveAuthSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const email = (session.user.email || "").trim().toLowerCase();
-        
-        let currentConfig = appConfig;
-        if (!currentConfig) {
-          try {
-            const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
-            if (cfg) {
-              currentConfig = cfg as AppConfig;
-              setAppConfig(cfg as AppConfig);
-            }
-          } catch (e) {}
-        }
+      try {
+        if (session?.user) {
+          const email = (session.user.email || "").trim().toLowerCase();
+          
+          let currentConfig = appConfig;
+          if (!currentConfig) {
+            try {
+              const { data: cfg } = await supabase.from('app_config').select('*').eq('id', 'main').single();
+              if (cfg) {
+                currentConfig = cfg as AppConfig;
+                setAppConfig(cfg as AppConfig);
+              }
+            } catch (e) {}
+          }
 
-        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+          const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
+          const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
 
-        if (!isOwner && !isPartner) {
-          console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
-          await supabase.auth.signOut().catch(() => {});
-          localStorage.removeItem('onlyus_partner_session');
-          localStorage.removeItem('onlyus_partner_passcode');
-          setUser(null);
-          setUserProfile(null);
-          setPartnerProfile(null);
-          setIsOwner(false);
-          setIsPartner(false);
+          if (!isOwner && !isPartner) {
+            console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
+            await supabase.auth.signOut().catch(() => {});
+            localStorage.removeItem('onlyus_partner_session');
+            localStorage.removeItem('onlyus_partner_passcode');
+            setUser(null);
+            setUserProfile(null);
+            setPartnerProfile(null);
+            setIsOwner(false);
+            setIsPartner(false);
+            setLoading(false);
+            setUnauthorizedEmail(email);
+            setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+            cleanUrlHash();
+            return;
+          }
+
+          setUnauthorizedEmail(null);
+          setError(null);
+          setUser(session.user);
           setLoading(false);
-          setUnauthorizedEmail(email);
-          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
           cleanUrlHash();
-          return;
+        } else {
+          const cached = localStorage.getItem('onlyus_partner_session');
+          if (!cached) {
+            setUser(null);
+            setLoading(false);
+            setUserProfile(null);
+            setPartnerProfile(null);
+            setAppConfig(null);
+            setIsOwner(false);
+            setIsPartner(false);
+          } else {
+            setLoading(false);
+          }
         }
-
-        setUnauthorizedEmail(null);
-        setError(null);
-        setUser(session.user);
-        cleanUrlHash();
-      } else {
-        const cached = localStorage.getItem('onlyus_partner_session');
-        if (!cached) {
-          setUser(null);
-          setLoading(false);
-          setUserProfile(null);
-          setPartnerProfile(null);
-          setAppConfig(null);
-          setIsOwner(false);
-          setIsPartner(false);
-        }
+      } catch (err) {
+        setLoading(false);
       }
     });
 
@@ -1179,6 +1222,18 @@ export default function App() {
 
     // Instant update on session start
     supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then(undefined, () => {});
+
+    // Optimistic profile hydration from local cache
+    try {
+      const cachedProfileStr = localStorage.getItem('onlyus_cached_profile');
+      if (cachedProfileStr) {
+        const parsed = JSON.parse(cachedProfileStr);
+        if (parsed && (parsed.id === user.id || parsed.uid === user.id)) {
+          setUserProfile(parsed);
+          setLoading(false);
+        }
+      }
+    } catch (_) {}
 
     const fetchProfile = async () => {
       try {
@@ -2096,7 +2151,7 @@ export default function App() {
     return <StealthNotepadView onUnlock={handleUnlockVault} />;
   }
 
-  if (showIntro || loading) {
+  if (showIntro) {
     const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
       <OnlyUsIntro
@@ -2104,6 +2159,15 @@ export default function App() {
         onFinish={handleFinishIntro}
         themeName={activeIntroTheme}
       />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
+        <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-accent)]/30 border-t-[var(--theme-accent)] animate-spin mb-3" />
+        <span className="text-xs font-medium text-[var(--theme-text)]/50 tracking-wider">Entering sanctuary...</span>
+      </div>
     );
   }
 
