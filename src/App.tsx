@@ -38,6 +38,7 @@ import { CallModal } from './components/CallModal';
 import { CallHistoryModal } from './components/CallHistoryModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification, triggerNativePanicKill } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
+import { ShaderWelcomeBack } from './components/ShaderWelcomeBack';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
 import { PetSettingsModal } from './components/PetSettingsModal';
 
@@ -104,7 +105,8 @@ export default function App() {
         };
       }
       const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
-      if (rawSbAuth) {
+      const cachedProfile = localStorage.getItem('onlyus_cached_profile');
+      if (rawSbAuth && cachedProfile) {
         const parsed = JSON.parse(rawSbAuth);
         if (parsed?.user) return parsed.user;
       }
@@ -171,7 +173,8 @@ export default function App() {
       const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
       if (isPartnerSession) return false;
       const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
-      if (rawSbAuth) {
+      const cachedProfile = localStorage.getItem('onlyus_cached_profile');
+      if (rawSbAuth && cachedProfile) {
         const parsed = JSON.parse(rawSbAuth);
         if (parsed?.user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
           return true;
@@ -234,6 +237,16 @@ export default function App() {
   const handleFinishIntro = useCallback(() => {
     setShowIntro(false);
   }, []);
+
+  // Shader-Based Welcome Back Screen (triggered on login & OAuth return)
+  const [showWelcomeBack, setShowWelcomeBack] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const isOAuthRedirect = (
+      (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+      (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+    );
+    return isOAuthRedirect;
+  });
 
   // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
@@ -322,6 +335,7 @@ export default function App() {
           setIsPartner(false);
           setLoading(false);
           setShowIntro(false);
+          setShowWelcomeBack(true);
           setError(null);
           if (typeof window !== 'undefined') {
             window.history.replaceState(null, '', '/chat');
@@ -336,6 +350,7 @@ export default function App() {
             setIsPartner(false);
             setLoading(false);
             setShowIntro(false);
+            setShowWelcomeBack(true);
             setError(null);
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', '/chat');
@@ -359,6 +374,7 @@ export default function App() {
           setIsPartner(false);
           setLoading(false);
           setShowIntro(false);
+          setShowWelcomeBack(true);
           setError(null);
           if (typeof window !== 'undefined') {
             window.history.replaceState(null, '', '/chat');
@@ -377,6 +393,7 @@ export default function App() {
         setIsPartner(false);
         setLoading(false);
         setShowIntro(false);
+        setShowWelcomeBack(true);
         setError(null);
         if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', '/chat');
@@ -2138,6 +2155,7 @@ export default function App() {
 
         setLoading(false);
         setShowIntro(false);
+        setShowWelcomeBack(true);
         if (window.location.pathname !== '/chat') {
           window.history.replaceState(null, '', '/chat');
         }
@@ -2234,8 +2252,10 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    // 1. Instant cleanup of local state to prevent "permission-denied" UI updates
-    setLoading(true);
+    // 1. Instant cleanup of local state - set loading to false so LoginView renders immediately
+    setLoading(false);
+    setShowIntro(false);
+    setShowWelcomeBack(false);
     setUnauthorizedEmail(null);
     setError(null);
     setAppConfig(null);
@@ -2243,30 +2263,37 @@ export default function App() {
     setPartnerProfile(null);
     setMessages([]);
     resetE2EECache();
-    
-    // 2. Clear Local Cache and Passcode Session
-    localStorage.removeItem('onlyus_partner_session');
-    localStorage.removeItem('onlyus_partner_passcode');
-    localStorage.removeItem('onlyus_cached_profile');
-    localStorage.removeItem('onlyus_cached_partner_profile');
-    localStorage.removeItem('cached_msgs');
-    localStorage.removeItem('hidden_msgs');
-    localStorage.removeItem('cached_users');
     setUser(null);
     setIsPartner(false);
     setIsOwner(false);
     setSocketOnlineUsers([]);
-    if (window.location.pathname !== '/') {
+
+    // 2. Synchronously wipe ALL local storage and session storage keys for Supabase auth and OnlyUs
+    try {
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('sb-') || k.startsWith('onlyus_') || k === 'cached_msgs' || k === 'hidden_msgs' || k === 'cached_users')) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        sessionStorage.clear();
+      }
+    } catch (e) {
+      console.error("Storage clear error:", e);
+    }
+
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
       window.history.replaceState(null, '', '/');
     }
 
+    // 3. Fire-and-forget Supabase signout in the background so local UI is never blocked
     try {
-      // 3. Perform actual signout
-      await supabase.auth.signOut();
+      supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     } catch (err) {
       console.error("Logout error:", err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -2558,28 +2585,18 @@ export default function App() {
     );
   }
 
-  // If returning from Google OAuth redirect or during initial auth resolution, show smooth sanctuary transition
-  const isOAuthRedirecting = typeof window !== 'undefined' && (
-    (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
-  );
-
-  if (!user && (isOAuthRedirecting || (loading && !localStorage.getItem('onlyus_partner_session')))) {
+  // Shader-Based Theme-Responsive Welcome Back Screen (for Rahul & Nusrat)
+  if (showWelcomeBack) {
+    const activeWelcomeTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-romantic') || '3d-romantic';
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-[#161224] via-[#100c1b] to-[#0a0712] text-white p-6 select-none font-sans">
-        <div className="relative mb-6">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-rose-500 via-pink-500 to-rose-400 flex items-center justify-center shadow-xl shadow-rose-500/30 animate-pulse">
-            <Heart className="w-10 h-10 text-white fill-white" />
-          </div>
-          <div className="absolute -inset-2 rounded-3xl border border-pink-500/30 animate-ping opacity-40 pointer-events-none" />
-        </div>
-        <h2 className="text-xl font-bold bg-gradient-to-r from-rose-400 via-pink-400 to-rose-300 bg-clip-text text-transparent mb-2 tracking-wide">
-          {isOAuthRedirecting ? "Welcome back, Rahul" : "OnlyUs"}
-        </h2>
-        <p className="text-xs text-rose-200/60 font-medium tracking-wider">
-          {isOAuthRedirecting ? "Opening your private sanctuary..." : "Entering sanctuary..."}
-        </p>
-      </div>
+      <ShaderWelcomeBack
+        userProfile={userProfile}
+        partnerProfile={partnerProfile}
+        isOwner={isOwner}
+        isPartner={isPartner}
+        themeName={activeWelcomeTheme}
+        onFinish={() => setShowWelcomeBack(false)}
+      />
     );
   }
 
