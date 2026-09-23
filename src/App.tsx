@@ -105,11 +105,48 @@ export default function App() {
     } catch (e) {}
     return null;
   });
-  const [partnerProfile, setPartnerProfile] = useState<UserProfile | null>(null);
+  const [partnerProfile, setPartnerProfile] = useState<UserProfile | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = localStorage.getItem('onlyus_cached_partner_profile');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch (e) {}
+    // If partner session is active, pre-populate Rahul's known profile instantly
+    try {
+      const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
+      if (isPartnerSession) {
+        return {
+          id: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+          uid: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+          email: 'bodruddoja4@gmail.com',
+          username: 'rahul',
+          role: 'owner',
+          display_name: 'Rahul',
+          photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocK_glO-zvZsP06dotj-OZalDvjF6evoVbACaQkPth8cSU6nuos=s96-c',
+          theme: '3d-dark',
+          last_seen: new Date().toISOString(),
+          last_read_at: new Date().toISOString()
+        };
+      }
+    } catch (e) {}
+    return null;
+  });
   const partnerProfileRef = useRef<UserProfile | null>(null);
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
+
+  // Immediate detection of OAuth callback in URL to prevent flashing the LoginView
+  const isAuthCallback = typeof window !== 'undefined' && Boolean(
+    window.location.hash.includes('access_token=') ||
+    window.location.search.includes('code=') ||
+    window.location.hash.includes('type=recovery') ||
+    window.location.search.includes('error=')
+  );
+  const [isOAuthProcessing, setIsOAuthProcessing] = useState<boolean>(isAuthCallback);
 
   // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
   const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
@@ -285,6 +322,8 @@ export default function App() {
     } catch (err) {
       console.error("Error processing OAuth redirect URL:", err);
       return false;
+    } finally {
+      setIsOAuthProcessing(false);
     }
   }, []);
 
@@ -995,6 +1034,33 @@ export default function App() {
               last_seen: new Date().toISOString(),
               last_read_at: new Date().toISOString()
             });
+
+            // Instant symmetrical partner hydration for Rahul (owner)
+            const defaultRahul: UserProfile = {
+              id: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+              uid: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+              email: 'bodruddoja4@gmail.com',
+              username: 'rahul',
+              role: 'owner',
+              display_name: 'Rahul',
+              photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocK_glO-zvZsP06dotj-OZalDvjF6evoVbACaQkPth8cSU6nuos=s96-c',
+              theme: '3d-dark',
+              last_seen: new Date().toISOString(),
+              last_read_at: new Date().toISOString()
+            };
+            try {
+              const cachedP = localStorage.getItem('onlyus_cached_partner_profile');
+              if (cachedP) {
+                const parsed = JSON.parse(cachedP);
+                if (parsed && parsed.id) setPartnerProfile(parsed);
+                else setPartnerProfile(defaultRahul);
+              } else {
+                setPartnerProfile(defaultRahul);
+              }
+            } catch {
+              setPartnerProfile(defaultRahul);
+            }
+
             setIsPartner(true);
             setIsOwner(false);
             setLoading(false);
@@ -1382,6 +1448,9 @@ export default function App() {
           const partnerHandle = withPhoto.username || (withPhoto.email ? withPhoto.email.split('@')[0] : (withPhoto.role === 'owner' ? 'rahul' : 'nusrat'));
           const resolvedPartner = { ...withPhoto, uid: withPhoto.id, username: partnerHandle } as UserProfile;
           setPartnerProfile(resolvedPartner);
+          try {
+            localStorage.setItem('onlyus_cached_partner_profile', JSON.stringify(resolvedPartner));
+          } catch {}
 
           if (resolvedPartner.photo_url && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
             OnlyUsNativeNotification.cachePartnerAvatar({ avatarUrl: resolvedPartner.photo_url }).catch(() => {});
@@ -1394,7 +1463,7 @@ export default function App() {
           }
         } else if (role === 'owner') {
           // Fallback for partner profile if not loaded
-          setPartnerProfile({
+          setPartnerProfile(prev => prev || {
             id: '625ede11-c534-4475-be39-63554fdbb7a7',
             uid: '625ede11-c534-4475-be39-63554fdbb7a7',
             email: 'bodruddoja2@gmail.com',
@@ -1406,12 +1475,41 @@ export default function App() {
             last_seen: new Date().toISOString(),
             last_read_at: new Date().toISOString()
           });
+        } else {
+          // Symmetrical fallback for Rahul (owner) profile when Nusrat is logged in
+          setPartnerProfile(prev => prev || {
+            id: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+            uid: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+            email: 'bodruddoja4@gmail.com',
+            username: 'rahul',
+            role: 'owner',
+            display_name: 'Rahul',
+            photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocK_glO-zvZsP06dotj-OZalDvjF6evoVbACaQkPth8cSU6nuos=s96-c',
+            theme: '3d-dark',
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString()
+          });
         }
       } catch (err) {
         console.warn("Notice: fetchPartner network retry", err);
       }
     };
     fetchPartner();
+
+    // Periodic partner sync every 15s to keep last_seen live
+    const partnerSyncInterval = setInterval(() => {
+      if (!document.hidden && document.visibilityState === 'visible') {
+        fetchPartner();
+      }
+    }, 15000);
+
+    const handlePartnerWake = () => {
+      if (!document.hidden && document.visibilityState === 'visible') {
+        fetchPartner();
+      }
+    };
+    window.addEventListener('visibilitychange', handlePartnerWake);
+    window.addEventListener('focus', handlePartnerWake);
 
     // Periodic DB last_seen heartbeat every 15s ONLY while tab is active and visible
     const heartbeatInterval = setInterval(() => {
@@ -1565,6 +1663,9 @@ export default function App() {
 
     return () => {
       clearInterval(heartbeatInterval);
+      clearInterval(partnerSyncInterval);
+      window.removeEventListener('visibilitychange', handlePartnerWake);
+      window.removeEventListener('focus', handlePartnerWake);
       supabase.removeChannel(profileSub);
       supabase.removeChannel(presenceChannel);
       mainChannelRef.current = null;
@@ -1836,6 +1937,52 @@ export default function App() {
         });
         setIsPartner(true);
         setIsOwner(false);
+
+        // Symmetrical partner profile hydration for Rahul (owner)
+        const defaultRahul: UserProfile = {
+          id: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+          uid: '770c6ecc-e7ed-46ce-b37e-14caae961bb7',
+          email: 'bodruddoja4@gmail.com',
+          username: 'rahul',
+          role: 'owner',
+          display_name: 'Rahul',
+          photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocK_glO-zvZsP06dotj-OZalDvjF6evoVbACaQkPth8cSU6nuos=s96-c',
+          theme: '3d-dark',
+          last_seen: new Date().toISOString(),
+          last_read_at: new Date().toISOString()
+        };
+        let initialRahul = defaultRahul;
+        try {
+          const cachedRahul = localStorage.getItem('onlyus_cached_partner_profile');
+          if (cachedRahul) {
+            const parsed = JSON.parse(cachedRahul);
+            if (parsed && parsed.id) initialRahul = parsed;
+          }
+        } catch {}
+        setPartnerProfile(initialRahul);
+        try {
+          localStorage.setItem('onlyus_cached_partner_profile', JSON.stringify(initialRahul));
+        } catch {}
+
+        // Update DB last_seen for Nusrat immediately on login
+        supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', partnerUser.id).then(undefined, () => {});
+
+        // Fetch Rahul's live profile in background immediately
+        (async () => {
+          try {
+            const { data } = await supabase.from('users').select('*').eq('role', 'owner').order('last_seen', { ascending: false });
+            if (data && data.length > 0) {
+              const withPhoto = data.find((p: any) => p.photo_url && p.photo_url.trim() !== '') || data[0];
+              const partnerHandle = withPhoto.username || (withPhoto.email ? withPhoto.email.split('@')[0] : 'rahul');
+              const resolved = { ...withPhoto, uid: withPhoto.id, username: partnerHandle } as UserProfile;
+              setPartnerProfile(resolved);
+              try {
+                localStorage.setItem('onlyus_cached_partner_profile', JSON.stringify(resolved));
+              } catch {}
+            }
+          } catch {}
+        })();
+
         setLoading(false);
         setShowIntro(false);
         if (window.location.pathname !== '/chat') {
@@ -2239,7 +2386,7 @@ export default function App() {
     const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
       <OnlyUsIntro
-        ready={!loading}
+        ready={!loading && !isOAuthProcessing}
         onFinish={handleFinishIntro}
         themeName={activeIntroTheme}
       />
@@ -2252,6 +2399,19 @@ export default function App() {
         error={`Access Denied: "${unauthorizedEmail}" is not authorized to access OnlyUs. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`} 
         onLogout={handleLogout} 
       />
+    );
+  }
+
+  if (isOAuthProcessing || (isAuthCallback && !user && !error)) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
+        <div className="relative flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl border-2 border-[var(--theme-accent)]/30 border-t-[var(--theme-accent)] animate-spin" />
+          <p className="text-sm font-semibold tracking-wider text-[var(--theme-text)]/80 animate-pulse">
+            Connecting securely to OnlyUs...
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -2599,6 +2759,7 @@ export default function App() {
               isOwner={isOwner}
               onLogout={handleLogout}
               onProfileUpdated={(newMe) => setUserProfile(newMe)}
+              onConfigUpdated={(newCfg) => setAppConfig(newCfg)}
               onLockVault={isNotesFlavor ? lockVault : undefined}
               isNotesFlavor={isNotesFlavor}
             />

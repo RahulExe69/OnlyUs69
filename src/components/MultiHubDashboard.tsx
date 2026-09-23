@@ -25,6 +25,7 @@ import { QuantumAuraBackground } from './QuantumAuraBackground';
 import { ShaderBorderBeam } from './ShaderBorderBeam';
 import { RomanticCardAmbiance } from './RomanticCardAmbiance';
 import { hydrateMessageMedia } from '../lib/dateUtils';
+import { loadCachedMessages } from '../lib/safeStorage';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -68,6 +69,11 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
   const isPartnerOnline = lastSeenStatus === 'Online';
   const isInGame = lastSeenStatus === 'In Game Room 🎮';
 
+  const [partnerImgError, setPartnerImgError] = React.useState(false);
+  React.useEffect(() => {
+    setPartnerImgError(false);
+  }, [partnerProfile?.photo_url]);
+
   // Real-time media stats calculation for Media & Memories
   const mediaStats = React.useMemo(() => {
     let photos = 0;
@@ -76,7 +82,14 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
     let links = 0;
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
-    messages.forEach((msg) => {
+    const sourceMessages = (messages && messages.length > 0)
+      ? messages
+      : (() => {
+          const cached = loadCachedMessages();
+          return Array.isArray(cached) ? cached : [];
+        })();
+
+    sourceMessages.forEach((msg) => {
       if (msg.deleted) return;
       if (isOwner && msg.hidden_for_owner) return;
       if (!isOwner && msg.hidden_for_partner) return;
@@ -235,12 +248,13 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0 w-12 h-12 aspect-square">
                 <div className="w-12 h-12 aspect-square rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 ring-2 ring-[var(--theme-accent)]/15 shadow-2xs bg-[var(--theme-surface)]">
-                  {partnerProfile?.photo_url ? (
+                  {partnerProfile?.photo_url && !partnerImgError ? (
                     <img 
                       src={partnerProfile.photo_url} 
                       alt={partnerName} 
                       className="w-full h-full object-cover rounded-full aspect-square block"
                       referrerPolicy="no-referrer"
+                      onError={() => setPartnerImgError(true)}
                     />
                   ) : (
                     <div className="w-full h-full rounded-full bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center font-bold text-base">

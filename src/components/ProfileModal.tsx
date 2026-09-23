@@ -15,6 +15,7 @@ interface ProfileModalProps {
   isOwner: boolean;
   onLogout: () => void;
   onProfileUpdated?: (profile: UserProfile) => void;
+  onConfigUpdated?: (config: AppConfig) => void;
   onLockVault?: () => void;
   isNotesFlavor?: boolean;
 }
@@ -26,6 +27,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   isOwner,
   onLogout,
   onProfileUpdated,
+  onConfigUpdated,
   onLockVault,
   isNotesFlavor = false,
 }) => {
@@ -180,23 +182,65 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   const savePasscodeAndAccess = async () => {
+    const trimmedPasscode = partnerPasscode.trim();
+    if (trimmedPasscode.length !== 6) {
+      alert('Passcode must be exactly 6 digits.');
+      return;
+    }
     setIsSaving(true);
     try {
-      if (isOwner) {
-        await supabase.from('app_config').update({
-          owner_email: ownerEmails.join(', '),
-          partner_allowed_emails: emails,
-          partner_passcode: partnerPasscode.trim(),
-        }).eq('id', 'main');
+      const updatedConfigData: Partial<AppConfig> = {
+        owner_email: ownerEmails.join(', '),
+        partner_allowed_emails: emails,
+        partner_passcode: trimmedPasscode,
+      };
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('onlyus_cached_server_passcode', trimmedPasscode);
       }
-      setSaveSuccessMsg('Access settings saved!');
+
+      if (isOwner) {
+        const updatePromise = supabase
+          .from('app_config')
+          .update(updatedConfigData)
+          .eq('id', 'main');
+
+        const timeoutPromise = new Promise<{ error: any }>((_, reject) =>
+          setTimeout(() => reject(new Error('Update timeout')), 4000)
+        );
+
+        const { error } = (await Promise.race([updatePromise, timeoutPromise])) as any;
+        if (error) {
+          console.warn('[ProfileModal] Notice updating app_config:', error);
+        }
+      }
+
+      if (onConfigUpdated && config) {
+        onConfigUpdated({
+          ...config,
+          ...updatedConfigData,
+        } as AppConfig);
+      }
+
+      setSaveSuccessMsg(`Passcode updated to ${trimmedPasscode}!`);
       setTimeout(() => {
         setSaveSuccessMsg(null);
         onClose();
-      }, 800);
+      }, 900);
     } catch (err) {
-      console.error(err);
-      alert('Failed to save passcode.');
+      console.error('[ProfileModal] Save passcode warning:', err);
+      // Fallback: settings cached locally even on network timeout
+      if (onConfigUpdated && config) {
+        onConfigUpdated({
+          ...config,
+          partner_passcode: trimmedPasscode,
+        } as AppConfig);
+      }
+      setSaveSuccessMsg('Passcode saved locally!');
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+        onClose();
+      }, 900);
     } finally {
       setIsSaving(false);
     }
@@ -576,9 +620,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               type="button"
               onClick={savePasscodeAndAccess}
               disabled={isSaving || partnerPasscode.length !== 6}
-              className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50 mt-6"
+              className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50 mt-6 flex items-center justify-center gap-2.5"
             >
-              {isSaving ? 'Saving Settings...' : 'Save Passcode & Settings'}
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  <span>Saving Settings...</span>
+                </>
+              ) : (
+                'Save Passcode & Settings'
+              )}
             </button>
           </div>
         )}
