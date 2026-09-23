@@ -214,31 +214,7 @@ export default function App() {
     return !!localStorage.getItem('onlyus_partner_session');
   });
 
-  // Track if Google OAuth redirect is currently in flight across Web & APK
-  const [isOAuthInFlightState, setIsOAuthInFlightState] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const hasHash = Boolean(window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token=')));
-    const hasSearch = Boolean(window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')));
-    const hasSessionStorage = sessionStorage.getItem('onlyus_oauth_in_flight') === 'true';
-    const pendingTs = Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0');
-    const isRecentPending = pendingTs > 0 && (Date.now() - pendingTs < 120000);
-    return hasHash || hasSearch || hasSessionStorage || isRecentPending;
-  });
-  const isOAuthInFlightRef = useRef(isOAuthInFlightState);
-  useEffect(() => {
-    isOAuthInFlightRef.current = isOAuthInFlightState;
-  }, [isOAuthInFlightState]);
 
-  const clearOAuthInFlight = useCallback(() => {
-    setIsOAuthInFlightState(false);
-    isOAuthInFlightRef.current = false;
-    if (typeof window !== 'undefined') {
-      try {
-        sessionStorage.removeItem('onlyus_oauth_in_flight');
-        localStorage.removeItem('onlyus_oauth_pending_timestamp');
-      } catch {}
-    }
-  }, []);
 
   // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
   const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
@@ -323,10 +299,7 @@ export default function App() {
   // Fail-safe watchdog: ensure loading never permanently blocks the UI
   useEffect(() => {
     const watchdogTimer = setTimeout(() => {
-      // Only release loading if we are NOT actively authenticating an OAuth redirect
-      if (!isOAuthInFlightRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }, 4500);
     return () => clearTimeout(watchdogTimer);
   }, []);
@@ -359,7 +332,6 @@ export default function App() {
       await supabase.auth.signOut().catch(() => {});
       localStorage.removeItem('onlyus_partner_session');
       localStorage.removeItem('onlyus_partner_passcode');
-      clearOAuthInFlight();
       setUser(null);
       setUserProfile(null);
       setPartnerProfile(null);
@@ -402,7 +374,6 @@ export default function App() {
     setIsPartner(isPartnerCheck);
     setError(null);
     setUnauthorizedEmail(null);
-    clearOAuthInFlight();
     setLoading(false);
     setShowIntro(false);
 
@@ -415,120 +386,59 @@ export default function App() {
     }
 
     return true;
-  }, [appConfig, clearOAuthInFlight]);
+  }, [appConfig]);
 
-  const inFlightOAuthRef = useRef<Promise<boolean> | null>(null);
-  const consumedCodesRef = useRef<Set<string>>(new Set());
-
-  // Universal OAuth URL handler: parses PKCE code & implicit tokens for Web & Companion APK with deduplication
-  const processOAuthUrl = useCallback(async (rawUrl: string): Promise<boolean> => {
+  // Clean, straightforward OAuth Callback handler for both Web and Android APK
+  const handleOAuthCallback = useCallback(async (rawUrl: string) => {
+    if (!rawUrl) return;
     try {
-      if (!rawUrl) return false;
+      setLoading(true);
+      try { await Browser.close(); } catch {}
 
-      // Extract search params (?code=... or ?error=...)
-      let code: string | null = null;
-      let accessToken: string | null = null;
-      let refreshToken: string | null = null;
-      let authError: string | null = null;
+      // Normalize custom scheme so standard URL parsing works reliably
+      const normalized = rawUrl.replace('com.onlyus.app://', 'https://localhost/');
+      const url = new URL(normalized);
 
-      if (rawUrl.includes('?')) {
-        const searchPart = rawUrl.substring(rawUrl.indexOf('?') + 1).split('#')[0];
-        const searchParams = new URLSearchParams(searchPart);
-        code = searchParams.get('code');
-        accessToken = searchParams.get('access_token');
-        refreshToken = searchParams.get('refresh_token');
-        authError = searchParams.get('error_description') || searchParams.get('error');
-      }
+      const code = url.searchParams.get('code');
+      const hashParams = new URLSearchParams(url.hash ? url.hash.substring(1) : '');
+      const accessToken = hashParams.get('access_token') || url.searchParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token') || url.searchParams.get('refresh_token');
+      const authErr = url.searchParams.get('error_description') || hashParams.get('error_description') || url.searchParams.get('error');
 
-      // Extract hash params (#access_token=...&refresh_token=... or #code=...)
-      if (rawUrl.includes('#')) {
-        const hashPart = rawUrl.substring(rawUrl.indexOf('#') + 1);
-        const hashParams = new URLSearchParams(hashPart);
-        code = code || hashParams.get('code');
-        accessToken = accessToken || hashParams.get('access_token');
-        refreshToken = refreshToken || hashParams.get('refresh_token');
-        authError = authError || hashParams.get('error_description') || hashParams.get('error');
-      }
-
-      if (authError) {
-        console.warn("OAuth redirect reported error:", authError);
-        setError(`Login failed: ${decodeURIComponent(authError)}`);
-        clearOAuthInFlight();
+      if (authErr) {
+        setError(`Login failed: ${decodeURIComponent(authErr)}`);
         setLoading(false);
-        if (typeof window !== 'undefined' && window.location.search) {
-          window.history.replaceState(null, '', '/chat');
+        return;
+      }
+
+      let session = null;
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error && data?.session) {
+          session = data.session;
         }
-        return false;
-      }
-
-      // If code was already exchanged successfully, avoid repeating PKCE code exchange
-      if (code && consumedCodesRef.current.has(code)) {
-        return true;
-      }
-
-      // Concurrency lock: if code exchange is currently in flight, await existing promise
-      if (inFlightOAuthRef.current) {
-        return await inFlightOAuthRef.current;
-      }
-
-      inFlightOAuthRef.current = (async (): Promise<boolean> => {
-        try {
-          // Priority 1: Handle PKCE code exchange
-          if (code) {
-            console.log("Exchanging OAuth code for Supabase session...");
-            const { data, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-            if (!exchangeErr && data?.session?.user) {
-              console.log("OAuth code exchange successful for user:", data.session.user.email);
-              consumedCodesRef.current.add(code);
-              await handleAuthSuccess(data.session);
-              return true;
-            } else if (exchangeErr) {
-              console.warn("OAuth code exchange notice:", exchangeErr);
-              const { data: curSession } = await supabase.auth.getSession();
-              if (curSession?.session?.user) {
-                consumedCodesRef.current.add(code);
-                await handleAuthSuccess(curSession.session);
-                return true;
-              }
-            }
-          }
-
-          // Priority 2: Handle implicit tokens
-          if (accessToken && refreshToken) {
-            console.log("Setting OAuth session with access_token & refresh_token...");
-            const { data, error: sessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (!sessionErr && data?.session?.user) {
-              console.log("OAuth setSession successful for user:", data.session.user.email);
-              await handleAuthSuccess(data.session);
-              return true;
-            } else if (sessionErr) {
-              console.warn("OAuth setSession notice:", sessionErr);
-            }
-          }
-
-          // Priority 3: Fallback check on active Supabase session
-          const { data: finalSession } = await supabase.auth.getSession();
-          if (finalSession?.session?.user) {
-            if (code) consumedCodesRef.current.add(code);
-            await handleAuthSuccess(finalSession.session);
-            return true;
-          }
-
-          return false;
-        } finally {
-          inFlightOAuthRef.current = null;
+      } else if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (!error && data?.session) {
+          session = data.session;
         }
-      })();
+      }
 
-      return await inFlightOAuthRef.current;
-    } catch (err) {
-      console.error("Error processing OAuth redirect URL:", err);
-      return false;
+      if (!session) {
+        const { data } = await supabase.auth.getSession();
+        session = data?.session;
+      }
+
+      if (session?.user) {
+        await handleAuthSuccess(session);
+      } else {
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error("OAuth callback error:", err);
+      setLoading(false);
     }
-  }, [handleAuthSuccess, clearOAuthInFlight]);
+  }, [handleAuthSuccess]);
 
   // Panic shake listener when vault is unlocked: shake to exit & lock
   useEffect(() => {
@@ -574,56 +484,6 @@ export default function App() {
     let appUrlSub: any = null;
     let appResumeSub: any = null;
 
-    // Direct global bridge callback for native MainActivity
-    (window as any).onNativeOAuthCallbackReceived = async (url: string) => {
-      try {
-        await Browser.close();
-      } catch {}
-      if (url) {
-        await processOAuthUrl(url);
-      }
-    };
-
-    // If native MainActivity buffered an OAuth URL before callback was registered, drain immediately
-    if (typeof window !== 'undefined' && (window as any).__pendingOAuthUrl) {
-      const pendingUrl = (window as any).__pendingOAuthUrl;
-      delete (window as any).__pendingOAuthUrl;
-      processOAuthUrl(pendingUrl).catch(() => {});
-    }
-
-    // Fast check for Supabase session when app resumes or regains focus (e.g. after Google OAuth in APK)
-    const checkSessionOnResume = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (data?.session?.user) {
-          await handleAuthSuccess(data.session);
-          return;
-        }
-
-        // If an OAuth flow was recently in flight, actively poll for session resolution
-        const isOAuthPending = isOAuthInFlightRef.current || (typeof window !== 'undefined' && (
-          sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
-          (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
-        ));
-
-        if (isOAuthPending) {
-          let attempts = 0;
-          const pollTimer = setInterval(async () => {
-            attempts++;
-            const { data: pollData } = await supabase.auth.getSession();
-            if (pollData?.session?.user) {
-              clearInterval(pollTimer);
-              await handleAuthSuccess(pollData.session);
-            } else if (attempts >= 15) {
-              clearInterval(pollTimer);
-            }
-          }, 200);
-        }
-      } catch {}
-    };
-
-    window.addEventListener('focus', checkSessionOnResume);
-
     (async () => {
       try {
         appStateSub = await CapApp.addListener('appStateChange', ({ isActive }) => {
@@ -633,27 +493,24 @@ export default function App() {
               sessionStorage.removeItem('onlyus_vault_unlocked');
               setIsStealthUnlocked(false);
             }
-          } else {
-            checkSessionOnResume();
           }
         });
       } catch {}
 
       try {
-        appResumeSub = await CapApp.addListener('resume', () => {
-          checkSessionOnResume();
+        appResumeSub = await CapApp.addListener('resume', async () => {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.user) {
+            await handleAuthSuccess(data.session);
+          }
         });
       } catch {}
 
       // Android Deep Link Handler for Google OAuth Callback in APK
       try {
         appUrlSub = await CapApp.addListener('appUrlOpen', async ({ url }) => {
-          try {
-            await Browser.close();
-          } catch {}
-
-          if (url) {
-            await processOAuthUrl(url);
+          if (url && (url.includes('auth/callback') || url.startsWith('com.onlyus.app://'))) {
+            await handleOAuthCallback(url);
           }
         });
       } catch {}
@@ -661,19 +518,14 @@ export default function App() {
       // Android Cold Launch with OAuth Deep Link Intent
       try {
         const launch = await CapApp.getLaunchUrl();
-        if (launch?.url) {
-          try {
-            await Browser.close();
-          } catch {}
-          await processOAuthUrl(launch.url);
+        if (launch?.url && (launch.url.includes('auth/callback') || launch.url.startsWith('com.onlyus.app://'))) {
+          await handleOAuthCallback(launch.url);
         }
       } catch {}
     })();
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', checkSessionOnResume);
-      delete (window as any).onNativeOAuthCallbackReceived;
       try {
         if (appStateSub && typeof appStateSub.remove === 'function') {
           appStateSub.remove();
@@ -690,7 +542,7 @@ export default function App() {
         }
       } catch {}
     };
-  }, [processOAuthUrl, handleAuthSuccess]);
+  }, [handleOAuthCallback, handleAuthSuccess]);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
     user,
     userProfile,
@@ -1349,53 +1201,26 @@ export default function App() {
         }
       }
 
-      // 3. Check existing Supabase session & fast-track OAuth tokens
+      // 3. Check for Web OAuth callback or existing Supabase session
       try {
-        let currentSession = null;
-        if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token=')) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-          if (accessToken && refreshToken) {
-            try {
-              const { data: setRes } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-              if (setRes?.session) {
-                currentSession = setRes.session;
-              }
-            } catch (setErr) {
-              console.warn("Fast-track setSession error:", setErr);
-            }
-          }
-        }
-
-        if (!currentSession) {
-          const { data: { session } } = await supabase.auth.getSession();
-          currentSession = session;
-        }
-
-        if (currentSession?.user) {
-          await handleAuthSuccess(currentSession);
-          cleanUrlHash();
+        if (typeof window !== 'undefined' && (window.location.search.includes('code=') || (window.location.hash && window.location.hash.includes('access_token=')))) {
+          await handleOAuthCallback(window.location.href);
         } else {
-          // If URL currently contains OAuth fragments or code, give Supabase Auth time to process before clearing session
-          const hasOAuthInUrl = typeof window !== 'undefined' && (
-            (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-            (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
-          );
-          const isOAuthActive = isOAuthInFlightRef.current || hasOAuthInUrl || (typeof window !== 'undefined' && (
-            sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
-            (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
-          ));
-
-          const cached = localStorage.getItem('onlyus_partner_session');
-          if (!cached && !isOAuthActive) {
-            setUser(null);
-            setLoading(false);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setAppConfig(null);
-            setIsOwner(false);
-            setIsPartner(false);
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            await handleAuthSuccess(session);
+            cleanUrlHash();
+          } else {
+            const cached = localStorage.getItem('onlyus_partner_session');
+            if (!cached) {
+              setUser(null);
+              setLoading(false);
+              setUserProfile(null);
+              setPartnerProfile(null);
+              setAppConfig(null);
+              setIsOwner(false);
+              setIsPartner(false);
+            }
           }
         }
       } catch (err) {
@@ -1428,7 +1253,7 @@ export default function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [processOAuthUrl, handleAuthSuccess]);
+  }, [handleOAuthCallback, handleAuthSuccess]);
 
   // Permissions: Request notifications on initial login for Direct edition (Rahul)
   useEffect(() => {
@@ -2110,41 +1935,30 @@ export default function App() {
     setUnauthorizedEmail(null);
     localStorage.removeItem('onlyus_partner_session');
     localStorage.removeItem('onlyus_partner_passcode');
-    setIsOAuthInFlightState(true);
-    if (typeof window !== 'undefined') {
-      try {
-        sessionStorage.setItem('onlyus_oauth_in_flight', 'true');
-        localStorage.setItem('onlyus_oauth_pending_timestamp', Date.now().toString());
-      } catch {}
-    }
+    setLoading(true);
+
     try {
       const isNative = Capacitor.isNativePlatform();
+      const redirectTo = isNative ? 'com.onlyus.app://auth/callback' : `${window.location.origin}/chat`;
 
-      if (isNative) {
-        const { data, error } = await supabase.auth.signInWithOAuth({ 
-          provider: 'google', 
-          options: { 
-            redirectTo: 'com.onlyus.app://auth/callback',
-            skipBrowserRedirect: true 
-          } 
-        });
-        if (error) throw error;
-        if (data?.url) {
-          await Browser.open({ url: data.url, windowName: '_self' });
-        }
-      } else {
-        await supabase.auth.signInWithOAuth({ 
-          provider: 'google', 
-          options: { redirectTo: `${window.location.origin}/chat` } 
-        });
+      const { data, error } = await supabase.auth.signInWithOAuth({ 
+        provider: 'google', 
+        options: { 
+          redirectTo,
+          skipBrowserRedirect: isNative 
+        } 
+      });
+
+      if (error) throw error;
+
+      if (isNative && data?.url) {
+        await Browser.open({ url: data.url, windowName: '_self' });
       }
     } catch (err: any) {
       console.error("Login failed:", err);
-      clearOAuthInFlight();
+      setLoading(false);
       if (err.code === 'auth/unauthorized-domain') {
-        setError(`Your current domain (${window.location.hostname}) is not authorized in Supabase. Please add this domain to Supabase Auth URL configuration.`);
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        // Silent
+        setError(`Your current domain (${window.location.hostname}) is not authorized in Supabase.`);
       } else {
         setError(`Login error: ${err.message || err.toString()}`);
       }
@@ -2680,15 +2494,8 @@ export default function App() {
   }
 
   // Check if OAuth redirect tokens/codes are currently in flight
-  const isOAuthInFlight = isOAuthInFlightState || (typeof window !== 'undefined' && (
-    (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token='))) ||
-    sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
-    (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
-  ));
-
   if (!user) {
-    if ((loading || isOAuthInFlight) && !error) {
+    if (loading && !error) {
       return (
         <div 
           className="chat-theme flex h-[100dvh] max-h-[100dvh] w-full items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden select-none"

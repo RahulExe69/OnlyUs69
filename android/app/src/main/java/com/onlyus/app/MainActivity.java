@@ -224,36 +224,6 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        forwardOAuthUrlIfPresent(intent);
-    }
-
-    private void forwardOAuthUrlIfPresent(android.content.Intent intent) {
-        if (intent != null && intent.getData() != null) {
-            final String url = intent.getData().toString();
-            if (url.startsWith("com.onlyus.app://") || url.contains("/auth/callback")) {
-                // Clear intent data and reset intent to prevent re-triggering on subsequent onResume
-                intent.setData(null);
-                setIntent(new android.content.Intent(android.content.Intent.ACTION_MAIN));
-
-                if (getBridge() != null && getBridge().getWebView() != null) {
-                    runOnUiThread(() -> {
-                        try {
-                            String escaped = url.replace("\\", "\\\\").replace("'", "\\'");
-                            getBridge().getWebView().evaluateJavascript(
-                                "if (typeof window !== 'undefined') { " +
-                                "  if (typeof window.onNativeOAuthCallbackReceived === 'function') { " +
-                                "    window.onNativeOAuthCallbackReceived('" + escaped + "'); " +
-                                "  } else { " +
-                                "    window.__pendingOAuthUrl = '" + escaped + "'; " +
-                                "  } " +
-                                "}",
-                                null
-                            );
-                        } catch (Exception ignored) {}
-                    });
-                }
-            }
-        }
     }
 
     @Override
@@ -270,7 +240,6 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
                 android.content.Intent serviceIntent = new android.content.Intent(this, OnlyUsSyncService.class);
                 startService(serviceIntent);
             } catch (Exception ignored) {}
-            forwardOAuthUrlIfPresent(getIntent());
         }
     }
 

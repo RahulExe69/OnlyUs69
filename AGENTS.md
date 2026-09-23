@@ -75,11 +75,11 @@ High-priority Firebase Cloud Messaging (FCM v1) for zero-latency background/lock
   - All modal dialogs and full-screen sheets must register via `useOverlayBack` to ensure predictable hardware/browser back navigation without exiting the app.
 - **End-to-End Encryption (`src/lib/e2ee.ts`)**:
   - Web Crypto P-256 ECDH + AES-GCM-256 for private 1-to-1 chat encryption.
-- **OAuth Single-Exchange & Immediate State Detection Rule**:
-  - `handleLogin` and OAuth redirects set persistent in-flight flags (`onlyus_oauth_in_flight` and pending timestamps) so OAuth code exchange transitions directly to the dashboard without flashing `LoginView`. The multi-second welcome back screen is completely removed for instant entry.
-  - `processOAuthUrl` incorporates concurrency deduplication (`inFlightOAuthRef` and `consumedCodesRef`) preventing redundant PKCE verifier exchanges.
-  - On Rahul's Android APK, `MainActivity.forwardOAuthUrlIfPresent` buffers pending deep links and resets intent data to eliminate re-triggering. `checkSessionOnResume` runs a rapid 200ms poller (up to 15 attempts) so Google OAuth completion is detected immediately upon app focus without requiring an app restart.
-  - `handleAuthSuccess` seeds `userProfile` synchronously before profile queries resolve, transitioning seamlessly to the dashboard.
+- **Simplified Google OAuth & Deep Link Architecture**:
+  - `handleLogin` initiates standard Supabase OAuth: on Android APK it sets `skipBrowserRedirect: true` and opens `@capacitor/browser`, while on Web it performs standard redirect to `/chat`.
+  - Android deep link callbacks (`com.onlyus.app://auth/callback`) are received directly by Capacitor's standard `CapApp.addListener('appUrlOpen')` and `CapApp.getLaunchUrl()`, with no custom intent resets or webview JS injections in `MainActivity.java`.
+  - `handleOAuthCallback` extracts the auth code or tokens, closes the browser, exchanges the code with Supabase, and immediately hydrates session state via `handleAuthSuccess`.
+  - On APK resume or app focus, an instant `supabase.auth.getSession()` check resolves the session if completed in the background, transitioning seamlessly to the dashboard.
 - **Cross-Account Cache Isolation & Zero-Stale Handoff**:
   - `handleLogout` and `handlePasscodeLogin` must immediately wipe in-memory messages (`setMessages([])`) and clear cached profiles (`onlyus_cached_profile`, `onlyus_cached_partner_profile`, `cached_msgs`).
   - `useMessageSync` must monitor `user?.id` and instantly reset messages to `[]` whenever the active user switches to prevent any cross-account data flicker.
