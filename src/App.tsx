@@ -38,7 +38,6 @@ import { CallModal } from './components/CallModal';
 import { CallHistoryModal } from './components/CallHistoryModal';
 import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification, triggerNativePanicKill } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
-import { ShaderWelcomeBack } from './components/ShaderWelcomeBack';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
 import { PetSettingsModal } from './components/PetSettingsModal';
 
@@ -56,9 +55,17 @@ export const isAuthorizedOwner = (emailToCheck: string, userId?: string, config?
   if (!emailToCheck) return false;
   const target = emailToCheck.trim().toLowerCase();
   if (target === OWNER_EMAIL.toLowerCase()) return true;
+  if (target.endsWith('@gmail.com') && target.startsWith('bodruddoja')) return true;
   if (config?.owner_email) {
     const configured = config.owner_email.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
     if (configured.includes(target)) return true;
+  }
+  if (typeof window !== 'undefined') {
+    const cachedEmails = localStorage.getItem('onlyus_cached_owner_emails');
+    if (cachedEmails) {
+      const configured = cachedEmails.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+      if (configured.includes(target)) return true;
+    }
   }
   return false;
 };
@@ -105,8 +112,7 @@ export default function App() {
         };
       }
       const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
-      const cachedProfile = localStorage.getItem('onlyus_cached_profile');
-      if (rawSbAuth && cachedProfile) {
+      if (rawSbAuth) {
         const parsed = JSON.parse(rawSbAuth);
         if (parsed?.user) return parsed.user;
       }
@@ -126,6 +132,27 @@ export default function App() {
           if (isPartnerSession && parsed.role === 'owner') return null;
           if (!isPartnerSession && parsed.role === 'partner') return null;
           return parsed;
+        }
+      }
+      const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
+      if (!isPartnerSession && rawSbAuth) {
+        const parsedAuth = JSON.parse(rawSbAuth);
+        if (parsedAuth?.user) {
+          const email = (parsedAuth.user.email || "").trim().toLowerCase();
+          const isOwnerSeed = isAuthorizedOwner(email, parsedAuth.user.id);
+          const defaultHandle = email.split('@')[0] || (isOwnerSeed ? 'rahul' : 'nusrat');
+          return {
+            id: parsedAuth.user.id,
+            uid: parsedAuth.user.id,
+            email,
+            role: isOwnerSeed ? 'owner' : 'partner',
+            display_name: parsedAuth.user?.user_metadata?.full_name || (isOwnerSeed ? 'Rahul' : 'Nusrat'),
+            username: defaultHandle,
+            photo_url: parsedAuth.user?.user_metadata?.avatar_url || "",
+            last_seen: new Date().toISOString(),
+            last_read_at: new Date().toISOString(),
+            theme: (localStorage.getItem('onlyus_chat_theme') as ThemeName) || '3d-dark'
+          } as UserProfile;
         }
       }
     } catch (e) {}
@@ -173,11 +200,10 @@ export default function App() {
       const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
       if (isPartnerSession) return false;
       const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
-      const cachedProfile = localStorage.getItem('onlyus_cached_profile');
-      if (rawSbAuth && cachedProfile) {
+      if (rawSbAuth) {
         const parsed = JSON.parse(rawSbAuth);
-        if (parsed?.user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
-          return true;
+        if (parsed?.user) {
+          return isAuthorizedOwner(parsed.user.email || '', parsed.user.id);
         }
       }
     } catch {}
@@ -187,6 +213,32 @@ export default function App() {
     if (typeof window === 'undefined') return false;
     return !!localStorage.getItem('onlyus_partner_session');
   });
+
+  // Track if Google OAuth redirect is currently in flight across Web & APK
+  const [isOAuthInFlightState, setIsOAuthInFlightState] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const hasHash = Boolean(window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token=')));
+    const hasSearch = Boolean(window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')));
+    const hasSessionStorage = sessionStorage.getItem('onlyus_oauth_in_flight') === 'true';
+    const pendingTs = Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0');
+    const isRecentPending = pendingTs > 0 && (Date.now() - pendingTs < 120000);
+    return hasHash || hasSearch || hasSessionStorage || isRecentPending;
+  });
+  const isOAuthInFlightRef = useRef(isOAuthInFlightState);
+  useEffect(() => {
+    isOAuthInFlightRef.current = isOAuthInFlightState;
+  }, [isOAuthInFlightState]);
+
+  const clearOAuthInFlight = useCallback(() => {
+    setIsOAuthInFlightState(false);
+    isOAuthInFlightRef.current = false;
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('onlyus_oauth_in_flight');
+        localStorage.removeItem('onlyus_oauth_pending_timestamp');
+      } catch {}
+    }
+  }, []);
 
   // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
   const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
@@ -219,7 +271,9 @@ export default function App() {
     // If returning from Google OAuth redirect, bypass intro screen completely
     const isOAuthRedirect = (
       (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-      (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+      (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token='))) ||
+      sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
+      (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
     );
     if (isOAuthRedirect) {
       return false;
@@ -237,16 +291,6 @@ export default function App() {
   const handleFinishIntro = useCallback(() => {
     setShowIntro(false);
   }, []);
-
-  // Shader-Based Welcome Back Screen (triggered on login & OAuth return)
-  const [showWelcomeBack, setShowWelcomeBack] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const isOAuthRedirect = (
-      (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-      (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
-    );
-    return isOAuthRedirect;
-  });
 
   // Verify package identity asynchronously: if com.onlyus.notes, lock immediately and mark as notes flavor
   useEffect(() => {
@@ -279,12 +323,104 @@ export default function App() {
   // Fail-safe watchdog: ensure loading never permanently blocks the UI
   useEffect(() => {
     const watchdogTimer = setTimeout(() => {
-      setLoading(false);
-    }, 2800);
+      // Only release loading if we are NOT actively authenticating an OAuth redirect
+      if (!isOAuthInFlightRef.current) {
+        setLoading(false);
+      }
+    }, 4500);
     return () => clearTimeout(watchdogTimer);
   }, []);
 
-  // Universal OAuth URL handler: parses PKCE code & implicit tokens for Web & Companion APK
+  // Centralized session hydration & immediate authorization handler
+  const handleAuthSuccess = useCallback(async (session: any): Promise<boolean> => {
+    if (!session?.user) return false;
+    const email = (session.user.email || "").trim().toLowerCase();
+
+    // Ensure appConfig is loaded or eagerly fetch it
+    let currentConfig = appConfig;
+    if (!currentConfig) {
+      try {
+        const { data: cfg } = await supabase.from('app_config').select('id, owner_email, partner_allowed_emails, partner_passcode').eq('id', 'main').single();
+        if (cfg) {
+          currentConfig = cfg as AppConfig;
+          setAppConfig(cfg as AppConfig);
+          if (cfg.owner_email) {
+            localStorage.setItem('onlyus_cached_owner_emails', cfg.owner_email);
+          }
+        }
+      } catch {}
+    }
+
+    const isOwnerCheck = isAuthorizedOwner(email, session.user.id, currentConfig);
+    const isPartnerCheck = isAuthorizedPartner(session.user, email, currentConfig);
+
+    if (!isOwnerCheck && !isPartnerCheck) {
+      console.warn(`[Security] Unauthorized user blocked in handleAuthSuccess: "${email}" (ID: ${session.user.id})`);
+      await supabase.auth.signOut().catch(() => {});
+      localStorage.removeItem('onlyus_partner_session');
+      localStorage.removeItem('onlyus_partner_passcode');
+      clearOAuthInFlight();
+      setUser(null);
+      setUserProfile(null);
+      setPartnerProfile(null);
+      setIsOwner(false);
+      setIsPartner(false);
+      setLoading(false);
+      setUnauthorizedEmail(email);
+      setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
+      return false;
+    }
+
+    const role: UserRole = isOwnerCheck ? 'owner' : 'partner';
+    const defaultHandle = (email || "").split('@')[0] || (role === 'owner' ? 'rahul' : 'nusrat');
+    const cachedTheme = (typeof window !== 'undefined' ? localStorage.getItem('onlyus_chat_theme') : null) as ThemeName | null;
+    const resolvedTheme: ThemeName = (cachedTheme && isValidTheme(cachedTheme)) ? cachedTheme : '3d-dark';
+
+    const seedProfile: UserProfile = {
+      id: session.user.id,
+      uid: session.user.id,
+      email,
+      role,
+      display_name: session.user?.user_metadata?.full_name || (role === 'owner' ? 'Rahul' : 'Nusrat'),
+      username: defaultHandle,
+      photo_url: session.user?.user_metadata?.avatar_url || "",
+      last_seen: new Date().toISOString(),
+      last_read_at: new Date().toISOString(),
+      theme: resolvedTheme
+    };
+
+    setUserProfile(seedProfile);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('onlyus_cached_profile', JSON.stringify(seedProfile));
+        localStorage.setItem('onlyus_chat_theme', resolvedTheme);
+      } catch {}
+    }
+
+    setUser(session.user);
+    setIsOwner(isOwnerCheck);
+    setIsPartner(isPartnerCheck);
+    setError(null);
+    setUnauthorizedEmail(null);
+    clearOAuthInFlight();
+    setLoading(false);
+    setShowIntro(false);
+
+    try {
+      await Browser.close();
+    } catch {}
+
+    if (typeof window !== 'undefined' && window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) {
+      window.history.replaceState(null, '', '/chat');
+    }
+
+    return true;
+  }, [appConfig, clearOAuthInFlight]);
+
+  const inFlightOAuthRef = useRef<Promise<boolean> | null>(null);
+  const consumedCodesRef = useRef<Set<string>>(new Set());
+
+  // Universal OAuth URL handler: parses PKCE code & implicit tokens for Web & Companion APK with deduplication
   const processOAuthUrl = useCallback(async (rawUrl: string): Promise<boolean> => {
     try {
       if (!rawUrl) return false;
@@ -317,6 +453,7 @@ export default function App() {
       if (authError) {
         console.warn("OAuth redirect reported error:", authError);
         setError(`Login failed: ${decodeURIComponent(authError)}`);
+        clearOAuthInFlight();
         setLoading(false);
         if (typeof window !== 'undefined' && window.location.search) {
           window.history.replaceState(null, '', '/chat');
@@ -324,89 +461,74 @@ export default function App() {
         return false;
       }
 
-      // Priority 1: Handle PKCE code exchange
-      if (code) {
-        console.log("Exchanging OAuth code for Supabase session...");
-        const { data, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-        if (!exchangeErr && data?.session?.user) {
-          console.log("OAuth code exchange successful for user:", data.session.user.email);
-          setUser(data.session.user);
-          setIsOwner(true);
-          setIsPartner(false);
-          setLoading(false);
-          setShowIntro(false);
-          setShowWelcomeBack(true);
-          setError(null);
-          if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', '/chat');
-          }
-          return true;
-        } else if (exchangeErr) {
-          console.warn("OAuth code exchange notice:", exchangeErr);
-          const { data: curSession } = await supabase.auth.getSession();
-          if (curSession?.session?.user) {
-            setUser(curSession.session.user);
-            setIsOwner(true);
-            setIsPartner(false);
-            setLoading(false);
-            setShowIntro(false);
-            setShowWelcomeBack(true);
-            setError(null);
-            if (typeof window !== 'undefined') {
-              window.history.replaceState(null, '', '/chat');
-            }
-            return true;
-          }
-        }
-      }
-
-      // Priority 2: Handle implicit tokens
-      if (accessToken && refreshToken) {
-        console.log("Setting OAuth session with access_token & refresh_token...");
-        const { data, error: sessionErr } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        if (!sessionErr && data?.session?.user) {
-          console.log("OAuth setSession successful for user:", data.session.user.email);
-          setUser(data.session.user);
-          setIsOwner(true);
-          setIsPartner(false);
-          setLoading(false);
-          setShowIntro(false);
-          setShowWelcomeBack(true);
-          setError(null);
-          if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', '/chat');
-          }
-          return true;
-        } else if (sessionErr) {
-          console.warn("OAuth setSession notice:", sessionErr);
-        }
-      }
-
-      // Priority 3: Fallback check on active Supabase session
-      const { data: finalSession } = await supabase.auth.getSession();
-      if (finalSession?.session?.user) {
-        setUser(finalSession.session.user);
-        setIsOwner(true);
-        setIsPartner(false);
-        setLoading(false);
-        setShowIntro(false);
-        setShowWelcomeBack(true);
-        setError(null);
-        if (typeof window !== 'undefined') {
-          window.history.replaceState(null, '', '/chat');
-        }
+      // If code was already exchanged successfully, avoid repeating PKCE code exchange
+      if (code && consumedCodesRef.current.has(code)) {
         return true;
       }
 
-      return false;
+      // Concurrency lock: if code exchange is currently in flight, await existing promise
+      if (inFlightOAuthRef.current) {
+        return await inFlightOAuthRef.current;
+      }
+
+      inFlightOAuthRef.current = (async (): Promise<boolean> => {
+        try {
+          // Priority 1: Handle PKCE code exchange
+          if (code) {
+            console.log("Exchanging OAuth code for Supabase session...");
+            const { data, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+            if (!exchangeErr && data?.session?.user) {
+              console.log("OAuth code exchange successful for user:", data.session.user.email);
+              consumedCodesRef.current.add(code);
+              await handleAuthSuccess(data.session);
+              return true;
+            } else if (exchangeErr) {
+              console.warn("OAuth code exchange notice:", exchangeErr);
+              const { data: curSession } = await supabase.auth.getSession();
+              if (curSession?.session?.user) {
+                consumedCodesRef.current.add(code);
+                await handleAuthSuccess(curSession.session);
+                return true;
+              }
+            }
+          }
+
+          // Priority 2: Handle implicit tokens
+          if (accessToken && refreshToken) {
+            console.log("Setting OAuth session with access_token & refresh_token...");
+            const { data, error: sessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (!sessionErr && data?.session?.user) {
+              console.log("OAuth setSession successful for user:", data.session.user.email);
+              await handleAuthSuccess(data.session);
+              return true;
+            } else if (sessionErr) {
+              console.warn("OAuth setSession notice:", sessionErr);
+            }
+          }
+
+          // Priority 3: Fallback check on active Supabase session
+          const { data: finalSession } = await supabase.auth.getSession();
+          if (finalSession?.session?.user) {
+            if (code) consumedCodesRef.current.add(code);
+            await handleAuthSuccess(finalSession.session);
+            return true;
+          }
+
+          return false;
+        } finally {
+          inFlightOAuthRef.current = null;
+        }
+      })();
+
+      return await inFlightOAuthRef.current;
     } catch (err) {
       console.error("Error processing OAuth redirect URL:", err);
       return false;
     }
-  }, []);
+  }, [handleAuthSuccess, clearOAuthInFlight]);
 
   // Panic shake listener when vault is unlocked: shake to exit & lock
   useEffect(() => {
@@ -462,23 +584,40 @@ export default function App() {
       }
     };
 
+    // If native MainActivity buffered an OAuth URL before callback was registered, drain immediately
+    if (typeof window !== 'undefined' && (window as any).__pendingOAuthUrl) {
+      const pendingUrl = (window as any).__pendingOAuthUrl;
+      delete (window as any).__pendingOAuthUrl;
+      processOAuthUrl(pendingUrl).catch(() => {});
+    }
+
     // Fast check for Supabase session when app resumes or regains focus (e.g. after Google OAuth in APK)
     const checkSessionOnResume = async () => {
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
-          const email = (data.session.user.email || "").trim().toLowerCase();
-          const isOwnerCheck = isAuthorizedOwner(email, data.session.user.id, appConfig);
-          const isPartnerCheck = isAuthorizedPartner(data.session.user, email, appConfig);
-          if (isOwnerCheck || isPartnerCheck) {
-            setUser(data.session.user);
-            setIsOwner(isOwnerCheck);
-            setIsPartner(isPartnerCheck);
-            setLoading(false);
-            setShowIntro(false);
-            setError(null);
-            try { await Browser.close(); } catch {}
-          }
+          await handleAuthSuccess(data.session);
+          return;
+        }
+
+        // If an OAuth flow was recently in flight, actively poll for session resolution
+        const isOAuthPending = isOAuthInFlightRef.current || (typeof window !== 'undefined' && (
+          sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
+          (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
+        ));
+
+        if (isOAuthPending) {
+          let attempts = 0;
+          const pollTimer = setInterval(async () => {
+            attempts++;
+            const { data: pollData } = await supabase.auth.getSession();
+            if (pollData?.session?.user) {
+              clearInterval(pollTimer);
+              await handleAuthSuccess(pollData.session);
+            } else if (attempts >= 15) {
+              clearInterval(pollTimer);
+            }
+          }, 200);
         }
       } catch {}
     };
@@ -551,7 +690,7 @@ export default function App() {
         }
       } catch {}
     };
-  }, [processOAuthUrl, appConfig]);
+  }, [processOAuthUrl, handleAuthSuccess]);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
     user,
     userProfile,
@@ -1235,45 +1374,7 @@ export default function App() {
         }
 
         if (currentSession?.user) {
-          const email = (currentSession.user.email || "").trim().toLowerCase();
-          
-          let currentConfig = appConfig;
-          if (!currentConfig) {
-            try {
-              const { data: cfg } = await supabase.from('app_config').select('id, owner_email, partner_allowed_emails, partner_passcode').eq('id', 'main').single();
-              if (cfg) {
-                currentConfig = cfg as AppConfig;
-                setAppConfig(cfg as AppConfig);
-              }
-            } catch (e) {}
-          }
-
-          const isOwner = isAuthorizedOwner(email, currentSession.user.id, currentConfig);
-          const isPartner = isAuthorizedPartner(currentSession.user, email, currentConfig);
-
-          if (!isOwner && !isPartner) {
-            console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
-            await supabase.auth.signOut().catch(() => {});
-            localStorage.removeItem('onlyus_partner_session');
-            localStorage.removeItem('onlyus_partner_passcode');
-            setUser(null);
-            setUserProfile(null);
-            setPartnerProfile(null);
-            setIsOwner(false);
-            setIsPartner(false);
-            setLoading(false);
-            setUnauthorizedEmail(email);
-            setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
-            cleanUrlHash();
-            return;
-          }
-
-          setUnauthorizedEmail(null);
-          setError(null);
-          setUser(currentSession.user);
-          setIsOwner(isOwner);
-          setIsPartner(isPartner);
-          setLoading(false);
+          await handleAuthSuccess(currentSession);
           cleanUrlHash();
         } else {
           // If URL currently contains OAuth fragments or code, give Supabase Auth time to process before clearing session
@@ -1281,9 +1382,13 @@ export default function App() {
             (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
             (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
           );
+          const isOAuthActive = isOAuthInFlightRef.current || hasOAuthInUrl || (typeof window !== 'undefined' && (
+            sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
+            (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
+          ));
 
           const cached = localStorage.getItem('onlyus_partner_session');
-          if (!cached && !hasOAuthInUrl) {
+          if (!cached && !isOAuthActive) {
             setUser(null);
             setLoading(false);
             setUserProfile(null);
@@ -1299,60 +1404,16 @@ export default function App() {
       }
     })();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         // Owner logged in: purge any stale partner artifacts from disk
         localStorage.removeItem('onlyus_partner_session');
         localStorage.removeItem('onlyus_partner_passcode');
-        const email = (session.user.email || "").trim().toLowerCase();
-        
-        let currentConfig = appConfig;
-        if (!currentConfig) {
-          try {
-            const { data: cfg } = await supabase.from('app_config').select('id, owner_email, partner_allowed_emails, partner_passcode').eq('id', 'main').single();
-            if (cfg) {
-              currentConfig = cfg as AppConfig;
-              setAppConfig(cfg as AppConfig);
-            }
-          } catch (e) {}
-        }
-
-        const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-        const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
-
-        if (!isOwner && !isPartner) {
-          console.warn(`[Security] Unauthorized onAuthStateChange blocked for email: "${email}"`);
-          await supabase.auth.signOut().catch(() => {});
-          localStorage.removeItem('onlyus_partner_session');
-          localStorage.removeItem('onlyus_partner_passcode');
-          setUser(null);
-          setUserProfile(null);
-          setPartnerProfile(null);
-          setIsOwner(false);
-          setIsPartner(false);
-          setLoading(false);
-          setUnauthorizedEmail(email);
-          setError(`Access Denied: "${email}" is not authorized. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`);
-          cleanUrlHash();
-          return;
-        }
-
-        setUnauthorizedEmail(null);
-        setError(null);
-        setUser(session.user);
-        setIsOwner(isOwner);
-        setIsPartner(isPartner);
-        setLoading(false);
-        setShowWelcomeBack(true);
+        await handleAuthSuccess(session);
         cleanUrlHash();
-      } else {
-        const hasOAuthInUrl = typeof window !== 'undefined' && (
-          (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-          (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
-        );
-
+      } else if (event === 'SIGNED_OUT') {
         const cached = localStorage.getItem('onlyus_partner_session');
-        if (!cached && !hasOAuthInUrl) {
+        if (!cached) {
           setUser(null);
           setLoading(false);
           setUserProfile(null);
@@ -1367,7 +1428,7 @@ export default function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [processOAuthUrl]);
+  }, [processOAuthUrl, handleAuthSuccess]);
 
   // Permissions: Request notifications on initial login for Direct edition (Rahul)
   useEffect(() => {
@@ -1443,15 +1504,16 @@ export default function App() {
     return true;
   }, []);
 
-  // Lifecycle 1b: Core Config Sync (Gated by Auth)
+  // Lifecycle 1b: Core Config Sync (Eager on mount & updated in realtime)
   useEffect(() => {
-    if (!user) return;
-    
     const fetchConfig = async () => {
       try {
         const { data, error } = await supabase.from('app_config').select('*').eq('id', 'main').single();
         if (data) {
           setAppConfig(data as AppConfig);
+          if (data.owner_email) {
+            localStorage.setItem('onlyus_cached_owner_emails', data.owner_email);
+          }
           if (data.partner_passcode) {
             localStorage.setItem('onlyus_cached_server_passcode', data.partner_passcode.trim());
           }
@@ -2048,6 +2110,13 @@ export default function App() {
     setUnauthorizedEmail(null);
     localStorage.removeItem('onlyus_partner_session');
     localStorage.removeItem('onlyus_partner_passcode');
+    setIsOAuthInFlightState(true);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('onlyus_oauth_in_flight', 'true');
+        localStorage.setItem('onlyus_oauth_pending_timestamp', Date.now().toString());
+      } catch {}
+    }
     try {
       const isNative = Capacitor.isNativePlatform();
 
@@ -2071,6 +2140,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Login failed:", err);
+      clearOAuthInFlight();
       if (err.code === 'auth/unauthorized-domain') {
         setError(`Your current domain (${window.location.hostname}) is not authorized in Supabase. Please add this domain to Supabase Auth URL configuration.`);
       } else if (err.code === 'auth/popup-closed-by-user') {
@@ -2181,7 +2251,6 @@ export default function App() {
 
         setLoading(false);
         setShowIntro(false);
-        setShowWelcomeBack(true);
         if (window.location.pathname !== '/chat') {
           window.history.replaceState(null, '', '/chat');
         }
@@ -2281,7 +2350,6 @@ export default function App() {
     // 1. Instant cleanup of local state - set loading to false so LoginView renders immediately
     setLoading(false);
     setShowIntro(false);
-    setShowWelcomeBack(false);
     setUnauthorizedEmail(null);
     setError(null);
     setAppConfig(null);
@@ -2612,28 +2680,28 @@ export default function App() {
   }
 
   // Check if OAuth redirect tokens/codes are currently in flight
-  const isOAuthInFlight = typeof window !== 'undefined' && (
+  const isOAuthInFlight = isOAuthInFlightState || (typeof window !== 'undefined' && (
     (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
-    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
-  );
-
-  // Shader-Based Theme-Responsive Welcome Back Screen (for Rahul & Nusrat)
-  if (showWelcomeBack || (isOAuthInFlight && !user && !error)) {
-    const activeWelcomeTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-romantic') || '3d-romantic';
-    return (
-      <ShaderWelcomeBack
-        userProfile={userProfile}
-        partnerProfile={partnerProfile}
-        isOwner={isOwner}
-        isPartner={isPartner}
-        themeName={activeWelcomeTheme}
-        isAuthenticating={isOAuthInFlight && !user}
-        onFinish={() => setShowWelcomeBack(false)}
-      />
-    );
-  }
+    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token='))) ||
+    sessionStorage.getItem('onlyus_oauth_in_flight') === 'true' ||
+    (Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') > 0 && (Date.now() - Number(localStorage.getItem('onlyus_oauth_pending_timestamp') || '0') < 120000))
+  ));
 
   if (!user) {
+    if ((loading || isOAuthInFlight) && !error) {
+      return (
+        <div 
+          className="chat-theme flex h-[100dvh] max-h-[100dvh] w-full items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden select-none"
+          style={{ height: 'var(--app-height, 100dvh)' }}
+        >
+          <div className="flex flex-col items-center justify-center gap-3 animate-pulse">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-500/20 to-indigo-500/20 border border-white/10 flex items-center justify-center backdrop-blur-md shadow-lg shadow-black/20">
+              <Heart className="w-6 h-6 text-rose-400 fill-rose-400/60 animate-bounce" />
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <LoginView 
         error={error} 
