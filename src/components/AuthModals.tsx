@@ -6,11 +6,13 @@ import { THEMES, DEFAULT_THEME, ThemeName, isValidTheme, getThemeDualTone, getTh
 export function LoginView({ 
   error, 
   onLogin, 
-  onPasscodeLogin 
+  onPasscodeLogin,
+  hideGoogle = false
 }: { 
   error: string | null; 
   onLogin: () => void; 
   onPasscodeLogin: (code: string) => Promise<boolean>; 
+  hideGoogle?: boolean;
 }) {
   const [loginMode, setLoginMode] = useState<'passcode' | 'google'>('passcode');
   const [passcode, setPasscode] = useState('');
@@ -178,45 +180,47 @@ export function LoginView({
           </div>
         </div>
 
-        {/* Tab Switcher - Compact, Lovely Rounded Pill */}
-        <div 
-          className="flex p-0.5 rounded-full mb-3 border transition-colors"
-          style={{
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-            borderColor: theme.border || (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)')
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => { setLoginMode('passcode'); setLocalError(null); }}
-            className="flex-1 py-1.5 rounded-full text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
-            style={loginMode === 'passcode' ? {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#ffffff',
-              color: theme.accent,
-              boxShadow: isDark ? '0 2px 6px rgba(0,0,0,0.35)' : '0 2px 6px rgba(0,0,0,0.08)'
-            } : {
-              color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'
+        {/* Tab Switcher - Compact, Lovely Rounded Pill (Hidden in Stealth Mode) */}
+        {!hideGoogle && (
+          <div 
+            className="flex p-0.5 rounded-full mb-3 border transition-colors"
+            style={{
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              borderColor: theme.border || (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)')
             }}
           >
-            <KeyRound className="w-3 h-3" />
-            <span>Passcode</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setLoginMode('google'); setLocalError(null); }}
-            className="flex-1 py-1.5 rounded-full text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
-            style={loginMode === 'google' ? {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#ffffff',
-              color: theme.accent,
-              boxShadow: isDark ? '0 2px 6px rgba(0,0,0,0.35)' : '0 2px 6px rgba(0,0,0,0.08)'
-            } : {
-              color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'
-            }}
-          >
-            <Lock className="w-3 h-3" />
-            <span>Google</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('passcode'); setLocalError(null); }}
+              className="flex-1 py-1.5 rounded-full text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
+              style={loginMode === 'passcode' ? {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#ffffff',
+                color: theme.accent,
+                boxShadow: isDark ? '0 2px 6px rgba(0,0,0,0.35)' : '0 2px 6px rgba(0,0,0,0.08)'
+              } : {
+                color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'
+              }}
+            >
+              <KeyRound className="w-3 h-3" />
+              <span>Passcode</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('google'); setLocalError(null); }}
+              className="flex-1 py-1.5 rounded-full text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer touch-manipulation"
+              style={loginMode === 'google' ? {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#ffffff',
+                color: theme.accent,
+                boxShadow: isDark ? '0 2px 6px rgba(0,0,0,0.35)' : '0 2px 6px rgba(0,0,0,0.08)'
+              } : {
+                color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'
+              }}
+            >
+              <Lock className="w-3 h-3" />
+              <span>Google</span>
+            </button>
+          </div>
+        )}
 
         {/* Error Notification */}
         <AnimatePresence>

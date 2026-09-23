@@ -177,6 +177,14 @@ export default function App() {
   // Website Opening Intro Screen
   const [showIntro, setShowIntro] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    // If returning from Google OAuth redirect, bypass intro screen completely
+    const isOAuthRedirect = (
+      (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+      (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+    );
+    if (isOAuthRedirect) {
+      return false;
+    }
     // If running in locked stealth mode (Nusrat's Notes APK), do not show OnlyUs intro while locked
     if (navigator.userAgent.includes('OnlyUsFlavor/Notes') || window.location.search.includes('edition=nusrat')) {
       return false;
@@ -323,6 +331,21 @@ export default function App() {
         } else if (sessionErr) {
           console.warn("OAuth setSession notice:", sessionErr);
         }
+      }
+
+      // Priority 3: Fallback check on active Supabase session
+      const { data: finalSession } = await supabase.auth.getSession();
+      if (finalSession?.session?.user) {
+        setUser(finalSession.session.user);
+        setIsOwner(true);
+        setIsPartner(false);
+        setLoading(false);
+        setShowIntro(false);
+        setError(null);
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(null, '', '/chat');
+        }
+        return true;
       }
 
       return false;
@@ -1385,6 +1408,26 @@ export default function App() {
       setIsOwner(false);
     }
 
+    // Immediately seed userProfile to prevent staying on LoginView/UnauthorizedView while fetching
+    setUserProfile((prev) => {
+      if (prev && (prev.uid === user.id || prev.id === user.id)) return prev;
+      const defaultHandle = (email || "").split('@')[0] || (role === 'owner' ? 'rahul' : 'nusrat');
+      const cachedTheme = (typeof window !== 'undefined' ? localStorage.getItem('onlyus_chat_theme') : null) as ThemeName | null;
+      const resolvedTheme: ThemeName = (cachedTheme && isValidTheme(cachedTheme)) ? cachedTheme : '3d-dark';
+      return {
+        id: user.id,
+        uid: user.id,
+        email: (email || "").trim().toLowerCase(),
+        role,
+        display_name: user?.user_metadata?.full_name || (role === 'owner' ? 'Rahul' : 'Nusrat'),
+        username: defaultHandle,
+        photo_url: user?.user_metadata?.avatar_url || "",
+        last_seen: new Date().toISOString(),
+        last_read_at: new Date().toISOString(),
+        theme: resolvedTheme
+      } as UserProfile;
+    });
+
     // Instant update on session start
     supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then(undefined, () => {});
 
@@ -2428,7 +2471,14 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginView error={error} onLogin={handleLogin} onPasscodeLogin={handlePasscodeLogin} />;
+    return (
+      <LoginView 
+        error={error} 
+        onLogin={handleLogin} 
+        onPasscodeLogin={handlePasscodeLogin} 
+        hideGoogle={isNotesFlavor || (typeof window !== 'undefined' && window.location.search.includes('edition=nusrat'))}
+      />
+    );
   }
 
   if (error && !userProfile) {
