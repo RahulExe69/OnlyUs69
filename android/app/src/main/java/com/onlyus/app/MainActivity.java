@@ -185,6 +185,12 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     }
 
     @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         isAppForeground = true;

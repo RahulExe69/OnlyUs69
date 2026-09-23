@@ -274,6 +274,8 @@ export default function App() {
         if (!exchangeErr && data?.session?.user) {
           console.log("OAuth code exchange successful for user:", data.session.user.email);
           setUser(data.session.user);
+          setIsOwner(true);
+          setIsPartner(false);
           setLoading(false);
           setShowIntro(false);
           setError(null);
@@ -286,6 +288,8 @@ export default function App() {
           const { data: curSession } = await supabase.auth.getSession();
           if (curSession?.session?.user) {
             setUser(curSession.session.user);
+            setIsOwner(true);
+            setIsPartner(false);
             setLoading(false);
             setShowIntro(false);
             setError(null);
@@ -307,6 +311,8 @@ export default function App() {
         if (!sessionErr && data?.session?.user) {
           console.log("OAuth setSession successful for user:", data.session.user.email);
           setUser(data.session.user);
+          setIsOwner(true);
+          setIsPartner(false);
           setLoading(false);
           setShowIntro(false);
           setError(null);
@@ -1119,8 +1125,14 @@ export default function App() {
           setLoading(false);
           cleanUrlHash();
         } else {
+          // If URL currently contains OAuth fragments or code, give Supabase Auth time to process before clearing session
+          const hasOAuthInUrl = typeof window !== 'undefined' && (
+            (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+            (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+          );
+
           const cached = localStorage.getItem('onlyus_partner_session');
-          if (!cached) {
+          if (!cached && !hasOAuthInUrl) {
             setUser(null);
             setLoading(false);
             setUserProfile(null);
@@ -1180,8 +1192,13 @@ export default function App() {
         setLoading(false);
         cleanUrlHash();
       } else {
+        const hasOAuthInUrl = typeof window !== 'undefined' && (
+          (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+          (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+        );
+
         const cached = localStorage.getItem('onlyus_partner_session');
-        if (!cached) {
+        if (!cached && !hasOAuthInUrl) {
           setUser(null);
           setLoading(false);
           setUserProfile(null);
@@ -1858,7 +1875,7 @@ export default function App() {
     localStorage.removeItem('onlyus_partner_session');
     localStorage.removeItem('onlyus_partner_passcode');
     try {
-      const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform();
+      const isNative = Capacitor.isNativePlatform();
 
       if (isNative) {
         const { data, error } = await supabase.auth.signInWithOAuth({ 
