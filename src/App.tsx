@@ -1210,11 +1210,32 @@ export default function App() {
         }
       }
 
-      // 3. Check existing Supabase session
+      // 3. Check existing Supabase session & fast-track OAuth tokens
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const email = (session.user.email || "").trim().toLowerCase();
+        let currentSession = null;
+        if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token=')) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+          if (accessToken && refreshToken) {
+            try {
+              const { data: setRes } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+              if (setRes?.session) {
+                currentSession = setRes.session;
+              }
+            } catch (setErr) {
+              console.warn("Fast-track setSession error:", setErr);
+            }
+          }
+        }
+
+        if (!currentSession) {
+          const { data: { session } } = await supabase.auth.getSession();
+          currentSession = session;
+        }
+
+        if (currentSession?.user) {
+          const email = (currentSession.user.email || "").trim().toLowerCase();
           
           let currentConfig = appConfig;
           if (!currentConfig) {
@@ -1227,8 +1248,8 @@ export default function App() {
             } catch (e) {}
           }
 
-          const isOwner = isAuthorizedOwner(email, session.user.id, currentConfig);
-          const isPartner = isAuthorizedPartner(session.user, email, currentConfig);
+          const isOwner = isAuthorizedOwner(email, currentSession.user.id, currentConfig);
+          const isPartner = isAuthorizedPartner(currentSession.user, email, currentConfig);
 
           if (!isOwner && !isPartner) {
             console.warn(`[Security] Unauthorized Google login blocked for email: "${email}"`);
@@ -1249,7 +1270,9 @@ export default function App() {
 
           setUnauthorizedEmail(null);
           setError(null);
-          setUser(session.user);
+          setUser(currentSession.user);
+          setIsOwner(isOwner);
+          setIsPartner(isPartner);
           setLoading(false);
           cleanUrlHash();
         } else {
@@ -1317,7 +1340,10 @@ export default function App() {
         setUnauthorizedEmail(null);
         setError(null);
         setUser(session.user);
+        setIsOwner(isOwner);
+        setIsPartner(isPartner);
         setLoading(false);
+        setShowWelcomeBack(true);
         cleanUrlHash();
       } else {
         const hasOAuthInUrl = typeof window !== 'undefined' && (
@@ -2585,8 +2611,14 @@ export default function App() {
     );
   }
 
+  // Check if OAuth redirect tokens/codes are currently in flight
+  const isOAuthInFlight = typeof window !== 'undefined' && (
+    (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+  );
+
   // Shader-Based Theme-Responsive Welcome Back Screen (for Rahul & Nusrat)
-  if (showWelcomeBack) {
+  if (showWelcomeBack || (isOAuthInFlight && !user && !error)) {
     const activeWelcomeTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-romantic') || '3d-romantic';
     return (
       <ShaderWelcomeBack
@@ -2595,6 +2627,7 @@ export default function App() {
         isOwner={isOwner}
         isPartner={isPartner}
         themeName={activeWelcomeTheme}
+        isAuthenticating={isOAuthInFlight && !user}
         onFinish={() => setShowWelcomeBack(false)}
       />
     );
