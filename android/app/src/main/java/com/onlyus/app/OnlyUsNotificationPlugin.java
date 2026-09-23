@@ -56,6 +56,41 @@ public class OnlyUsNotificationPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void panicKill(PluginCall call) {
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).panicKillNow();
+        } else if (getActivity() != null) {
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) getActivity().getSystemService(Context.ACTIVITY_SERVICE);
+                if (am != null) {
+                    java.util.List<android.app.ActivityManager.AppTask> appTasks = am.getAppTasks();
+                    if (appTasks != null) {
+                        for (android.app.ActivityManager.AppTask task : appTasks) {
+                            try {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                                    task.setExcludeFromRecents(true);
+                                }
+                            } catch (Exception ignored) {}
+                            task.finishAndRemoveTask();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            try {
+                getActivity().finishAffinity();
+                getActivity().finishAndRemoveTask();
+            } catch (Exception ignored) {}
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                } catch (Exception ignored) {}
+                System.exit(0);
+            }, 250);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void getFcmToken(PluginCall call) {
         Context context = getContext();
         if (context == null || context.getPackageName().contains("notes")) {

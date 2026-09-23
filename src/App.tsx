@@ -36,7 +36,7 @@ import { useMessageSync } from './hooks/useMessageSync';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { CallModal } from './components/CallModal';
 import { CallHistoryModal } from './components/CallHistoryModal';
-import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
+import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification, triggerNativePanicKill } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
 import { PetSettingsModal } from './components/PetSettingsModal';
@@ -91,7 +91,26 @@ export const closeMobileKeyboard = () => {
 };
 
 export default function App() {
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<any | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
+      if (isPartnerSession) {
+        return {
+          id: 'b6f9a0c2-5501-4433-8899-0123456789ab',
+          email: 'nusrat@onlyus.app',
+          role: 'partner',
+          user_metadata: { full_name: 'Nusrat', role: 'partner' }
+        };
+      }
+      const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
+      if (rawSbAuth) {
+        const parsed = JSON.parse(rawSbAuth);
+        if (parsed?.user) return parsed.user;
+      }
+    } catch {}
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
@@ -146,8 +165,25 @@ export default function App() {
   });
   const partnerProfileRef = useRef<UserProfile | null>(null);
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
-  const [isOwner, setIsOwner] = useState(false);
-  const [isPartner, setIsPartner] = useState(false);
+  const [isOwner, setIsOwner] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
+      if (isPartnerSession) return false;
+      const rawSbAuth = localStorage.getItem('sb-vrstmtjfqlbfyxtsothf-auth-token');
+      if (rawSbAuth) {
+        const parsed = JSON.parse(rawSbAuth);
+        if (parsed?.user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  });
+  const [isPartner, setIsPartner] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return !!localStorage.getItem('onlyus_partner_session');
+  });
 
   // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
   const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
@@ -370,6 +406,9 @@ export default function App() {
         const speed = Math.abs(x + y + z - lastX - lastY - lastZ) / diffTime * 10000;
         if (speed > 2200) {
           setIsStealthUnlocked(false);
+          try {
+            triggerNativePanicKill().catch(() => {});
+          } catch {}
           try { CapApp.exitApp(); } catch {}
         }
         lastX = x; lastY = y; lastZ = z;
@@ -394,6 +433,40 @@ export default function App() {
 
     let appStateSub: any = null;
     let appUrlSub: any = null;
+    let appResumeSub: any = null;
+
+    // Direct global bridge callback for native MainActivity
+    (window as any).onNativeOAuthCallbackReceived = async (url: string) => {
+      try {
+        await Browser.close();
+      } catch {}
+      if (url) {
+        await processOAuthUrl(url);
+      }
+    };
+
+    // Fast check for Supabase session when app resumes or regains focus (e.g. after Google OAuth in APK)
+    const checkSessionOnResume = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          const email = (data.session.user.email || "").trim().toLowerCase();
+          const isOwnerCheck = isAuthorizedOwner(email, data.session.user.id, appConfig);
+          const isPartnerCheck = isAuthorizedPartner(data.session.user, email, appConfig);
+          if (isOwnerCheck || isPartnerCheck) {
+            setUser(data.session.user);
+            setIsOwner(isOwnerCheck);
+            setIsPartner(isPartnerCheck);
+            setLoading(false);
+            setShowIntro(false);
+            setError(null);
+            try { await Browser.close(); } catch {}
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('focus', checkSessionOnResume);
 
     (async () => {
       try {
@@ -404,7 +477,15 @@ export default function App() {
               sessionStorage.removeItem('onlyus_vault_unlocked');
               setIsStealthUnlocked(false);
             }
+          } else {
+            checkSessionOnResume();
           }
+        });
+      } catch {}
+
+      try {
+        appResumeSub = await CapApp.addListener('resume', () => {
+          checkSessionOnResume();
         });
       } catch {}
 
@@ -435,9 +516,16 @@ export default function App() {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', checkSessionOnResume);
+      delete (window as any).onNativeOAuthCallbackReceived;
       try {
         if (appStateSub && typeof appStateSub.remove === 'function') {
           appStateSub.remove();
+        }
+      } catch {}
+      try {
+        if (appResumeSub && typeof appResumeSub.remove === 'function') {
+          appResumeSub.remove();
         }
       } catch {}
       try {
@@ -446,7 +534,7 @@ export default function App() {
         }
       } catch {}
     };
-  }, []);
+  }, [processOAuthUrl, appConfig]);
   const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
     user,
     userProfile,
@@ -2467,6 +2555,31 @@ export default function App() {
         error={`Access Denied: "${unauthorizedEmail}" is not authorized to access OnlyUs. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`} 
         onLogout={handleLogout} 
       />
+    );
+  }
+
+  // If returning from Google OAuth redirect or during initial auth resolution, show smooth sanctuary transition
+  const isOAuthRedirecting = typeof window !== 'undefined' && (
+    (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) ||
+    (window.location.search && (window.location.search.includes('code=') || window.location.search.includes('token=')))
+  );
+
+  if (!user && (isOAuthRedirecting || (loading && !localStorage.getItem('onlyus_partner_session')))) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-[#161224] via-[#100c1b] to-[#0a0712] text-white p-6 select-none font-sans">
+        <div className="relative mb-6">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-rose-500 via-pink-500 to-rose-400 flex items-center justify-center shadow-xl shadow-rose-500/30 animate-pulse">
+            <Heart className="w-10 h-10 text-white fill-white" />
+          </div>
+          <div className="absolute -inset-2 rounded-3xl border border-pink-500/30 animate-ping opacity-40 pointer-events-none" />
+        </div>
+        <h2 className="text-xl font-bold bg-gradient-to-r from-rose-400 via-pink-400 to-rose-300 bg-clip-text text-transparent mb-2 tracking-wide">
+          {isOAuthRedirecting ? "Welcome back, Rahul" : "OnlyUs"}
+        </h2>
+        <p className="text-xs text-rose-200/60 font-medium tracking-wider">
+          {isOAuthRedirecting ? "Opening your private sanctuary..." : "Entering sanctuary..."}
+        </p>
+      </div>
     );
   }
 

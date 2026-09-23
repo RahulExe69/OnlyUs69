@@ -4,6 +4,7 @@ import { Message } from '../types';
 import { supabase } from './supabase';
 
 export interface OnlyUsNotificationPlugin {
+  panicKill(): Promise<void>;
   showChatNotification(options: {
     title: string;
     body: string;
@@ -21,6 +22,20 @@ export interface OnlyUsNotificationPlugin {
 }
 
 export const OnlyUsNativeNotification = registerPlugin<OnlyUsNotificationPlugin>('OnlyUsNotification');
+
+/**
+ * Robust panic exit: completely finishes task, sweeps from recent apps & terminates process
+ */
+export async function triggerNativePanicKill(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await OnlyUsNativeNotification.panicKill();
+      return;
+    } catch (e) {
+      console.warn("panicKill plugin notice, falling back:", e);
+    }
+  }
+}
 
 let isChannelCreated = false;
 let isListenerRegistered = false;

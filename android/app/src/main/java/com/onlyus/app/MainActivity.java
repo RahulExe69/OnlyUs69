@@ -141,8 +141,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
 
                 if (speed > SHAKE_THRESHOLD) {
                     // Panic shake detected: kill activity immediately & clear from Recent Apps
-                    finishAndRemoveTask();
-                    System.exit(0);
+                    panicKillNow();
                 }
 
                 lastX = x;
@@ -150,6 +149,45 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
                 lastZ = z;
             }
         }
+    }
+
+    public void panicKillNow() {
+        runOnUiThread(() -> {
+            try {
+                if (sensorManager != null) {
+                    sensorManager.unregisterListener(this);
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+                if (am != null) {
+                    List<android.app.ActivityManager.AppTask> appTasks = am.getAppTasks();
+                    if (appTasks != null) {
+                        for (android.app.ActivityManager.AppTask task : appTasks) {
+                            try {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                                    task.setExcludeFromRecents(true);
+                                }
+                            } catch (Exception ignored) {}
+                            task.finishAndRemoveTask();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                finishAffinity();
+                finishAndRemoveTask();
+            } catch (Exception ignored) {}
+
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                } catch (Exception ignored) {}
+                System.exit(0);
+            }, 250);
+        });
     }
 
     @Override
@@ -169,8 +207,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         super.onStop();
         // If in notes flavor and the app is stopped (Home button, switched apps, minimized, or screen locked)
         if (getPackageName().contains("notes")) {
-            finishAndRemoveTask();
-            System.exit(0);
+            panicKillNow();
         }
     }
 
@@ -179,8 +216,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         super.onTrimMemory(level);
         // If system is trimming memory or user pressed UI overview/home
         if (getPackageName().contains("notes") && level >= TRIM_MEMORY_UI_HIDDEN) {
-            finishAndRemoveTask();
-            System.exit(0);
+            panicKillNow();
         }
     }
 
@@ -188,6 +224,26 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        forwardOAuthUrlIfPresent(intent);
+    }
+
+    private void forwardOAuthUrlIfPresent(android.content.Intent intent) {
+        if (intent != null && intent.getData() != null) {
+            final String url = intent.getData().toString();
+            if (url.startsWith("com.onlyus.app://") || url.contains("/auth/callback")) {
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    runOnUiThread(() -> {
+                        try {
+                            String escaped = url.replace("\\", "\\\\").replace("'", "\\'");
+                            getBridge().getWebView().evaluateJavascript(
+                                "if (typeof window !== 'undefined' && window.onNativeOAuthCallbackReceived) { window.onNativeOAuthCallbackReceived('" + escaped + "'); }",
+                                null
+                            );
+                        } catch (Exception ignored) {}
+                    });
+                }
+            }
+        }
     }
 
     @Override
@@ -204,6 +260,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
                 android.content.Intent serviceIntent = new android.content.Intent(this, OnlyUsSyncService.class);
                 startService(serviceIntent);
             } catch (Exception ignored) {}
+            forwardOAuthUrlIfPresent(getIntent());
         }
     }
 
