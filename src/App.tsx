@@ -97,10 +97,15 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
+      const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
       const cached = localStorage.getItem('onlyus_cached_profile');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed && parsed.id) return parsed;
+        if (parsed && parsed.id) {
+          if (isPartnerSession && parsed.role === 'owner') return null;
+          if (!isPartnerSession && parsed.role === 'partner') return null;
+          return parsed;
+        }
       }
     } catch (e) {}
     return null;
@@ -108,10 +113,15 @@ export default function App() {
   const [partnerProfile, setPartnerProfile] = useState<UserProfile | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
+      const isPartnerSession = !!localStorage.getItem('onlyus_partner_session');
       const cached = localStorage.getItem('onlyus_cached_partner_profile');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed && parsed.id) return parsed;
+        if (parsed && parsed.id) {
+          if (isPartnerSession && parsed.role === 'partner') return null;
+          if (!isPartnerSession && parsed.role === 'owner') return null;
+          return parsed;
+        }
       }
     } catch (e) {}
     // If partner session is active, pre-populate Rahul's known profile instantly
@@ -138,15 +148,6 @@ export default function App() {
   useEffect(() => { partnerProfileRef.current = partnerProfile; }, [partnerProfile]);
   const [isOwner, setIsOwner] = useState(false);
   const [isPartner, setIsPartner] = useState(false);
-
-  // Immediate detection of OAuth callback in URL to prevent flashing the LoginView
-  const isAuthCallback = typeof window !== 'undefined' && Boolean(
-    window.location.hash.includes('access_token=') ||
-    window.location.search.includes('code=') ||
-    window.location.hash.includes('type=recovery') ||
-    window.location.search.includes('error=')
-  );
-  const [isOAuthProcessing, setIsOAuthProcessing] = useState<boolean>(isAuthCallback);
 
   // Detect if running inside Nusrat's Notes APK (package: com.onlyus.notes or userAgent flavor)
   const [isNotesFlavor, setIsNotesFlavor] = useState<boolean>(() => {
@@ -322,8 +323,6 @@ export default function App() {
     } catch (err) {
       console.error("Error processing OAuth redirect URL:", err);
       return false;
-    } finally {
-      setIsOAuthProcessing(false);
     }
   }, []);
 
@@ -1001,12 +1000,15 @@ export default function App() {
     };
 
     (async () => {
-      // 1. Process any incoming OAuth callback on Web URL immediately (PKCE code or implicit tokens)
-      if (typeof window !== 'undefined') {
-        const href = window.location.href;
-        if (href.includes('code=') || href.includes('access_token=') || href.includes('error=')) {
-          const handled = await processOAuthUrl(href);
-          if (handled) return;
+      // Check for OAuth error parameters in URL if any
+      if (typeof window !== 'undefined' && window.location.search.includes('error=')) {
+        const params = new URLSearchParams(window.location.search);
+        const authErr = params.get('error_description') || params.get('error');
+        if (authErr) {
+          setError(`Login failed: ${decodeURIComponent(authErr)}`);
+          setLoading(false);
+          cleanUrlHash();
+          return;
         }
       }
 
@@ -1136,6 +1138,9 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        // Owner logged in: purge any stale partner artifacts from disk
+        localStorage.removeItem('onlyus_partner_session');
+        localStorage.removeItem('onlyus_partner_passcode');
         const email = (session.user.email || "").trim().toLowerCase();
         
         let currentConfig = appConfig;
@@ -1919,12 +1924,13 @@ export default function App() {
           isPartnerPasscode: true,
           user_metadata: { full_name: 'Nusrat' }
         };
-        localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
-        localStorage.setItem('onlyus_partner_passcode', trimmed);
-        localStorage.setItem('onlyus_cached_server_passcode', validPasscode);
-        setUser(partnerUser);
-        initializeE2EE(partnerUser.id, 'partner', trimmed).catch(e => console.warn('E2EE init on partner login:', e));
-        setUserProfile({
+        // Clear old messages and stale owner cache immediately so no old data ever flashes
+        localStorage.removeItem('cached_msgs');
+        localStorage.removeItem('onlyus_cached_profile');
+        localStorage.removeItem('onlyus_cached_partner_profile');
+        setMessages([]);
+
+        const nusratProfile: UserProfile = {
           id: partnerUser.id,
           uid: partnerUser.id,
           email: partnerUser.email,
@@ -1934,9 +1940,7 @@ export default function App() {
           theme: ((typeof window !== 'undefined' ? (localStorage.getItem('onlyus_chat_theme') || localStorage.getItem('onlyus_partner_theme')) : null) as ThemeName) || '3d-cyber',
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString()
-        });
-        setIsPartner(true);
-        setIsOwner(false);
+        };
 
         // Symmetrical partner profile hydration for Rahul (owner)
         const defaultRahul: UserProfile = {
@@ -1951,18 +1955,19 @@ export default function App() {
           last_seen: new Date().toISOString(),
           last_read_at: new Date().toISOString()
         };
-        let initialRahul = defaultRahul;
-        try {
-          const cachedRahul = localStorage.getItem('onlyus_cached_partner_profile');
-          if (cachedRahul) {
-            const parsed = JSON.parse(cachedRahul);
-            if (parsed && parsed.id) initialRahul = parsed;
-          }
-        } catch {}
-        setPartnerProfile(initialRahul);
-        try {
-          localStorage.setItem('onlyus_cached_partner_profile', JSON.stringify(initialRahul));
-        } catch {}
+
+        localStorage.setItem('onlyus_partner_session', JSON.stringify(partnerUser));
+        localStorage.setItem('onlyus_partner_passcode', trimmed);
+        localStorage.setItem('onlyus_cached_server_passcode', validPasscode);
+        localStorage.setItem('onlyus_cached_profile', JSON.stringify(nusratProfile));
+        localStorage.setItem('onlyus_cached_partner_profile', JSON.stringify(defaultRahul));
+
+        setUser(partnerUser);
+        initializeE2EE(partnerUser.id, 'partner', trimmed).catch(e => console.warn('E2EE init on partner login:', e));
+        setUserProfile(nusratProfile);
+        setIsPartner(true);
+        setIsOwner(false);
+        setPartnerProfile(defaultRahul);
 
         // Update DB last_seen for Nusrat immediately on login
         supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', partnerUser.id).then(undefined, () => {});
@@ -2088,11 +2093,14 @@ export default function App() {
     setAppConfig(null);
     setUserProfile(null);
     setPartnerProfile(null);
+    setMessages([]);
     resetE2EECache();
     
     // 2. Clear Local Cache and Passcode Session
     localStorage.removeItem('onlyus_partner_session');
     localStorage.removeItem('onlyus_partner_passcode');
+    localStorage.removeItem('onlyus_cached_profile');
+    localStorage.removeItem('onlyus_cached_partner_profile');
     localStorage.removeItem('cached_msgs');
     localStorage.removeItem('hidden_msgs');
     localStorage.removeItem('cached_users');
@@ -2386,7 +2394,7 @@ export default function App() {
     const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
       <OnlyUsIntro
-        ready={!loading && !isOAuthProcessing}
+        ready={!loading}
         onFinish={handleFinishIntro}
         themeName={activeIntroTheme}
       />
@@ -2399,19 +2407,6 @@ export default function App() {
         error={`Access Denied: "${unauthorizedEmail}" is not authorized to access OnlyUs. OnlyUs is a private sanctuary strictly restricted to Rahul & Nusrat.`} 
         onLogout={handleLogout} 
       />
-    );
-  }
-
-  if (isOAuthProcessing || (isAuthCallback && !user && !error)) {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
-        <div className="relative flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl border-2 border-[var(--theme-accent)]/30 border-t-[var(--theme-accent)] animate-spin" />
-          <p className="text-sm font-semibold tracking-wider text-[var(--theme-text)]/80 animate-pulse">
-            Connecting securely to OnlyUs...
-          </p>
-        </div>
-      </div>
     );
   }
 

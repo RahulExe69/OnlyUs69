@@ -61,6 +61,17 @@ export function useMessageSync({
   const messagesRef = useRef<Message[]>(messages);
   messagesRef.current = messages;
 
+  // Immediate user switch detection: wipe in-memory messages immediately if user ID changes
+  const activeUserIdRef = useRef<string | null>(user?.id || null);
+  useEffect(() => {
+    if (activeUserIdRef.current !== (user?.id || null)) {
+      activeUserIdRef.current = user?.id || null;
+      setMessages([]);
+      messagesRef.current = [];
+      setMessagesLoading(true);
+    }
+  }, [user?.id]);
+
   const channelRef = useRef<any>(null);
   const isFetchingRef = useRef(false);
   const initialFetchDoneRef = useRef(false);
