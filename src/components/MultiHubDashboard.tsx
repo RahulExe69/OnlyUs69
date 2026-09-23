@@ -25,6 +25,7 @@ import { QuantumAuraBackground } from './QuantumAuraBackground';
 import { ShaderBorderBeam } from './ShaderBorderBeam';
 import { RomanticCardAmbiance } from './RomanticCardAmbiance';
 import { hydrateMessageMedia } from '../lib/dateUtils';
+import { GlowEffect } from './ui/glow-effect';
 
 interface MultiHubDashboardProps {
   userProfile: UserProfile | null;
@@ -336,58 +337,70 @@ export const MultiHubDashboard: React.FC<MultiHubDashboardProps> = ({
           </div>
         </motion.div>
 
-        {/* Media Option: Placed directly under OnlyUs Chat */}
-        <motion.div
-          whileHover={{ scale: 1.012 }}
-          whileTap={{ scale: 0.985 }}
-          onClick={() => {
-            if (onOpenMedia) onOpenMedia();
-          }}
-          className="group cursor-pointer p-4 rounded-3xl bg-[var(--theme-surface)]/90 backdrop-blur-md border border-[var(--theme-border)]/75 hover:border-[var(--theme-accent)]/50 shadow-md transition-all flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--theme-accent)] to-rose-400 flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-              <FolderHeart className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-[var(--theme-text)] leading-tight">
-                  Media
-                </h3>
-                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] text-[10px] font-bold border border-[var(--theme-accent)]/20 shadow-2xs">
-                  <Sparkles className="w-2.5 h-2.5 fill-current" />
-                  <span>{mediaStats.total}</span>
-                </span>
-              </div>
-              <p className="text-[11px] text-[var(--theme-text)]/60 font-medium truncate mt-0.5">
-                Photos, videos, audios & shared links
-              </p>
-              {/* Quick count chips */}
-              <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[10px] text-[var(--theme-text)]/70 font-semibold">
-                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
-                  <ImageIcon className="w-3 h-3 text-[var(--theme-accent)]" />
-                  <span>{mediaStats.photos}</span>
-                </span>
-                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
-                  <Film className="w-3 h-3 text-purple-500" />
-                  <span>{mediaStats.videos}</span>
-                </span>
-                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
-                  <Mic className="w-3 h-3 text-emerald-500" />
-                  <span>{mediaStats.audios}</span>
-                </span>
-                <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
-                  <Link2 className="w-3 h-3 text-blue-500" />
-                  <span>{mediaStats.links}</span>
-                </span>
-              </div>
-            </div>
-          </div>
+        {/* Media Option: Placed directly under OnlyUs Chat with 21st.dev Glow Effect */}
+        <div className="relative group/glow-media">
+          {/* Ambient Glow Effect radiating around the media option card */}
+          <GlowEffect
+            theme={userProfile?.theme}
+            mode="colorShift"
+            blur="medium"
+            duration={5}
+            scale={1.03}
+            className="rounded-3xl opacity-55 group-hover/glow-media:opacity-95 group-hover/glow-media:scale-105 transition-all duration-300"
+          />
 
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--theme-text)]/40 group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shrink-0">
-            <ChevronRight className="w-5 h-5 stroke-[2.2]" />
-          </div>
-        </motion.div>
+          <motion.div
+            whileHover={{ scale: 1.012 }}
+            whileTap={{ scale: 0.985 }}
+            onClick={() => {
+              if (onOpenMedia) onOpenMedia();
+            }}
+            className="relative z-10 group cursor-pointer p-4 rounded-3xl bg-[var(--theme-surface)]/95 backdrop-blur-md border border-[var(--theme-border)]/75 hover:border-[var(--theme-accent)]/50 shadow-md transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--theme-accent)] to-rose-400 flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                <FolderHeart className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-[var(--theme-text)] leading-tight">
+                    Media
+                  </h3>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--theme-accent)]/10 text-[var(--theme-accent)] text-[10px] font-bold border border-[var(--theme-accent)]/20 shadow-2xs">
+                    <Sparkles className="w-2.5 h-2.5 fill-current" />
+                    <span>{mediaStats.total}</span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--theme-text)]/60 font-medium truncate mt-0.5">
+                  Photos, videos, audios & shared links
+                </p>
+                {/* Quick count chips */}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[10px] text-[var(--theme-text)]/70 font-semibold">
+                  <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                    <ImageIcon className="w-3 h-3 text-[var(--theme-accent)]" />
+                    <span>{mediaStats.photos}</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                    <Film className="w-3 h-3 text-purple-500" />
+                    <span>{mediaStats.videos}</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                    <Mic className="w-3 h-3 text-emerald-500" />
+                    <span>{mediaStats.audios}</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-[var(--theme-bg)]/80 border border-[var(--theme-border)]/60 flex items-center gap-1">
+                    <Link2 className="w-3 h-3 text-blue-500" />
+                    <span>{mediaStats.links}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--theme-text)]/40 group-hover:text-[var(--theme-accent)] group-hover:translate-x-0.5 transition-all shrink-0">
+              <ChevronRight className="w-5 h-5 stroke-[2.2]" />
+            </div>
+          </motion.div>
+        </div>
 
         {/* Companion Apps Section - Clean, Elegant & Clutter-Free */}
         <div className="space-y-2.5 pt-1">

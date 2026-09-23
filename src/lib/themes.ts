@@ -341,6 +341,34 @@ export const getThemeDualTone = (themeName?: string | null): ThemeDualTone => {
   return THEME_DUAL_TONES.romantic;
 };
 
+export const THEME_GLOW_PALETTES: Record<string, string[]> = {
+  romantic: ['#FF4F8B', '#C66CFF', '#E45F84', '#FF80AB'],
+  light: ['#38BDF8', '#4263EB', '#60A5FA', '#2563EB'],
+  dark: ['#54C1FF', '#B69CFF', '#818CF8', '#A78BFA'],
+  lavender: ['#C2A7FF', '#8062C7', '#A78BFA', '#DDD6FE'],
+  ocean: ['#00D2D3', '#247C86', '#38BDF8', '#0EA5E9'],
+  sunset: ['#FFA07A', '#CD6C58', '#F59E0B', '#FB923C'],
+  doodle: ['#FF6B6B', '#2878B5', '#FFD93D', '#6BCB77'],
+  noir: ['#FFE082', '#E0B85C', '#F59E0B', '#D97706'],
+  forest: ['#C9E265', '#10B981', '#34D399', '#84CC16'],
+  cyber: ['#FF3CAC', '#73F7FF', '#F43F5E', '#06B6D4'],
+  aurora: ['#8B5CF6', '#26C6A0', '#2EA8D2', '#A78BFA'],
+  anime: ['#00D2D3', '#FF4757', '#FFA502', '#2ED573'],
+  pokemon: ['#FFCB05', '#EE3B3B', '#3B82F6', '#F59E0B'],
+  akatsuki: ['#FF4D4D', '#B91C1C', '#EF4444', '#7F1D1D'],
+  neural: ['#A855F7', '#E63366', '#EC4899', '#9333EA'],
+};
+
+export const getThemeGlowColors = (themeName?: string | null): string[] => {
+  const base = toBaseThemeKey(themeName);
+  if (base in THEME_GLOW_PALETTES) {
+    return THEME_GLOW_PALETTES[base];
+  }
+  const theme = getTheme(themeName);
+  const dual = getThemeDualTone(themeName);
+  return [dual.color2, dual.color1, theme.accent, dual.color2];
+};
+
 export const applyTheme = (themeName: ThemeName) => {
   const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
   const root = document.documentElement;

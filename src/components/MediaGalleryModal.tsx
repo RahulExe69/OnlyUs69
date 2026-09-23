@@ -25,6 +25,7 @@ import { getLocalMedia, downloadAndCacheRemoteMedia } from '../lib/mediaStore';
 import { useOverlayBack } from '../lib/overlayManager';
 import { supabase } from '../lib/supabase';
 import { deleteFromCloudinary, extractAllCloudinaryIds, extractPublicIdFromUrl } from '../lib/cloudinary';
+import { GlowEffect } from './ui/glow-effect';
 
 export interface ExtractedMediaItem {
   id: string;
@@ -2038,69 +2039,121 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       {activeTab !== 'archived' && (
         <nav className="flex-shrink-0 border-t border-[var(--theme-border)]/60 bg-[var(--theme-surface)]/95 backdrop-blur-md px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
           <div className="max-w-md mx-auto grid grid-cols-4 gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleTabChange('photos')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                activeTab === 'photos'
-                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4" />
-              <span className="text-[11px] leading-none">Photos</span>
-              <span className={`text-[10px] font-mono leading-none ${activeTab === 'photos' ? 'text-white/80' : 'opacity-60'}`}>
-                ({photos.length})
-              </span>
-            </button>
+            {/* Photos Option */}
+            <div className="relative flex items-center justify-center">
+              {activeTab === 'photos' && (
+                <GlowEffect
+                  theme={myProfile?.theme}
+                  mode="colorShift"
+                  blur="soft"
+                  duration={4}
+                  scale={1.12}
+                  className="rounded-xl opacity-80 pointer-events-none"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleTabChange('photos')}
+                className={`relative z-10 w-full py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                  activeTab === 'photos'
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span className="text-[11px] leading-none">Photos</span>
+                <span className={`text-[10px] font-mono leading-none ${activeTab === 'photos' ? 'text-white/80' : 'opacity-60'}`}>
+                  ({photos.length})
+                </span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => handleTabChange('videos')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                activeTab === 'videos'
-                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-              }`}
-            >
-              <Film className="w-4 h-4" />
-              <span className="text-[11px] leading-none">Videos</span>
-              <span className={`text-[10px] font-mono leading-none ${activeTab === 'videos' ? 'text-white/80' : 'opacity-60'}`}>
-                ({videos.length})
-              </span>
-            </button>
+            {/* Videos Option */}
+            <div className="relative flex items-center justify-center">
+              {activeTab === 'videos' && (
+                <GlowEffect
+                  theme={myProfile?.theme}
+                  mode="colorShift"
+                  blur="soft"
+                  duration={4}
+                  scale={1.12}
+                  className="rounded-xl opacity-80 pointer-events-none"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleTabChange('videos')}
+                className={`relative z-10 w-full py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                  activeTab === 'videos'
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+                }`}
+              >
+                <Film className="w-4 h-4" />
+                <span className="text-[11px] leading-none">Videos</span>
+                <span className={`text-[10px] font-mono leading-none ${activeTab === 'videos' ? 'text-white/80' : 'opacity-60'}`}>
+                  ({videos.length})
+                </span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => handleTabChange('audio')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                activeTab === 'audio'
-                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-              }`}
-            >
-              <Mic className="w-4 h-4" />
-              <span className="text-[11px] leading-none">Audio</span>
-              <span className={`text-[10px] font-mono leading-none ${activeTab === 'audio' ? 'text-white/80' : 'opacity-60'}`}>
-                ({audios.length})
-              </span>
-            </button>
+            {/* Audio Option */}
+            <div className="relative flex items-center justify-center">
+              {activeTab === 'audio' && (
+                <GlowEffect
+                  theme={myProfile?.theme}
+                  mode="colorShift"
+                  blur="soft"
+                  duration={4}
+                  scale={1.12}
+                  className="rounded-xl opacity-80 pointer-events-none"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleTabChange('audio')}
+                className={`relative z-10 w-full py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                  activeTab === 'audio'
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+                }`}
+              >
+                <Mic className="w-4 h-4" />
+                <span className="text-[11px] leading-none">Audio</span>
+                <span className={`text-[10px] font-mono leading-none ${activeTab === 'audio' ? 'text-white/80' : 'opacity-60'}`}>
+                  ({audios.length})
+                </span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => handleTabChange('links')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                activeTab === 'links'
-                  ? 'bg-[var(--theme-accent)] text-white shadow-xs'
-                  : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
-              }`}
-            >
-              <Link2 className="w-4 h-4" />
-              <span className="text-[11px] leading-none">Links</span>
-              <span className={`text-[10px] font-mono leading-none ${activeTab === 'links' ? 'text-white/80' : 'opacity-60'}`}>
-                ({links.length})
-              </span>
-            </button>
+            {/* Links Option */}
+            <div className="relative flex items-center justify-center">
+              {activeTab === 'links' && (
+                <GlowEffect
+                  theme={myProfile?.theme}
+                  mode="colorShift"
+                  blur="soft"
+                  duration={4}
+                  scale={1.12}
+                  className="rounded-xl opacity-80 pointer-events-none"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleTabChange('links')}
+                className={`relative z-10 w-full py-2 px-1 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                  activeTab === 'links'
+                    ? 'bg-[var(--theme-accent)] text-white shadow-xs'
+                    : 'text-[var(--theme-text)]/65 hover:text-[var(--theme-text)] hover:bg-[var(--theme-bg)]/60'
+                }`}
+              >
+                <Link2 className="w-4 h-4" />
+                <span className="text-[11px] leading-none">Links</span>
+                <span className={`text-[10px] font-mono leading-none ${activeTab === 'links' ? 'text-white/80' : 'opacity-60'}`}>
+                  ({links.length})
+                </span>
+              </button>
+            </div>
           </div>
         </nav>
       )}
