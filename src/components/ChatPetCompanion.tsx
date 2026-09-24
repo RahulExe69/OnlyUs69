@@ -54,7 +54,14 @@ export type CatState =
   | 'purring' 
   | 'alert'
   | 'typing_wait'
-  | 'chasing';
+  | 'chasing'
+  | 'tripping'
+  | 'pouncing'
+  | 'yawning'
+  | 'belly_roll'
+  | 'curious_tilt'
+  | 'zoomies'
+  | 'sneezing';
 
 const PURR_SPEECHES = [
   "Purrr~ ❤️",
@@ -139,6 +146,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const bodyAngleRef = useRef<number>(0);
   const groomPhaseRef = useRef<number>(0);
   const stretchPhaseRef = useRef<number>(0);
+  const actionPhaseRef = useRef<number>(0);
+  const maxStateTimerRef = useRef<number>(60);
+  const petCountRef = useRef<number>(0);
+  const lastPetTimeRef = useRef<number>(0);
 
   // Pointer & Interactive Curiosity
   const pointerPosRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
@@ -479,14 +490,35 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     }
   }, [isTyping, showSpeech, addParticle]);
 
-  // Petting interaction on click/tap: triggers purrs and hearts
+  // Petting interaction on click/tap: triggers purrs, happy belly roll, and hearts
   const handlePet = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
+    const now = Date.now();
+    const isRapidPet = now - lastPetTimeRef.current < 1600;
+    lastPetTimeRef.current = now;
+    petCountRef.current = isRapidPet ? petCountRef.current + 1 : 1;
+
     triggerHaptic(35);
+
+    // Double-tap or petting while already purring triggers an ecstatic belly roll!
+    if (petCountRef.current >= 2 || stateRef.current === 'purring') {
+      stateRef.current = 'belly_roll';
+      stateTimerRef.current = 85;
+      maxStateTimerRef.current = 85;
+      actionPhaseRef.current = 0;
+      squashRef.current = { sx: 1.25, sy: 0.8 };
+      showSpeech('Tummy rubs! Hehe~ 🥰💕', 120, false);
+      addParticle('❤️', 5);
+      addParticle('✨', 3);
+      petCountRef.current = 0;
+      return;
+    }
+
     stateRef.current = 'purring';
     stateTimerRef.current = 100;
+    maxStateTimerRef.current = 100;
     squashRef.current = { sx: 1.3, sy: 0.72 };
 
     const phrases = [
@@ -494,7 +526,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
       'Meow! 🐾',
       'Warm cuddles~ ✨',
       'I love you! 💕',
-      'Soft purrs~ 🐱'
+      'Soft purrs~ 🐱',
+      'Scratch my ears~ 🥰',
     ];
     const phrase = phrases[Math.floor(Math.random() * phrases.length)];
     showSpeech(phrase, 120, false);
@@ -902,6 +935,25 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         } else if (currState === 'grooming') {
           desiredEyeX = 0.3;
           desiredEyeY = 1.2;
+        } else if (currState === 'curious_tilt') {
+          // Curious inquisitive tilt looking up and to the side
+          desiredEyeX = 1.1;
+          desiredEyeY = -1.2;
+        } else if (currState === 'pouncing') {
+          // Dilated hunting gaze locked on target
+          desiredEyeX = 0.9;
+          desiredEyeY = 0.6;
+        } else if (currState === 'tripping') {
+          // Startled downward look at paws
+          desiredEyeX = 0.0;
+          desiredEyeY = 1.4;
+        } else if (currState === 'zoomies') {
+          // Hyper-focused forward gaze
+          desiredEyeX = 1.6;
+          desiredEyeY = 0.0;
+        } else if (currState === 'sneezing') {
+          desiredEyeX = 0.0;
+          desiredEyeY = -0.6;
         } else {
           // IDLE / LOAF / PURRING: Lifelike Saccadic Gaze Controller
           idleGazeTimerRef.current++;
@@ -990,40 +1042,112 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
           const roll = Math.random();
 
-          // 1. Walking along current message platform (~55% chance - cats love to stroll & patrol!)
-          if (roll < 0.55) {
+          // 1. Walking along current message platform (~30% chance - stroll & patrol)
+          if (roll < 0.30) {
             stateRef.current = 'walking';
             stateTimerRef.current = 80 + Math.floor(Math.random() * 80);
+            maxStateTimerRef.current = stateTimerRef.current;
             facingRightRef.current = Math.random() > 0.5;
             return;
           }
 
-          // 2. Cozy bread loaf nap (~15% chance - relaxed feline bread loaf)
-          if (roll < 0.70) {
+          // 2. Playful pounce / bug swat (~10% chance)
+          if (roll < 0.40) {
+            stateRef.current = 'pouncing';
+            stateTimerRef.current = 65;
+            maxStateTimerRef.current = 65;
+            actionPhaseRef.current = 0;
+            addParticle('✨', 1);
+            return;
+          }
+
+          // 3. Curious head tilt with ear twitches (~9% chance)
+          if (roll < 0.49) {
+            stateRef.current = 'curious_tilt';
+            stateTimerRef.current = 60;
+            maxStateTimerRef.current = 60;
+            actionPhaseRef.current = 0;
+            if (Math.random() < 0.35) {
+              showSpeech('Hm? 🐾', 70, false);
+              addParticle('❓', 1);
+            }
+            return;
+          }
+
+          // 4. Cozy bread loaf nap (~10% chance - relaxed feline bread loaf)
+          if (roll < 0.59) {
             stateRef.current = 'loaf';
-            stateTimerRef.current = 140 + Math.floor(Math.random() * 120);
+            stateTimerRef.current = 130 + Math.floor(Math.random() * 100);
+            maxStateTimerRef.current = stateTimerRef.current;
             addParticle('zzz', 1);
             return;
           }
 
-          // 3. Face grooming (~10% chance)
-          if (roll < 0.80) {
+          // 5. Big sweet yawn & arched stretch (~8% chance)
+          if (roll < 0.67) {
+            stateRef.current = 'yawning';
+            stateTimerRef.current = 65;
+            maxStateTimerRef.current = 65;
+            actionPhaseRef.current = 0;
+            if (Math.random() < 0.45) {
+              showSpeech('*yaaaawn*~ 🥱', 80, false);
+              addParticle('💤', 1);
+            }
+            return;
+          }
+
+          // 6. Playful belly roll & air pawing (~7% chance)
+          if (roll < 0.74) {
+            stateRef.current = 'belly_roll';
+            stateTimerRef.current = 80;
+            maxStateTimerRef.current = 80;
+            actionPhaseRef.current = 0;
+            addParticle('❤️', 2);
+            return;
+          }
+
+          // 7. Face grooming (~8% chance)
+          if (roll < 0.82) {
             stateRef.current = 'grooming';
             stateTimerRef.current = 75 + Math.floor(Math.random() * 40);
+            maxStateTimerRef.current = stateTimerRef.current;
             groomPhaseRef.current = 0;
             return;
           }
 
-          // 4. Cat stretch (~8% chance)
+          // 8. Sudden joyful zoomies dash (~6% chance)
           if (roll < 0.88) {
+            stateRef.current = 'zoomies';
+            stateTimerRef.current = 50;
+            maxStateTimerRef.current = 50;
+            actionPhaseRef.current = 0;
+            addParticle('💨', 2);
+            if (Math.random() < 0.4) {
+              showSpeech('Zoom! 💨🐾', 65, false);
+            }
+            return;
+          }
+
+          // 9. Cute cat sneeze (~5% chance)
+          if (roll < 0.93) {
+            stateRef.current = 'sneezing';
+            stateTimerRef.current = 55;
+            maxStateTimerRef.current = 55;
+            actionPhaseRef.current = 0;
+            return;
+          }
+
+          // 10. Cat stretch (~7% chance)
+          if (roll < 0.98) {
             stateRef.current = 'stretching';
             stateTimerRef.current = 65;
+            maxStateTimerRef.current = 65;
             stretchPhaseRef.current = 0;
             squashRef.current = { sx: 1.25, sy: 0.78 };
             return;
           }
 
-          // 5. Deliberate, rare cat hop strictly between adjacent message bubbles (~12% chance with 4s cooldown)
+          // 11. Deliberate, rare cat hop strictly between adjacent message bubbles (~8% chance with 4s cooldown)
           if (otherBubbles.length > 0 && Date.now() - lastHopTimeRef.current > 4000) {
             const allBubbles = scrollPlatforms.filter((p) => p.isBubble);
             const curIdx = allBubbles.findIndex((p) => p.id.replace(/^msg-/, '') === curIdClean);
@@ -1048,6 +1172,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           // Default fallback: continue leisurely sitting and looking around
           stateRef.current = 'idle';
           stateTimerRef.current = 80 + Math.floor(Math.random() * 60);
+          maxStateTimerRef.current = stateTimerRef.current;
         }
       } else if (state === 'walking') {
         tailWaveRef.current += 0.08;
@@ -1068,6 +1193,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
               facingRightRef.current = false;
               stateRef.current = 'peeking';
               stateTimerRef.current = 35;
+              maxStateTimerRef.current = 35;
             }
           } else {
             ratio -= speedRatio;
@@ -1076,14 +1202,36 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
               facingRightRef.current = true;
               stateRef.current = 'peeking';
               stateTimerRef.current = 35;
+              maxStateTimerRef.current = 35;
             }
           }
           platformOffsetRatioRef.current = ratio;
         }
 
+        // Clumsy kitten stumble / trip chance while trotting! (~1.4% per frame after walking a bit)
+        if (stateTimerRef.current < 65 && stateTimerRef.current > 15 && Math.random() < 0.014) {
+          stateRef.current = 'tripping';
+          stateTimerRef.current = 48;
+          maxStateTimerRef.current = 48;
+          actionPhaseRef.current = 0;
+          squashRef.current = { sx: 1.26, sy: 0.74 };
+          addParticle('💨', 2);
+          const tripPhrases = [
+            'Whoa! Clumsy paws~ 🐾',
+            'Oops! Slipped a little! 😹',
+            'I meant to do that! 😼',
+            'Careful, Mochi! 💨',
+            'Tumble! Meow! 🐾',
+          ];
+          showSpeech(tripPhrases[Math.floor(Math.random() * tripPhrases.length)], 85);
+          triggerHaptic(22);
+          return;
+        }
+
         if (stateTimerRef.current <= 0) {
           stateRef.current = 'idle';
           stateTimerRef.current = 45 + Math.floor(Math.random() * 60);
+          maxStateTimerRef.current = stateTimerRef.current;
         }
       } else if (state === 'pre_jump') {
         buttWiggleRef.current += 0.55;
@@ -1219,6 +1367,187 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           stateRef.current = 'idle';
           stateTimerRef.current = 40;
         }
+      } else if (state === 'tripping') {
+        const total = maxStateTimerRef.current || 48;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+
+        // Kinematics: forward stumble slide, low squash, scramble, then pop up!
+        if (u < 0.45) {
+          // Stumble forward
+          let livePlat = getPlatformRect(attachedPlatformIdRef.current);
+          if (livePlat) {
+            const inset = getPlatformInset(livePlat);
+            const walkWidth = Math.max(30, livePlat.width - 2 * inset);
+            const stumbleStep = (facingRightRef.current ? 0.7 : -0.7) / walkWidth;
+            platformOffsetRatioRef.current = Math.max(0.08, Math.min(0.92, platformOffsetRatioRef.current + stumbleStep));
+          }
+          squashRef.current = { sx: 1.25, sy: 0.74 };
+          bodyAngleRef.current = (facingRightRef.current ? 0.28 : -0.28) * Math.sin((u / 0.45) * Math.PI);
+        } else if (u < 0.75) {
+          // Low skid & scramble
+          squashRef.current = { sx: 1.30, sy: 0.70 };
+          bodyAngleRef.current = 0;
+          if (Math.random() < 0.2) addParticle('💨', 1);
+        } else {
+          // Pop up & head shake
+          squashRef.current = { sx: 0.95, sy: 1.12 };
+          bodyAngleRef.current = Math.sin((u - 0.75) * 40) * 0.12;
+        }
+
+        if (stateTimerRef.current <= 0) {
+          bodyAngleRef.current = 0;
+          squashRef.current = { sx: 1.0, sy: 1.0 };
+          stateRef.current = 'idle';
+          stateTimerRef.current = 50 + Math.floor(Math.random() * 30);
+          maxStateTimerRef.current = stateTimerRef.current;
+        }
+      } else if (state === 'pouncing') {
+        const total = maxStateTimerRef.current || 65;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+
+        if (u < 0.35) {
+          // Low hunting crouch & butt wiggle
+          buttWiggleRef.current += 0.45;
+          squashRef.current = { sx: 1.18, sy: 0.82 };
+        } else if (u < 0.65) {
+          // Rapid paw batting at invisible bug
+          squashRef.current = { sx: 1.05, sy: 0.95 };
+        } else {
+          // Mini spring pounce forward & squash
+          squashRef.current = { sx: 1.22, sy: 0.78 };
+          if (u > 0.65 && u < 0.70 && Math.random() < 0.4) addParticle('✨', 1);
+        }
+
+        if (stateTimerRef.current <= 0) {
+          stateRef.current = 'idle';
+          stateTimerRef.current = 45;
+          maxStateTimerRef.current = 45;
+        }
+      } else if (state === 'yawning') {
+        const total = maxStateTimerRef.current || 65;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+
+        if (u < 0.5) {
+          // Inhale and arch upward
+          squashRef.current = { sx: 0.92, sy: 1.18 };
+        } else if (u < 0.75) {
+          // Peak yawn
+          squashRef.current = { sx: 0.95, sy: 1.14 };
+          tailWaveRef.current += 0.08;
+        } else {
+          // Exhale and relax down
+          squashRef.current = { sx: 1.05, sy: 0.95 };
+        }
+
+        if (stateTimerRef.current <= 0) {
+          stateRef.current = Math.random() < 0.35 ? 'loaf' : 'idle';
+          stateTimerRef.current = 60;
+          maxStateTimerRef.current = 60;
+        }
+      } else if (state === 'belly_roll') {
+        const total = maxStateTimerRef.current || 80;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+
+        tailWaveRef.current += 0.12;
+        squashRef.current = {
+          sx: 1.15 + Math.sin(u * 15) * 0.06,
+          sy: 0.85 - Math.sin(u * 15) * 0.06,
+        };
+
+        if (Math.random() < 0.08) {
+          addParticle('❤️', 1);
+        }
+
+        if (stateTimerRef.current <= 0) {
+          stateRef.current = 'idle';
+          stateTimerRef.current = 45;
+          maxStateTimerRef.current = 45;
+        }
+      } else if (state === 'curious_tilt') {
+        const total = maxStateTimerRef.current || 60;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+        tailWaveRef.current += 0.04;
+        squashRef.current = { sx: 0.96, sy: 1.05 };
+
+        if (stateTimerRef.current <= 0) {
+          stateRef.current = 'idle';
+          stateTimerRef.current = 40;
+          maxStateTimerRef.current = 40;
+        }
+      } else if (state === 'zoomies') {
+        const total = maxStateTimerRef.current || 50;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+        walkPhaseRef.current += 0.45; // Rapid sprint cadence!
+        tailWaveRef.current += 0.20;
+
+        let livePlat = getPlatformRect(attachedPlatformIdRef.current);
+        if (livePlat) {
+          const inset = getPlatformInset(livePlat);
+          const walkWidth = Math.max(30, livePlat.width - 2 * inset);
+          const sprintSpeed = (facingRightRef.current ? 1.5 : -1.5) / walkWidth;
+
+          let ratio = platformOffsetRatioRef.current + sprintSpeed;
+          if (ratio >= 0.92) {
+            ratio = 0.92;
+            facingRightRef.current = false;
+            // Cartoon skid stop!
+            squashRef.current = { sx: 1.25, sy: 0.78 };
+            addParticle('💨', 2);
+          } else if (ratio <= 0.08) {
+            ratio = 0.08;
+            facingRightRef.current = true;
+            squashRef.current = { sx: 1.25, sy: 0.78 };
+            addParticle('💨', 2);
+          } else {
+            squashRef.current = { sx: 1.15, sy: 0.88 };
+          }
+          platformOffsetRatioRef.current = ratio;
+        }
+
+        if (Math.random() < 0.2) addParticle('💨', 1);
+
+        if (stateTimerRef.current <= 0) {
+          stateRef.current = 'idle';
+          stateTimerRef.current = 45;
+          maxStateTimerRef.current = 45;
+        }
+      } else if (state === 'sneezing') {
+        const total = maxStateTimerRef.current || 55;
+        const u = Math.max(0, Math.min(1, 1 - stateTimerRef.current / total));
+        actionPhaseRef.current = u;
+
+        if (u < 0.5) {
+          // Windup: head pulls back
+          squashRef.current = { sx: 0.92, sy: 1.15 };
+          bodyAngleRef.current = -0.12;
+        } else if (u < 0.65) {
+          // ACHOO! Snap forward!
+          squashRef.current = { sx: 1.35, sy: 0.68 };
+          bodyAngleRef.current = 0.22;
+          if (u >= 0.5 && u < 0.54) {
+            addParticle('🌸', 3);
+            addParticle('✨', 2);
+            showSpeech('*Achoo!* 🌸', 65, false);
+            triggerHaptic(25);
+          }
+        } else {
+          // Wet fur head shake
+          squashRef.current = { sx: 1.0, sy: 1.0 };
+          bodyAngleRef.current = Math.sin((u - 0.65) * 45) * 0.15;
+        }
+
+        if (stateTimerRef.current <= 0) {
+          bodyAngleRef.current = 0;
+          stateRef.current = 'idle';
+          stateTimerRef.current = 40;
+          maxStateTimerRef.current = 40;
+        }
       }
 
       // Continuous Multi-Perspective Yaw Interpolation:
@@ -1229,6 +1558,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         stateRef.current === 'peeking' ||
         stateRef.current === 'typing_wait' ||
         stateRef.current === 'loaf' ||
+        stateRef.current === 'belly_roll' ||
+        stateRef.current === 'curious_tilt' ||
+        stateRef.current === 'yawning' ||
         (stateRef.current === 'idle' && Math.sin(breathePhaseRef.current * 0.35) > -0.65);
 
       const targetYaw = isLookingAtUser ? 0.0 : 1.0;
@@ -1268,7 +1600,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         eyeOffsetRef.current,
         breathePhaseRef.current,
         settings.is25D || false,
-        yawProgressRef.current
+        yawProgressRef.current,
+        actionPhaseRef.current
       );
 
       ctx.restore();
@@ -1577,7 +1910,8 @@ export function drawCuteKitten2D(
   stretchPhase: number = 0,
   eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
   breathePhase: number = 0,
-  palette: KittenPalette
+  palette: KittenPalette,
+  actionPhase: number = 0
 ) {
   const {
     bodyColor,
@@ -1597,16 +1931,33 @@ export function drawCuteKitten2D(
   // 1. Soft Dynamic Ground Drop Shadow (Oval beneath seated kitten)
   ctx.save();
   ctx.beginPath();
-  const shadowScale = state === 'pre_jump' ? 1.2 : (state === 'loaf' ? 1.1 : (state === 'jumping' ? 0.65 : 1.0));
-  const shadowAlpha = state === 'jumping' ? 0.08 : 0.22;
+  const shadowScale =
+    state === 'pre_jump' || state === 'pouncing'
+      ? 1.2
+      : state === 'loaf'
+      ? 1.1
+      : state === 'belly_roll'
+      ? 1.25
+      : state === 'tripping'
+      ? 1.15
+      : state === 'jumping'
+      ? 0.65
+      : 1.0;
+  const shadowAlpha = state === 'jumping' ? 0.08 : state === 'belly_roll' ? 0.25 : 0.22;
   ctx.ellipse(0, 0.5, 16 * shadowScale, 4.2 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(32, 28, 42, ${shadowAlpha})`;
   ctx.fill();
   ctx.restore();
 
-  // Butt wiggle offset (only active during pre-jump)
-  const buttX = state === 'pre_jump' ? Math.sin(buttWiggle) * 3.2 : 0;
-  const buttY = state === 'pre_jump' ? Math.abs(Math.cos(buttWiggle)) * 1.4 : 0;
+  // Butt wiggle offset (only active during pre-jump or pounce stalk)
+  const buttX =
+    state === 'pre_jump' || (state === 'pouncing' && actionPhase < 0.35)
+      ? Math.sin(buttWiggle) * 3.2
+      : 0;
+  const buttY =
+    state === 'pre_jump' || (state === 'pouncing' && actionPhase < 0.35)
+      ? Math.abs(Math.cos(buttWiggle)) * 1.4
+      : 0;
 
   // 2. SMOOTH CURVED VECTOR TAIL (Sweeping up gracefully from right hip)
   ctx.save();
@@ -1623,6 +1974,45 @@ export function drawCuteKitten2D(
       tailBaseX + 4, tailBaseY + 5,
       -4, tailBaseY + 7 + breathe,
       -10, tailBaseY + 2 + breathe
+    );
+  } else if (state === 'belly_roll') {
+    // Playful ground swishing tail
+    const swish = Math.sin(actionPhase * 22) * 5.0;
+    ctx.bezierCurveTo(
+      tailBaseX + 5, tailBaseY + 4,
+      tailBaseX + 13 + swish, tailBaseY + 6,
+      tailBaseX + 19 + swish, tailBaseY + 3
+    );
+  } else if (state === 'yawning') {
+    // High arched question-mark tail with trembling tip
+    const trem = Math.sin(Date.now() * 0.02) * 1.6;
+    ctx.bezierCurveTo(
+      tailBaseX + 4, tailBaseY - 8,
+      tailBaseX + 16, tailBaseY - 24,
+      tailBaseX + 6 + trem, tailBaseY - 30
+    );
+  } else if (state === 'zoomies') {
+    // Aerodynamic straight trailing tail with hooked tip
+    ctx.bezierCurveTo(
+      tailBaseX - 8, tailBaseY - 4,
+      tailBaseX - 18, tailBaseY - 6,
+      tailBaseX - 24, tailBaseY - 12
+    );
+  } else if (state === 'tripping') {
+    // Startled flailing tail during stumble
+    const flail = Math.sin(actionPhase * 35) * 4.5;
+    ctx.bezierCurveTo(
+      tailBaseX + 2, tailBaseY - 10,
+      tailBaseX - 5 + flail, tailBaseY - 20,
+      tailBaseX + flail * 1.5, tailBaseY - 28
+    );
+  } else if (state === 'pouncing') {
+    // Low twitching hunting tail
+    const twitch = Math.sin(buttWiggle * 2) * 3.5;
+    ctx.bezierCurveTo(
+      tailBaseX + 6, tailBaseY - 2,
+      tailBaseX + 14, tailBaseY - 5 + twitch,
+      tailBaseX + 20, tailBaseY - 10 + twitch * 1.2
     );
   } else if (state === 'clinging') {
     // Dynamic counter-balance tail
@@ -1656,10 +2046,44 @@ export function drawCuteKitten2D(
   ctx.restore();
 
   // 3. SEATED HAUNCHES & REAR PAWS (Iconic chubby sitting pose)
-  const stepOffset1 = state === 'walking' ? Math.sin(walkPhase) * 3.0 : 0;
-  const stepOffset2 = state === 'walking' ? -Math.sin(walkPhase) * 3.0 : 0;
+  const isWalkingOrZooming = state === 'walking' || state === 'zoomies';
+  const strideScale = state === 'zoomies' ? 4.2 : 3.0;
+  const stepOffset1 = isWalkingOrZooming ? Math.sin(walkPhase) * strideScale : 0;
+  const stepOffset2 = isWalkingOrZooming ? -Math.sin(walkPhase) * strideScale : 0;
 
-  if (state !== 'loaf') {
+  if (state === 'belly_roll') {
+    ctx.save();
+    // Playful upside down rear paws waving in the air with soft pink pads!
+    const kick1 = Math.sin(actionPhase * 16) * 2.5;
+    const kick2 = -Math.sin(actionPhase * 16) * 2.5;
+
+    ctx.beginPath();
+    ctx.ellipse(-9.0, -10.0 + kick1, 4.0, 3.2, -0.3, 0, Math.PI * 2);
+    ctx.fillStyle = pawColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(-9.0, -10.0 + kick1, 1.6, 1.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = padColor;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(9.0, -10.0 + kick2, 4.0, 3.2, 0.3, 0, Math.PI * 2);
+    ctx.fillStyle = pawColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(9.0, -10.0 + kick2, 1.6, 1.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = padColor;
+    ctx.fill();
+    ctx.restore();
+  } else if (state !== 'loaf') {
     ctx.save();
 
     // Left Haunch Bulge (Sitting hip)
@@ -1699,7 +2123,7 @@ export function drawCuteKitten2D(
     ctx.stroke();
 
     // Pink toe bean peek when walking
-    if (state === 'walking' && Math.abs(stepOffset1) > 1.6) {
+    if (isWalkingOrZooming && Math.abs(stepOffset1) > 1.6) {
       ctx.beginPath();
       ctx.arc(-9.5 + stepOffset1, -1.8, 1.2, 0, Math.PI * 2);
       ctx.fillStyle = padColor;
@@ -1710,10 +2134,28 @@ export function drawCuteKitten2D(
 
   // 4. ROUND CHUBBY PEAR-SHAPED BODY
   ctx.save();
-  const isRelaxed = state === 'idle' || state === 'loaf' || state === 'purring' || state === 'peeking';
+  const isRelaxed =
+    state === 'idle' ||
+    state === 'loaf' ||
+    state === 'purring' ||
+    state === 'peeking' ||
+    state === 'belly_roll';
   const breath = isRelaxed ? Math.sin(breathePhase) : 0;
   const purrRumble = state === 'purring' ? Math.sin(breathePhase * 5) * 0.35 : 0;
-  const bodyY = -12 + (state === 'pre_jump' ? 2.2 : 0) - breath * 0.35 + purrRumble;
+
+  let bodyY =
+    -12 +
+    (state === 'pre_jump' || state === 'pouncing' ? 2.2 : 0) -
+    breath * 0.35 +
+    purrRumble;
+
+  if (state === 'yawning') {
+    bodyY -= Math.sin(actionPhase * Math.PI) * 3.2;
+  } else if (state === 'tripping') {
+    bodyY += actionPhase < 0.6 ? 2.2 : 0;
+  } else if (state === 'belly_roll') {
+    bodyY = -8.0;
+  }
 
   // Chubby Torso
   const bodyRadiusX = 13.2 - breath * 0.2;
@@ -1760,19 +2202,57 @@ export function drawCuteKitten2D(
   ctx.restore();
 
   // 5. ROUND CHIBI HEAD & FACIAL VECTOR FEATURES
-  const headBob = state === 'walking' ? Math.sin(walkPhase * 2) * 0.6 : 0;
-  const headY = -22.5 + (state === 'pre_jump' ? 3.0 : 0) + headBob - breath * 0.45 + purrRumble * 0.5;
+  const headBob = isWalkingOrZooming ? Math.sin(walkPhase * 2) * 0.6 : 0;
+  let headY =
+    -22.5 +
+    (state === 'pre_jump' || state === 'pouncing' ? 3.0 : 0) +
+    headBob -
+    breath * 0.45 +
+    purrRumble * 0.5;
+
+  let headAngle = 0;
+  if (state === 'curious_tilt') {
+    headAngle = Math.sin(actionPhase * Math.PI * 2) * 0.38;
+    headY += Math.abs(headAngle) * 1.5;
+  } else if (state === 'tripping') {
+    if (actionPhase < 0.6) {
+      headAngle = 0.26;
+      headY += 3.5;
+    } else {
+      headAngle = Math.sin((actionPhase - 0.6) * 35) * 0.18;
+    }
+  } else if (state === 'sneezing') {
+    if (actionPhase < 0.5) {
+      headY -= 2.2;
+      headAngle = -0.15;
+    } else if (actionPhase < 0.65) {
+      headY += 4.5;
+      headAngle = 0.32;
+    } else {
+      headAngle = Math.sin((actionPhase - 0.65) * 45) * 0.22;
+    }
+  } else if (state === 'yawning') {
+    headY -= Math.sin(actionPhase * Math.PI) * 2.0;
+  } else if (state === 'belly_roll') {
+    headY = -18.5;
+    headAngle = Math.sin(actionPhase * 12) * 0.12;
+  }
+
   ctx.save();
   ctx.translate(0, headY);
+  if (headAngle !== 0) {
+    ctx.rotate(headAngle);
+  }
 
   // EARS: Rounded triangular cartoon ears with pastel pink inner patches
   const twitchL = (earTwitchTimer % 180 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
   const twitchR = (earTwitchTimer % 240 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
+  const earZoomRot = state === 'zoomies' ? -0.35 : 0;
 
   // Left Ear
   ctx.save();
   ctx.translate(-8.2, -7.5);
-  ctx.rotate(-0.14 + twitchL);
+  ctx.rotate(-0.14 + twitchL + earZoomRot);
   ctx.beginPath();
   ctx.moveTo(-1, 5);
   ctx.quadraticCurveTo(-6.8, 1, -6.8, -10.5);
@@ -1798,7 +2278,7 @@ export function drawCuteKitten2D(
   // Right Ear
   ctx.save();
   ctx.translate(8.2, -7.5);
-  ctx.rotate(0.14 + twitchR);
+  ctx.rotate(0.14 + twitchR - earZoomRot);
   ctx.beginPath();
   ctx.moveTo(1, 5);
   ctx.quadraticCurveTo(6.8, 1, 6.8, -10.5);
@@ -1904,13 +2384,50 @@ export function drawCuteKitten2D(
   const lookShiftX = Math.max(-1.4, Math.min(1.4, eyeOffset.dx));
   const lookShiftY = Math.max(-1.4, Math.min(1.4, eyeOffset.dy));
 
-  if (isBlinking || state === 'loaf' || state === 'purring') {
+  if (isBlinking || state === 'loaf' || state === 'purring' || state === 'belly_roll') {
     // Sweet happy smiling closed eye arcs (⌒   ⌒)
     ctx.beginPath();
     ctx.arc(-5.6, eyeY + 0.6, 3.4, 0.15, Math.PI - 0.15, false);
     ctx.arc(5.6, eyeY + 0.6, 3.4, 0.15, Math.PI - 0.15, false);
     ctx.strokeStyle = outlineColor;
     ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  } else if (state === 'yawning') {
+    // Adorable squinting anime eyes (>   <)
+    ctx.beginPath();
+    ctx.moveTo(-7.4, eyeY - 1.2);
+    ctx.lineTo(-4.0, eyeY + 0.4);
+    ctx.lineTo(-7.4, eyeY + 2.0);
+    ctx.moveTo(7.4, eyeY - 1.2);
+    ctx.lineTo(4.0, eyeY + 0.4);
+    ctx.lineTo(7.4, eyeY + 2.0);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  } else if (state === 'tripping' && actionPhase < 0.65) {
+    // Startled wide eyes with dilated pupils!
+    ctx.beginPath();
+    ctx.ellipse(-5.6, eyeY, 4.4, 4.6, 0, 0, Math.PI * 2);
+    ctx.ellipse(5.6, eyeY, 4.4, 4.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeColor;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(-5.0, eyeY - 1.2, 1.8, 1.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(6.2, eyeY - 1.2, 1.8, 1.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+  } else if (state === 'sneezing' && actionPhase < 0.5) {
+    // Suspenseful squinting slit eyes (-  -)
+    ctx.beginPath();
+    ctx.moveTo(-8.0, eyeY);
+    ctx.lineTo(-3.4, eyeY);
+    ctx.moveTo(3.4, eyeY);
+    ctx.lineTo(8.0, eyeY);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 2.0;
     ctx.lineCap = 'round';
     ctx.stroke();
   } else {
@@ -1971,40 +2488,76 @@ export function drawCuteKitten2D(
   const mouthStemX = 0;
   const mouthSplitY = 4.1; // Cute ~0.9px gap below nose tip (3.2)
 
-  // Subtle delicate center notch
-  ctx.beginPath();
-  ctx.moveTo(mouthStemX, 3.85);
-  ctx.lineTo(mouthStemX, mouthSplitY);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  // Left curved lip arc (smaller, natural gentle curve)
-  ctx.beginPath();
-  ctx.ellipse(-1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  // Right curved lip arc (smaller, natural gentle curve)
-  ctx.beginPath();
-  ctx.ellipse(1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  // Sweet purr tongue peek (matching delicate mouth scale)
-  if (state === 'purring') {
+  if (state === 'yawning') {
+    // Wide open yawning mouth with pink tongue!
+    const yawnOpen = Math.sin(actionPhase * Math.PI) * 4.0;
     ctx.beginPath();
-    ctx.ellipse(mouthStemX, 4.75, 1.05, 0.8, 0, 0.1, Math.PI - 0.1, false);
+    ctx.ellipse(mouthStemX, mouthSplitY + 1.2, 2.8, 1.8 + yawnOpen * 0.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FB7185';
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    // Little curled pink tongue
+    ctx.beginPath();
+    ctx.arc(mouthStemX, mouthSplitY + 2.0 + yawnOpen * 0.4, 1.3, 0, Math.PI);
+    ctx.fillStyle = '#F43F5E';
+    ctx.fill();
+  } else if (state === 'tripping' && actionPhase < 0.65) {
+    // Open startled 'o' mouth
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX, mouthSplitY + 0.8, 1.8, 2.2, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#FB7185';
     ctx.fill();
     ctx.strokeStyle = outlineColor;
-    ctx.lineWidth = 0.95;
+    ctx.lineWidth = 1.1;
     ctx.stroke();
+  } else if (state === 'sneezing' && actionPhase >= 0.5 && actionPhase < 0.65) {
+    // Open sneeze mouth
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX, mouthSplitY + 1.2, 2.4, 3.0, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FB7185';
+    ctx.fill();
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  } else {
+    // Subtle delicate center notch
+    ctx.beginPath();
+    ctx.moveTo(mouthStemX, 3.85);
+    ctx.lineTo(mouthStemX, mouthSplitY);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Left curved lip arc (smaller, natural gentle curve)
+    ctx.beginPath();
+    ctx.ellipse(-1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Right curved lip arc (smaller, natural gentle curve)
+    ctx.beginPath();
+    ctx.ellipse(1.2, 4.15, 1.2, 0.85, 0, 0.1, Math.PI - 0.1, false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Sweet purr tongue peek (matching delicate mouth scale)
+    if (state === 'purring') {
+      ctx.beginPath();
+      ctx.ellipse(mouthStemX, 4.75, 1.05, 0.8, 0, 0.1, Math.PI - 0.1, false);
+      ctx.fillStyle = '#FB7185';
+      ctx.fill();
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.95;
+      ctx.stroke();
+    }
   }
 
   // =========================================================
@@ -2027,7 +2580,91 @@ export function drawCuteKitten2D(
 
   // 6. FRONT PAWS (Two sweet vertical mittens with toe notches resting centered in front of chest)
   ctx.save();
-  if (state === 'grooming') {
+  if (state === 'belly_roll') {
+    // Front paws reaching playfully up into the air waving with soft pink pads!
+    const pawPlay1 = Math.sin(actionPhase * 18 + 1) * 2.2;
+    const pawPlay2 = -Math.sin(actionPhase * 18 + 1) * 2.2;
+
+    // Left front paw waving up
+    ctx.beginPath();
+    ctx.ellipse(-5.2, -14.0 + pawPlay1, 3.4, 3.8, -0.2, 0, Math.PI * 2);
+    ctx.fillStyle = pawColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(-5.2, -14.0 + pawPlay1, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = padColor;
+    ctx.fill();
+
+    // Right front paw waving up
+    ctx.beginPath();
+    ctx.ellipse(5.2, -14.0 + pawPlay2, 3.4, 3.8, 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = pawColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(5.2, -14.0 + pawPlay2, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = padColor;
+    ctx.fill();
+  } else if (state === 'pouncing') {
+    if (actionPhase < 0.35) {
+      ctx.beginPath();
+      ctx.ellipse(-4.2, -1.5, 3.5, 3.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(4.2, -1.5, 3.5, 3.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+    } else if (actionPhase < 0.65) {
+      const batY = Math.sin(actionPhase * 25) * 5.0;
+      ctx.beginPath();
+      ctx.ellipse(-4.2, -1.8, 3.5, 3.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(5.5, -9.0 + batY, 3.6, 3.8, 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(5.5, -9.0 + batY, 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = padColor;
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(-2.8, -1.0, 3.8, 3.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(2.8, -1.0, 3.8, 3.4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+    }
+  } else if (state === 'tripping') {
+    const scr1 = Math.sin(actionPhase * 30) * 2.5;
+    const scr2 = -Math.sin(actionPhase * 30) * 2.5;
+    ctx.beginPath();
+    ctx.ellipse(-6.0 + scr1, 0.5, 4.2, 2.5, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(6.0 + scr2, 0.5, 4.2, 2.5, -0.2, 0, Math.PI * 2);
+    ctx.fillStyle = pawColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+  } else if (state === 'grooming') {
     // Face wash paw animation
     const washAngle = Math.sin(groomPhase) * 0.6;
     ctx.save();
@@ -2135,7 +2772,8 @@ export function drawCuteKitten25D(
   eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
   breathePhase: number = 0,
   palette: KittenPalette,
-  yawProgress: number = 0
+  yawProgress: number = 0,
+  actionPhase: number = 0
 ) {
   const {
     bodyColor,
@@ -2158,37 +2796,65 @@ export function drawCuteKitten25D(
   // 1. Soft Dynamic Ground Drop Shadow (Interpolates seamlessly with 2D)
   ctx.save();
   ctx.beginPath();
-  const shadowScale = state === 'pre_jump' ? lerp(1.2, 1.25, t) : (state === 'loaf' ? lerp(1.1, 1.15, t) : (state === 'jumping' ? lerp(0.65, 0.55, t) : 1.0));
-  const shadowAlpha = state === 'jumping' ? 0.08 : lerp(0.22, 0.20, t);
-  const shadowOffsetX = lerp(0, (state === 'walking' ? Math.sin(walkPhase) * 0.6 : 0) - 0.5, t);
+  const shadowScale =
+    state === 'pre_jump' || state === 'pouncing'
+      ? lerp(1.2, 1.25, t)
+      : state === 'loaf'
+      ? lerp(1.1, 1.15, t)
+      : state === 'belly_roll'
+      ? lerp(1.25, 1.30, t)
+      : state === 'tripping'
+      ? lerp(1.15, 1.20, t)
+      : state === 'jumping'
+      ? lerp(0.65, 0.55, t)
+      : 1.0;
+  const shadowAlpha =
+    state === 'jumping'
+      ? 0.08
+      : state === 'belly_roll'
+      ? 0.25
+      : lerp(0.22, 0.20, t);
+  const shadowOffsetX = lerp(0, (state === 'walking' || state === 'zoomies' ? Math.sin(walkPhase) * 0.6 : 0) - 0.5, t);
   const shadowWidth = lerp(16.0, 17.0, t) * shadowScale;
   ctx.ellipse(shadowOffsetX, 0.5, shadowWidth, 4.2 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fillStyle = `rgba(30, 24, 40, ${shadowAlpha})`;
   ctx.fill();
   ctx.restore();
 
-  // Butt wiggle offset (during pre_jump crouch)
-  const buttX = state === 'pre_jump' ? Math.sin(buttWiggle) * 3.2 : 0;
-  const buttY = state === 'pre_jump' ? Math.abs(Math.cos(buttWiggle)) * 1.4 : 0;
+  // Butt wiggle offset (during pre_jump crouch or pouncing stalk)
+  const buttX =
+    state === 'pre_jump' || (state === 'pouncing' && actionPhase < 0.35)
+      ? Math.sin(buttWiggle) * 3.2
+      : 0;
+  const buttY =
+    state === 'pre_jump' || (state === 'pouncing' && actionPhase < 0.35)
+      ? Math.abs(Math.cos(buttWiggle)) * 1.4
+      : 0;
 
   // Rhythmic kinematics
-  const isRelaxed = state === 'idle' || state === 'loaf' || state === 'purring' || state === 'peeking';
+  const isRelaxed =
+    state === 'idle' ||
+    state === 'loaf' ||
+    state === 'purring' ||
+    state === 'peeking' ||
+    state === 'belly_roll';
+  const isWalkingOrZooming = state === 'walking' || state === 'zoomies';
   const breath = isRelaxed ? Math.sin(breathePhase) : 0;
   const purrRumble = state === 'purring' ? Math.sin(breathePhase * 5) * 0.35 : 0;
 
   // Natural trot bounce & undulating feline spine / scapula kinematics
-  const walkBob = state === 'walking' ? -Math.cos(walkPhase * 2) * 0.95 : 0;
+  const walkBob = isWalkingOrZooming ? -Math.cos(walkPhase * 2) * (state === 'zoomies' ? 1.4 : 0.95) : 0;
   // Feline scapular / pelvic counter-undulation
-  const shoulderBob = state === 'walking' ? Math.sin(walkPhase) * 0.75 : 0;
-  const pelvisBob = state === 'walking' ? -Math.sin(walkPhase + 0.15) * 0.65 : 0;
-  const walkPitch = state === 'walking' ? (shoulderBob - pelvisBob) * 0.038 : 0;
+  const shoulderBob = isWalkingOrZooming ? Math.sin(walkPhase) * 0.75 : 0;
+  const pelvisBob = isWalkingOrZooming ? -Math.sin(walkPhase + 0.15) * 0.65 : 0;
+  const walkPitch = isWalkingOrZooming ? (shoulderBob - pelvisBob) * 0.038 : 0;
 
   // -------------------------------------------------------------
   // 🐾 SKELETAL GAIT KINEMATICS & FORWARD KINEMATICS (FK)
   // Articulated 2-bone joint bending, knuckle peel, and paw compression
   // -------------------------------------------------------------
-  const stride = 3.6;
-  const maxLift = 2.8;
+  const stride = state === 'zoomies' ? 5.0 : 3.6;
+  const maxLift = state === 'zoomies' ? 3.4 : 2.8;
 
   interface LegKinematics {
     stepX: number;
@@ -2202,7 +2868,7 @@ export function drawCuteKitten25D(
   }
 
   const calcLimbKinematics = (phaseOffset: number, isFrontLeg: boolean): LegKinematics => {
-    if (state !== 'walking') {
+    if (!isWalkingOrZooming) {
       return {
         stepX: 0,
         liftY: 0,
@@ -2313,7 +2979,7 @@ export function drawCuteKitten25D(
   if (state !== 'loaf') {
     ctx.save();
 
-    if (state === 'walking') {
+    if (isWalkingOrZooming) {
       // --- FAR HIND LEG & PAW (Continuous flowing limb during trot) ---
       const fHindPawX = -8.5 + farHindStep;
       const fHindPawY = -1.6 - farHindLift;
@@ -2557,7 +3223,14 @@ export function drawCuteKitten25D(
   // -------------------------------------------------------------
   ctx.save();
   const bodyX = buttX * 0.3;
-  const bodyY = lerp(-12.0, -12.2, t) + (state === 'pre_jump' ? 2.2 : 0) + walkBob * t - breath * 0.35 + purrRumble;
+  const bodyY =
+    lerp(-12.0, -12.2, t) +
+    (state === 'pre_jump' || (state === 'pouncing' && actionPhase < 0.35) ? 2.2 : 0) +
+    (state === 'belly_roll' ? 2.8 : 0) +
+    (state === 'tripping' && actionPhase < 0.6 ? 2.5 : 0) +
+    walkBob * t -
+    breath * 0.35 +
+    purrRumble;
 
   ctx.translate(bodyX, bodyY);
   ctx.rotate(walkPitch * t);
@@ -2632,10 +3305,42 @@ export function drawCuteKitten25D(
   if (state !== 'loaf') {
     ctx.save();
 
-    // --- NEAR REAR HAUNCH (Seamless Thigh Fold) ---
+    if (state === 'belly_roll') {
+      ctx.save();
+      const kick1 = Math.sin(actionPhase * 16) * 2.5;
+      const kick2 = -Math.sin(actionPhase * 16) * 2.5;
+
+      ctx.beginPath();
+      ctx.ellipse(-9.0 + buttX * 0.2, -10.0 + kick1, 4.0, 3.2, -0.3, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(-9.0 + buttX * 0.2, -10.0 + kick1, 1.6, 1.8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = padColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.ellipse(9.0 + buttX * 0.2, -10.0 + kick2, 4.0, 3.2, 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = pawColor;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = outlineColor;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(9.0 + buttX * 0.2, -10.0 + kick2, 1.6, 1.8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = padColor;
+      ctx.fill();
+      ctx.restore();
+    } else {
+      // --- NEAR REAR HAUNCH (Seamless Thigh Fold) ---
     const haunchY = bodyY + 2.8 + pelvisBob * 0.4;
     ctx.save();
-    if (state === 'walking') {
+    if (isWalkingOrZooming) {
       // Gentle open crease curve suggesting where the chubby thigh naturally rests during trot
       ctx.beginPath();
       ctx.arc(-5.2 + buttX * 0.3, haunchY + 0.6, 3.8, -Math.PI * 0.42, Math.PI * 0.12);
@@ -2655,7 +3360,7 @@ export function drawCuteKitten25D(
     ctx.restore();
 
     // --- NEAR REAR LEG & PAW (Active during walking trot) ---
-    if (state === 'walking') {
+    if (isWalkingOrZooming) {
       const nHindPawX = -6.0 + nearHindStep + buttX * 0.3;
       const nHindPawY = -1.5 - nearHindLift;
       const kneeX = -6.0 + nearHindStep * 0.5 + nearHindGait.kneeFlexX;
@@ -2702,6 +3407,7 @@ export function drawCuteKitten25D(
       }
       ctx.restore();
     }
+    }
 
     // --- NEAR FRONT LEG & PAW ---
     if (state === 'grooming') {
@@ -2723,7 +3429,7 @@ export function drawCuteKitten25D(
       ctx.fillStyle = padColor;
       ctx.fill();
       ctx.restore();
-    } else if (state === 'walking') {
+    } else if (isWalkingOrZooming) {
       // Organic feline foreground arm & paw
       const nFrontPawX = lerp(3.8, 5.4, t) + nearFrontStep + buttX * 0.3;
       const nFrontPawY = -1.5 - nearFrontLift;
@@ -2787,8 +3493,9 @@ export function drawCuteKitten25D(
       // EXACT 2D SYMMETRY AT t=0: Both paws in front of chest, matching 2D coordinates & strokes!
 
       // --- LEFT / FAR FRONT PAW ---
-      const pawLFX = lerp(-3.6, 1.8, t) + buttX * 0.3;
-      const pawLFY = -2.0;
+      const isBellyRoll = state === 'belly_roll';
+      const pawLFX = isBellyRoll ? -4.5 + Math.sin(actionPhase * 12) * 1.5 : (lerp(-3.6, 1.8, t) + buttX * 0.3);
+      const pawLFY = isBellyRoll ? -4.5 : -2.0;
       const pawLFRx = lerp(3.5, 3.2, t);
       const pawLFRy = lerp(3.8, 3.3, t);
 
@@ -2798,7 +3505,7 @@ export function drawCuteKitten25D(
       ctx.ellipse(0, 0, pawLFRx, pawLFRy, 0, 0, Math.PI * 2);
       ctx.fillStyle = pawColor;
       ctx.fill();
-      if (t > 0.08) {
+      if (t > 0.08 && !isBellyRoll) {
         ctx.save();
         ctx.globalAlpha = t * 0.35;
         ctx.fillStyle = farShadeColor;
@@ -2809,20 +3516,27 @@ export function drawCuteKitten25D(
       ctx.strokeStyle = outlineColor;
       ctx.stroke();
 
-      // Left front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
-      ctx.beginPath();
-      ctx.moveTo(-1.0, 1.4);
-      ctx.lineTo(-1.0, 3.0);
-      ctx.moveTo(1.0, 1.4);
-      ctx.lineTo(1.0, 3.0);
-      ctx.strokeStyle = outlineColor;
-      ctx.lineWidth = 1.0;
-      ctx.stroke();
+      if (isBellyRoll) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 1.5, 1.6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = padColor;
+        ctx.fill();
+      } else {
+        // Left front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
+        ctx.beginPath();
+        ctx.moveTo(-1.0, 1.4);
+        ctx.lineTo(-1.0, 3.0);
+        ctx.moveTo(1.0, 1.4);
+        ctx.lineTo(1.0, 3.0);
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
       ctx.restore();
 
       // --- RIGHT / NEAR FRONT PAW ---
-      const nPawX = lerp(3.6, 5.8, t) + buttX * 0.3;
-      const nPawY = -2.0;
+      const nPawX = isBellyRoll ? 4.5 - Math.sin(actionPhase * 12) * 1.5 : (lerp(3.6, 5.8, t) + buttX * 0.3);
+      const nPawY = isBellyRoll ? -4.5 : -2.0;
       const nPawRx = lerp(3.5, 3.6, t);
       const nPawRy = lerp(3.8, 3.4, t);
 
@@ -2836,15 +3550,22 @@ export function drawCuteKitten25D(
       ctx.strokeStyle = outlineColor;
       ctx.stroke();
 
-      // Right front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
-      ctx.beginPath();
-      ctx.moveTo(-1.0, 1.4);
-      ctx.lineTo(-1.0, 3.0);
-      ctx.moveTo(1.0, 1.4);
-      ctx.lineTo(1.0, 3.0);
-      ctx.strokeStyle = outlineColor;
-      ctx.lineWidth = 1.0;
-      ctx.stroke();
+      if (isBellyRoll) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 1.5, 1.6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = padColor;
+        ctx.fill();
+      } else {
+        // Right front toe notches (exact match with 2D: X at -1.0 and +1.0, Y from 1.4 to 3.0 relative to paw center)
+        ctx.beginPath();
+        ctx.moveTo(-1.0, 1.4);
+        ctx.lineTo(-1.0, 3.0);
+        ctx.moveTo(1.0, 1.4);
+        ctx.lineTo(1.0, 3.0);
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -2859,12 +3580,43 @@ export function drawCuteKitten25D(
   // foreground features remain large, open, luminous, and sparkling.
   // When t = 0, perfectly matches 2D Mochi for seamless transition without morphing!
   // -------------------------------------------------------------
-  const headBob = state === 'walking' ? Math.sin(walkPhase * 2) * 0.45 * t : 0;
+  const headBob = isWalkingOrZooming ? Math.sin(walkPhase * 2) * 0.45 * t : 0;
   const headX = lerp(0, 2.4, t);
-  const headY = -22.5 + (state === 'pre_jump' ? 3.0 : 0) + headBob - breath * 0.45 + purrRumble * 0.5;
+  let headY = -22.5 + (state === 'pre_jump' || state === 'pouncing' ? 3.0 : 0) + headBob - breath * 0.45 + purrRumble * 0.5;
+
+  let headAngle = 0;
+  if (state === 'curious_tilt') {
+    headAngle = Math.sin(actionPhase * Math.PI * 2) * 0.38;
+    headY += Math.abs(headAngle) * 1.5;
+  } else if (state === 'tripping') {
+    if (actionPhase < 0.6) {
+      headAngle = 0.26;
+      headY += 3.5;
+    } else {
+      headAngle = Math.sin((actionPhase - 0.6) * 35) * 0.18;
+    }
+  } else if (state === 'sneezing') {
+    if (actionPhase < 0.5) {
+      headY -= 2.2;
+      headAngle = -0.15;
+    } else if (actionPhase < 0.65) {
+      headY += 4.5;
+      headAngle = 0.32;
+    } else {
+      headAngle = Math.sin((actionPhase - 0.65) * 45) * 0.22;
+    }
+  } else if (state === 'yawning') {
+    headY -= Math.sin(actionPhase * Math.PI) * 2.0;
+  } else if (state === 'belly_roll') {
+    headY = -18.5;
+    headAngle = Math.sin(actionPhase * 12) * 0.12;
+  }
 
   ctx.save();
   ctx.translate(headX, headY);
+  if (headAngle !== 0) {
+    ctx.rotate(headAngle);
+  }
 
   const twitchL = (earTwitchTimer % 180 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
   const twitchR = (earTwitchTimer % 240 < 12) ? Math.sin(earTwitchTimer) * 0.14 : 0;
@@ -3065,7 +3817,7 @@ export function drawCuteKitten25D(
   const eyeXR = lerp(5.6, 6.2, t) + lookShiftX * 0.45;
   const eyeYR = eyeY + lookShiftY * 0.45;
 
-  if (isBlinking || state === "loaf" || state === "purring") {
+  if (isBlinking || state === "loaf" || state === "purring" || state === "belly_roll") {
     // Closed happy eye arcs (⌒   ⌒) bending together in perspective
     ctx.save();
     ctx.translate(eyeXL, eyeY + 0.6);
@@ -3090,6 +3842,55 @@ export function drawCuteKitten25D(
     ctx.lineCap = "round";
     ctx.stroke();
     ctx.restore();
+  } else if (state === 'yawning') {
+    // Adorable squinting anime eyes (>   <) in perspective
+    ctx.save();
+    ctx.translate(eyeXL, eyeY);
+    ctx.beginPath();
+    ctx.moveTo(-1.8, -1.2);
+    ctx.lineTo(1.6, 0.4);
+    ctx.lineTo(-1.8, 2.0);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(eyeXR, eyeY);
+    ctx.beginPath();
+    ctx.moveTo(1.8, -1.2);
+    ctx.lineTo(-1.6, 0.4);
+    ctx.lineTo(1.8, 2.0);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+  } else if (state === 'tripping' && actionPhase < 0.65) {
+    // Startled wide eyes!
+    ctx.beginPath();
+    ctx.ellipse(eyeXL, eyeYL, 4.4 * lerp(1.0, 0.8, t), 4.6, 0, 0, Math.PI * 2);
+    ctx.ellipse(eyeXR, eyeYR, 4.4, 4.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeColor;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(eyeXL + 0.6, eyeYL - 1.2, 1.8 * lerp(1.0, 0.8, t), 1.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(eyeXR + 0.6, eyeYR - 1.2, 1.8, 1.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = eyeHighlight;
+    ctx.fill();
+  } else if (state === 'sneezing' && actionPhase < 0.5) {
+    // Squinting slit eyes (-   -)
+    ctx.beginPath();
+    ctx.moveTo(eyeXL - 2.4, eyeY);
+    ctx.lineTo(eyeXL + 2.2, eyeY);
+    ctx.moveTo(eyeXR - 2.2, eyeY);
+    ctx.lineTo(eyeXR + 2.4, eyeY);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = 'round';
+    ctx.stroke();
   } else {
     // Shared highlight parameters for identical anime gaze 👀
     const hl1X = lerp(1.2, 0.55, sideFactor);
@@ -3179,46 +3980,78 @@ export function drawCuteKitten25D(
   const mouthStemX = noseCenterX + lerp(0, 0.25, t);
   const mouthSplitY = lerp(4.1, 4.15, t); // Clear separation below nose tip (3.2)
 
-  // Subtle delicate center notch
-  ctx.beginPath();
-  ctx.moveTo(mouthStemX, lerp(3.85, 3.9, t));
-  ctx.lineTo(mouthStemX, mouthSplitY);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  // Far / Back lip arc (-X trailing side: gently foreshortens along receding muzzle)
-  const farLipRx = lerp(1.2, 0.8, t);
-  const farLipRy = lerp(0.85, 0.75, t);
-  const farLipCenterX = mouthStemX - farLipRx;
-  ctx.beginPath();
-  ctx.ellipse(farLipCenterX, 4.15, farLipRx, farLipRy, 0, 0.08, Math.PI - lerp(0.1, 0.35, t), false);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  // Near / Front lip arc (+X leading side: natural delicate curve in direction of walking)
-  const nearLipRx = lerp(1.2, 1.25, t);
-  const nearLipRy = lerp(0.85, 0.95, t);
-  const nearLipCenterX = mouthStemX + nearLipRx;
-  ctx.beginPath();
-  ctx.ellipse(nearLipCenterX, 4.15, nearLipRx, nearLipRy, 0, lerp(0.1, -0.15, t), Math.PI - 0.05, false);
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  // Sweet purr tongue peek
-  if (state === "purring") {
+  if (state === 'yawning') {
+    const yawnOpen = Math.sin(actionPhase * Math.PI) * 4.0;
     ctx.beginPath();
-    ctx.ellipse(mouthStemX + lerp(0, 0.3, t), 4.75, lerp(1.05, 1.1, t), lerp(0.8, 0.85, t), 0, 0.1, Math.PI - 0.1, false);
-    ctx.fillStyle = "#FB7185";
+    ctx.ellipse(mouthStemX, mouthSplitY + 1.2, 2.8, 1.8 + yawnOpen * 0.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FB7185';
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(mouthStemX, mouthSplitY + 2.0 + yawnOpen * 0.4, 1.3, 0, Math.PI);
+    ctx.fillStyle = '#F43F5E';
+    ctx.fill();
+  } else if (state === 'tripping' && actionPhase < 0.65) {
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX, mouthSplitY + 0.8, 1.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FB7185';
     ctx.fill();
     ctx.strokeStyle = outlineColor;
-    ctx.lineWidth = 0.95;
+    ctx.lineWidth = 1.1;
     ctx.stroke();
+  } else if (state === 'sneezing' && actionPhase >= 0.5 && actionPhase < 0.65) {
+    ctx.beginPath();
+    ctx.ellipse(mouthStemX, mouthSplitY + 1.2, 2.4, 3.0, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#FB7185';
+    ctx.fill();
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  } else {
+    // Subtle delicate center notch
+    ctx.beginPath();
+    ctx.moveTo(mouthStemX, lerp(3.85, 3.9, t));
+    ctx.lineTo(mouthStemX, mouthSplitY);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // Far / Back lip arc (-X trailing side: gently foreshortens along receding muzzle)
+    const farLipRx = lerp(1.2, 0.8, t);
+    const farLipRy = lerp(0.85, 0.75, t);
+    const farLipCenterX = mouthStemX - farLipRx;
+    ctx.beginPath();
+    ctx.ellipse(farLipCenterX, 4.15, farLipRx, farLipRy, 0, 0.08, Math.PI - lerp(0.1, 0.35, t), false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // Near / Front lip arc (+X leading side: natural delicate curve in direction of walking)
+    const nearLipRx = lerp(1.2, 1.25, t);
+    const nearLipRy = lerp(0.85, 0.95, t);
+    const nearLipCenterX = mouthStemX + nearLipRx;
+    ctx.beginPath();
+    ctx.ellipse(nearLipCenterX, 4.15, nearLipRx, nearLipRy, 0, lerp(0.1, -0.15, t), Math.PI - 0.05, false);
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // Sweet purr tongue peek
+    if (state === "purring") {
+      ctx.beginPath();
+      ctx.ellipse(mouthStemX + lerp(0, 0.3, t), 4.75, lerp(1.05, 1.1, t), lerp(0.8, 0.85, t), 0, 0.1, Math.PI - 0.1, false);
+      ctx.fillStyle = "#FB7185";
+      ctx.fill();
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.95;
+      ctx.stroke();
+    }
   }
 
   // =========================================================
@@ -3300,7 +4133,8 @@ export function drawCuteKitten(
   eyeOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
   breathePhase: number = 0,
   is25D: boolean = false,
-  yawProgress: number = 0
+  yawProgress: number = 0,
+  actionPhase: number = 0
 ) {
   const palette = getPetPalette(breed);
   if (is25D) {
@@ -3319,7 +4153,8 @@ export function drawCuteKitten(
       eyeOffset,
       breathePhase,
       palette,
-      yawProgress
+      yawProgress,
+      actionPhase
     );
   } else {
     drawCuteKitten2D(
@@ -3336,7 +4171,8 @@ export function drawCuteKitten(
       stretchPhase,
       eyeOffset,
       breathePhase,
-      palette
+      palette,
+      actionPhase
     );
   }
 }

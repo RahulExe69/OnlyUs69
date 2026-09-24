@@ -7,6 +7,7 @@ import { UserProfile, AppConfig, APP_VERSION } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { ImageCropperModal } from './ImageCropperModal';
 import { CloudinarySettingsSection } from './CloudinarySettingsModal';
+import { FireSphere } from './ui/fire-sphere';
 
 interface ProfileModalProps {
   profile: UserProfile;
@@ -236,20 +237,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="max-w-md mx-auto space-y-7">
             {/* Avatar Section */}
             <div className="flex flex-col items-center">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/30 shadow-md relative ring-4 ring-[var(--theme-accent)]/15">
-                  {photo ? (
-                    <img src={photo} alt="Me" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
-                      {name?.[0] || '?'}
-                    </div>
-                  )}
-                </div>
+              <div className="relative group flex items-center justify-center">
+                {/* 3D Lovely 🩷 Heart Sphere Animation around Profile Picture */}
+                <FireSphere className="w-36 h-36" pulseScale={1.2}>
+                  <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/40 shadow-xl relative ring-4 ring-[var(--theme-accent)]/20">
+                    {photo ? (
+                      <img src={photo} alt="Me" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
+                        {name?.[0] || '?'}
+                      </div>
+                    )}
+                  </div>
+                </FireSphere>
                 <button
                   type="button"
                   onClick={() => myFileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform"
+                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform z-20 cursor-pointer"
                   title="Change photo"
                 >
                   <Camera className="w-5 h-5" />

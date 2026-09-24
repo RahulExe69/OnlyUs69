@@ -11,6 +11,7 @@ import { hydrateMessageMedia } from '../lib/dateUtils';
 import { ImageCropperModal } from './ImageCropperModal';
 import { ThemeCustomizeSheet } from './ThemeCustomizePage';
 import { E2EEVerificationModal } from './E2EEVerificationModal';
+import { FireSphere } from './ui/fire-sphere';
 
 export const ProfileMediaThumbnail: React.FC<{
   item: { url: string; id?: string; fileName?: string; type: string };
@@ -392,25 +393,28 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {/* Centered Avatar and Name */}
             <div className="flex flex-col items-center pt-5 pb-5 px-4">
-              <div className="relative group">
-                <div 
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/30 shadow-md ring-4 ring-[var(--theme-accent)]/15 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)]"
-                  onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
-                  title="View full photo"
-                >
-                  {partner.photo_url ? (
-                    <img 
-                      src={partner.photo_url} 
-                      alt={currentPartnerNickname} 
-                      className="w-full h-full object-cover" 
-                      referrerPolicy="no-referrer" 
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-[var(--theme-accent)] bg-[var(--theme-accent)]/10">
-                      {currentPartnerNickname?.[0] || 'P'}
-                    </div>
-                  )}
-                </div>
+              <div className="relative group flex items-center justify-center">
+                {/* 3D Lovely 🩷 Heart Sphere Animation around Profile Picture */}
+                <FireSphere className="w-28 h-28 sm:w-32 sm:h-32" pulseScale={1.15}>
+                  <div 
+                    className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 shadow-xl ring-4 ring-[var(--theme-accent)]/20 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)] relative"
+                    onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
+                    title="View full photo"
+                  >
+                    {partner.photo_url ? (
+                      <img 
+                        src={partner.photo_url} 
+                        alt={currentPartnerNickname} 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-[var(--theme-accent)] bg-[var(--theme-accent)]/10">
+                        {currentPartnerNickname?.[0] || 'P'}
+                      </div>
+                    )}
+                  </div>
+                </FireSphere>
 
                 {/* Direct Camera Button to update photo */}
                 <button 
@@ -420,7 +424,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     photoInputRef.current?.click();
                   }}
                   title="Change photo"
-                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform cursor-pointer"
+                  className="absolute bottom-0 right-0 sm:right-1 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform cursor-pointer z-20"
                 >
                   <Camera className="w-4 h-4" />
                 </button>

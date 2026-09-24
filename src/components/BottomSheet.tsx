@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight } from 'lucide-react';
+import { GlowEffect } from './ui/glow-effect';
 
 export function BottomSheet({
   isOpen,
@@ -64,10 +65,19 @@ export function AttachmentOption({
       style={{ touchAction: 'manipulation' }}
       className="flex flex-col items-center gap-1.5 group cursor-pointer w-full min-w-0"
     >
-      <div
-        className={`w-12 h-12 sm:w-14 sm:h-14 ${color} rounded-2xl flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform shrink-0`}
-      >
-        {icon}
+      <div className="relative flex items-center justify-center">
+        <GlowEffect
+          mode="rotate"
+          blur="soft"
+          duration={3.5}
+          scale={1.16}
+          className="rounded-2xl opacity-65 group-hover:opacity-100 group-hover:scale-125 transition-all duration-300 pointer-events-none"
+        />
+        <div
+          className={`relative z-10 w-12 h-12 sm:w-14 sm:h-14 ${color} rounded-2xl flex items-center justify-center shadow-md group-hover:scale-105 active:scale-95 transition-transform shrink-0`}
+        >
+          {icon}
+        </div>
       </div>
       <span className="text-[10px] font-bold text-[var(--theme-text)] uppercase tracking-wider opacity-80 group-hover:opacity-100 transition-opacity truncate max-w-full text-center">
         {label}
