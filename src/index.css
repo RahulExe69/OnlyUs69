@@ -573,3 +573,40 @@ body {
   scroll-behavior: smooth;
 }
 
+/* Specialized Unpredictable Butterfly Flutter Keyframes */
+@keyframes butterfly-unpredictable-flutter {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  10% {
+    transform: translate3d(-5.5px, -7.0px, 0) rotate(-14deg) scale(1.06);
+  }
+  22% {
+    transform: translate3d(6.0px, -3.5px, 0) rotate(16deg) scale(0.94);
+  }
+  35% {
+    transform: translate3d(-7.5px, 7.5px, 0) rotate(-11deg) scale(1.05);
+  }
+  48% {
+    transform: translate3d(7.0px, -9.0px, 0) rotate(15deg) scale(0.95);
+  }
+  62% {
+    transform: translate3d(-5.5px, 6.0px, 0) rotate(-16deg) scale(1.06);
+  }
+  75% {
+    transform: translate3d(7.5px, -5.0px, 0) rotate(11deg) scale(0.94);
+  }
+  88% {
+    transform: translate3d(-3.5px, -6.5px, 0) rotate(-7deg) scale(1.02);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+.butterfly-flutter-motion {
+  animation: butterfly-unpredictable-flutter 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: center center;
+  will-change: transform;
+}
+

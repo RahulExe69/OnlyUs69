@@ -48,6 +48,7 @@ export type CatState =
   | 'landing' 
   | 'peeking' 
   | 'loaf' 
+  | 'sleeping'
   | 'grooming'
   | 'stretching'
   | 'clinging'
@@ -172,6 +173,12 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const lastHopTimeRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
   const initAttemptsRef = useRef<number>(0);
+
+  // Natural Feline Fatigue & Sleep/Wake Circadian Clock (Real Cat Behavior)
+  // In reality, cats are active, exploring, or awake-loafing for long stretches before yawning or settling into deep sleep.
+  const lastSleepTimeRef = useRef<number>(Date.now());
+  const lastYawnTimeRef = useRef<number>(Date.now());
+  const lastInteractionTimeRef = useRef<number>(Date.now());
 
   // Sound & Haptic
   const triggerHaptic = useCallback((duration: number = 25) => {
@@ -443,10 +450,20 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   useEffect(() => {
     if (lastMessageId && lastMessageId !== prevMsgRef.current) {
       prevMsgRef.current = lastMessageId;
+      lastInteractionTimeRef.current = Date.now();
+
+      const wasSleeping = stateRef.current === 'sleeping';
       stateRef.current = 'alert';
-      stateTimerRef.current = 24;
+      stateTimerRef.current = 28;
       squashRef.current = { sx: 0.88, sy: 1.28 };
-      showSpeech('New whisper! 🐾', 80, false);
+
+      if (wasSleeping) {
+        lastSleepTimeRef.current = Date.now() - 120000; // Interrupted nap: keep active for at least 2 mins
+        lastYawnTimeRef.current = Date.now();
+        showSpeech('*ears perk up from nap* Mew! 🐾', 85, false);
+      } else {
+        showSpeech('New whisper! 🐾', 80, false);
+      }
       addParticle('✨', 2);
 
       const goalIdClean = lastMessageId.replace(/^msg-/, '');
@@ -480,10 +497,20 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   useEffect(() => {
     if (isTyping && !prevTypingRef.current) {
       prevTypingRef.current = isTyping;
+      lastInteractionTimeRef.current = Date.now();
+
+      const wasSleeping = stateRef.current === 'sleeping';
       stateRef.current = 'alert';
       stateTimerRef.current = 40;
       squashRef.current = { sx: 0.94, sy: 1.12 };
-      showSpeech('Whispering with love~ 🐾', 80, false);
+
+      if (wasSleeping) {
+        lastSleepTimeRef.current = Date.now() - 120000;
+        lastYawnTimeRef.current = Date.now();
+        showSpeech('*stirs awake* Mew? 🐾', 80, false);
+      } else {
+        showSpeech('Whispering with love~ 🐾', 80, false);
+      }
       addParticle('❤️', 2);
     } else if (!isTyping && prevTypingRef.current) {
       prevTypingRef.current = isTyping;
@@ -496,11 +523,27 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     e.preventDefault();
 
     const now = Date.now();
+    lastInteractionTimeRef.current = now;
     const isRapidPet = now - lastPetTimeRef.current < 1600;
     lastPetTimeRef.current = now;
     petCountRef.current = isRapidPet ? petCountRef.current + 1 : 1;
 
     triggerHaptic(35);
+
+    // Gently waking up from deep slumber when petted!
+    if (stateRef.current === 'sleeping') {
+      stateRef.current = 'purring';
+      stateTimerRef.current = 100;
+      maxStateTimerRef.current = 100;
+      squashRef.current = { sx: 1.25, sy: 0.78 };
+      lastSleepTimeRef.current = now - 120000; // Reset sleep timer: at least 2 minutes of wakefulness before next sleep
+      lastYawnTimeRef.current = now;
+      showSpeech('*blinks awake softly* Purrr~ 🥰❤️', 110, false);
+      addParticle('❤️', 5);
+      addParticle('✨', 3);
+      petCountRef.current = 0;
+      return;
+    }
 
     // Double-tap or petting while already purring triggers an ecstatic belly roll!
     if (petCountRef.current >= 2 || stateRef.current === 'purring') {
@@ -869,9 +912,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         bodyAngleRef.current = 0;
       }
 
-      // 6b. Subtle, organic feline breathing cycle (calm rhythm in idle/loaf, purr vibration when petted)
-      const isRelaxedForBreath = stateRef.current === 'idle' || stateRef.current === 'loaf' || stateRef.current === 'purring' || stateRef.current === 'peeking';
-      const breathSpeed = stateRef.current === 'purring' ? 0.075 : (stateRef.current === 'loaf' ? 0.024 : 0.036);
+      // 6b. Subtle, organic feline breathing cycle (deep slow rhythm in sleep, calm rhythm in idle/loaf, purr vibration when petted)
+      const isRelaxedForBreath = stateRef.current === 'idle' || stateRef.current === 'loaf' || stateRef.current === 'sleeping' || stateRef.current === 'purring' || stateRef.current === 'peeking';
+      const breathSpeed = stateRef.current === 'purring' ? 0.075 : (stateRef.current === 'sleeping' ? 0.016 : (stateRef.current === 'loaf' ? 0.024 : 0.036));
       breathePhaseRef.current += isRelaxedForBreath ? breathSpeed : 0.02;
 
       // 7. Dynamic Gaze Tracking & Curious Eye Intelligence
@@ -1040,10 +1083,55 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             }
           }
 
+          const now = Date.now();
+          const timeSinceSleep = now - lastSleepTimeRef.current;
+          const timeSinceYawn = now - lastYawnTimeRef.current;
+          const timeSinceInteraction = now - lastInteractionTimeRef.current;
+
+          // Realistic Feline Fatigue: In reality, cats are active, observant, and awake for long periods.
+          // Only after prolonged wakefulness (> 3.5 minutes) and quiet peace without rapid interaction (> 22s)
+          // does Mochi become sleepy!
+          const isFatigued = timeSinceSleep > 210000 && timeSinceInteraction > 22000;
+
+          if (isFatigued) {
+            // Rare precursor yawn before settling down to deep sleep
+            if (timeSinceYawn > 180000) {
+              lastYawnTimeRef.current = now;
+              stateRef.current = 'yawning';
+              stateTimerRef.current = 65;
+              maxStateTimerRef.current = 65;
+              actionPhaseRef.current = 0;
+              const yawnPhrases = ['*yaaaawn*... so sleepy~ 🥱', '*yaaaawn*... nap time 💤', 'sleepy kitty... 🥱🐾'];
+              showSpeech(yawnPhrases[Math.floor(Math.random() * yawnPhrases.length)], 85, false);
+              addParticle('💤', 1);
+              return;
+            }
+
+            // Enter deep, peaceful cat sleep for a long, realistic snooze!
+            stateRef.current = 'sleeping';
+            stateTimerRef.current = 3600 + Math.floor(Math.random() * 1800); // 60s - 90s peaceful nap
+            maxStateTimerRef.current = stateTimerRef.current;
+            showSpeech('*curls up for a cozy cat nap*... 😴💤', 110, true);
+            addParticle('💤', 2);
+            return;
+          }
+
+          // Rare daytime yawn: only happens after long quiet stretches (> 3.5 mins cooldown) and only ~1.5% chance
+          if (timeSinceYawn > 210000 && Math.random() < 0.015) {
+            lastYawnTimeRef.current = now;
+            stateRef.current = 'yawning';
+            stateTimerRef.current = 65;
+            maxStateTimerRef.current = 65;
+            actionPhaseRef.current = 0;
+            showSpeech('*yaaaawn*~ 🥱', 80, false);
+            addParticle('💤', 1);
+            return;
+          }
+
           const roll = Math.random();
 
-          // 1. Walking along current message platform (~30% chance - stroll & patrol)
-          if (roll < 0.30) {
+          // 1. Walking along current message platform (~28% chance - stroll & patrol)
+          if (roll < 0.28) {
             stateRef.current = 'walking';
             stateTimerRef.current = 80 + Math.floor(Math.random() * 80);
             maxStateTimerRef.current = stateTimerRef.current;
@@ -1051,8 +1139,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 2. Playful pounce / bug swat (~10% chance)
-          if (roll < 0.40) {
+          // 2. Playful pounce / bug swat (~11% chance)
+          if (roll < 0.39) {
             stateRef.current = 'pouncing';
             stateTimerRef.current = 65;
             maxStateTimerRef.current = 65;
@@ -1061,8 +1149,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 3. Curious head tilt with ear twitches (~9% chance)
-          if (roll < 0.49) {
+          // 3. Curious head tilt with ear twitches (~11% chance)
+          if (roll < 0.50) {
             stateRef.current = 'curious_tilt';
             stateTimerRef.current = 60;
             maxStateTimerRef.current = 60;
@@ -1074,30 +1162,16 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 4. Cozy bread loaf nap (~10% chance - relaxed feline bread loaf)
-          if (roll < 0.59) {
+          // 4. Awake feline bread loaf (~12% chance - calm cat loaf watching the chat, eyes open and alert)
+          if (roll < 0.62) {
             stateRef.current = 'loaf';
-            stateTimerRef.current = 130 + Math.floor(Math.random() * 100);
+            stateTimerRef.current = 110 + Math.floor(Math.random() * 70);
             maxStateTimerRef.current = stateTimerRef.current;
-            addParticle('zzz', 1);
             return;
           }
 
-          // 5. Big sweet yawn & arched stretch (~8% chance)
-          if (roll < 0.67) {
-            stateRef.current = 'yawning';
-            stateTimerRef.current = 65;
-            maxStateTimerRef.current = 65;
-            actionPhaseRef.current = 0;
-            if (Math.random() < 0.45) {
-              showSpeech('*yaaaawn*~ 🥱', 80, false);
-              addParticle('💤', 1);
-            }
-            return;
-          }
-
-          // 6. Playful belly roll & air pawing (~7% chance)
-          if (roll < 0.74) {
+          // 5. Playful belly roll & air pawing (~8% chance)
+          if (roll < 0.70) {
             stateRef.current = 'belly_roll';
             stateTimerRef.current = 80;
             maxStateTimerRef.current = 80;
@@ -1106,8 +1180,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 7. Face grooming (~8% chance)
-          if (roll < 0.82) {
+          // 6. Face grooming (~10% chance)
+          if (roll < 0.80) {
             stateRef.current = 'grooming';
             stateTimerRef.current = 75 + Math.floor(Math.random() * 40);
             maxStateTimerRef.current = stateTimerRef.current;
@@ -1115,8 +1189,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 8. Sudden joyful zoomies dash (~6% chance)
-          if (roll < 0.88) {
+          // 7. Sudden joyful zoomies dash (~6% chance)
+          if (roll < 0.86) {
             stateRef.current = 'zoomies';
             stateTimerRef.current = 50;
             maxStateTimerRef.current = 50;
@@ -1128,8 +1202,8 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 9. Cute cat sneeze (~5% chance)
-          if (roll < 0.93) {
+          // 8. Cute cat sneeze (~5% chance)
+          if (roll < 0.91) {
             stateRef.current = 'sneezing';
             stateTimerRef.current = 55;
             maxStateTimerRef.current = 55;
@@ -1137,7 +1211,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             return;
           }
 
-          // 10. Cat stretch (~7% chance)
+          // 9. Cat stretch (~7% chance)
           if (roll < 0.98) {
             stateRef.current = 'stretching';
             stateTimerRef.current = 65;
@@ -1331,17 +1405,49 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
           stateTimerRef.current = 40;
         }
       } else if (state === 'loaf') {
+        // Awake resting bread loaf: paws tucked, tail calm, alert eyes
         tailWaveRef.current += 0.02;
-        squashRef.current.sy = 0.9 + Math.sin(Date.now() * 0.003) * 0.04;
-        squashRef.current.sx = 1.08 - Math.sin(Date.now() * 0.003) * 0.04;
-
-        if (Math.random() < 0.015) {
-          addParticle('zzz', 1);
-        }
+        squashRef.current.sy = 0.92 + Math.sin(Date.now() * 0.003) * 0.03;
+        squashRef.current.sx = 1.06 - Math.sin(Date.now() * 0.003) * 0.03;
 
         if (stateTimerRef.current <= 0) {
           stateRef.current = 'idle';
           stateTimerRef.current = 50;
+        }
+      } else if (state === 'sleeping') {
+        // Deep peaceful cat sleep: very slow relaxed tail, soothing respiration
+        tailWaveRef.current += 0.006;
+        squashRef.current.sy = 0.88 + Math.sin(Date.now() * 0.0018) * 0.03;
+        squashRef.current.sx = 1.10 - Math.sin(Date.now() * 0.0018) * 0.03;
+
+        // Gentle, soft zzz or 💤 particles floating up periodically
+        if (Math.random() < 0.014) {
+          addParticle(Math.random() < 0.7 ? 'zzz' : '💤', 1);
+        }
+
+        // Very rare quiet dream bubble halfway through the nap
+        if (stateTimerRef.current === Math.floor((maxStateTimerRef.current || 3600) / 2)) {
+          const dreams = [
+            '*soft snore*... zzz 🐾',
+            'dreaming of cuddles... 💖',
+            'purrr... zzz 🐟✨',
+            'cozy kitty... 😴💤'
+          ];
+          showSpeech(dreams[Math.floor(Math.random() * dreams.length)], 100, true);
+        }
+
+        if (stateTimerRef.current <= 0) {
+          // Completed full natural nap! Wake up with a refreshing cat stretch!
+          lastSleepTimeRef.current = Date.now();
+          lastYawnTimeRef.current = Date.now();
+          stateRef.current = 'stretching';
+          stateTimerRef.current = 75;
+          maxStateTimerRef.current = 75;
+          stretchPhaseRef.current = 0;
+          squashRef.current = { sx: 1.25, sy: 0.78 };
+          if (Math.random() < 0.7) {
+            showSpeech('*stretch*~ Mew! Great nap ☀️🐾', 90, false);
+          }
         }
       } else if (state === 'purring') {
         tailWaveRef.current += 0.18;
@@ -1443,9 +1549,20 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         }
 
         if (stateTimerRef.current <= 0) {
-          stateRef.current = Math.random() < 0.35 ? 'loaf' : 'idle';
-          stateTimerRef.current = 60;
-          maxStateTimerRef.current = 60;
+          const now = Date.now();
+          const isFatigued = (now - lastSleepTimeRef.current) > 200000 && (now - lastInteractionTimeRef.current) > 20000;
+          if (isFatigued) {
+            // Drowsy yawn smoothly transitions into a deep cat nap!
+            stateRef.current = 'sleeping';
+            stateTimerRef.current = 3600 + Math.floor(Math.random() * 1800); // 60s - 90s full snooze
+            maxStateTimerRef.current = stateTimerRef.current;
+            showSpeech('*curls up for a cozy cat nap*... 😴💤', 110, true);
+            addParticle('💤', 2);
+          } else {
+            stateRef.current = 'idle';
+            stateTimerRef.current = 60;
+            maxStateTimerRef.current = 60;
+          }
         }
       } else if (state === 'belly_roll') {
         const total = maxStateTimerRef.current || 80;
@@ -1558,6 +1675,7 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         stateRef.current === 'peeking' ||
         stateRef.current === 'typing_wait' ||
         stateRef.current === 'loaf' ||
+        stateRef.current === 'sleeping' ||
         stateRef.current === 'belly_roll' ||
         stateRef.current === 'curious_tilt' ||
         stateRef.current === 'yawning' ||
@@ -1934,7 +2052,7 @@ export function drawCuteKitten2D(
   const shadowScale =
     state === 'pre_jump' || state === 'pouncing'
       ? 1.2
-      : state === 'loaf'
+      : state === 'loaf' || state === 'sleeping'
       ? 1.1
       : state === 'belly_roll'
       ? 1.25
@@ -1967,7 +2085,7 @@ export function drawCuteKitten2D(
   ctx.beginPath();
   ctx.moveTo(tailBaseX, tailBaseY);
 
-  if (state === 'loaf') {
+  if (state === 'loaf' || state === 'sleeping') {
     // Snug curled tail around paws
     const breathe = Math.sin(Date.now() * 0.003) * 0.6;
     ctx.bezierCurveTo(
@@ -2083,7 +2201,7 @@ export function drawCuteKitten2D(
     ctx.fillStyle = padColor;
     ctx.fill();
     ctx.restore();
-  } else if (state !== 'loaf') {
+  } else if (state !== 'loaf' && state !== 'sleeping') {
     ctx.save();
 
     // Left Haunch Bulge (Sitting hip)
@@ -2137,6 +2255,7 @@ export function drawCuteKitten2D(
   const isRelaxed =
     state === 'idle' ||
     state === 'loaf' ||
+    state === 'sleeping' ||
     state === 'purring' ||
     state === 'peeking' ||
     state === 'belly_roll';
@@ -2384,7 +2503,7 @@ export function drawCuteKitten2D(
   const lookShiftX = Math.max(-1.4, Math.min(1.4, eyeOffset.dx));
   const lookShiftY = Math.max(-1.4, Math.min(1.4, eyeOffset.dy));
 
-  if (isBlinking || state === 'loaf' || state === 'purring' || state === 'belly_roll') {
+  if (isBlinking || state === 'sleeping' || state === 'purring' || state === 'belly_roll') {
     // Sweet happy smiling closed eye arcs (⌒   ⌒)
     ctx.beginPath();
     ctx.arc(-5.6, eyeY + 0.6, 3.4, 0.15, Math.PI - 0.15, false);
@@ -2695,7 +2814,7 @@ export function drawCuteKitten2D(
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = outlineColor;
     ctx.stroke();
-  } else if (state === 'loaf') {
+  } else if (state === 'loaf' || state === 'sleeping') {
     // True cat loaf: paws are tucked snugly under body!
   } else {
     // Normal front paws sitting snugly in front of chest
@@ -2799,7 +2918,7 @@ export function drawCuteKitten25D(
   const shadowScale =
     state === 'pre_jump' || state === 'pouncing'
       ? lerp(1.2, 1.25, t)
-      : state === 'loaf'
+      : state === 'loaf' || state === 'sleeping'
       ? lerp(1.1, 1.15, t)
       : state === 'belly_roll'
       ? lerp(1.25, 1.30, t)
@@ -2835,6 +2954,7 @@ export function drawCuteKitten25D(
   const isRelaxed =
     state === 'idle' ||
     state === 'loaf' ||
+    state === 'sleeping' ||
     state === 'purring' ||
     state === 'peeking' ||
     state === 'belly_roll';
@@ -2976,7 +3096,7 @@ export function drawCuteKitten25D(
   // 2. FAR LIMBS (Z < 0: BACKGROUND DEPTH LAYER)
   // Seamless continuous limb contours with soft depth shading
   // -------------------------------------------------------------
-  if (state !== 'loaf') {
+  if (state !== 'loaf' && state !== 'sleeping') {
     ctx.save();
 
     if (isWalkingOrZooming) {
@@ -3160,7 +3280,7 @@ export function drawCuteKitten25D(
   ctx.beginPath();
   ctx.moveTo(tailBaseX, tailBaseY);
 
-  if (state === 'loaf') {
+  if (state === 'loaf' || state === 'sleeping') {
     // Cozy curled tail wrapping around flank
     const breatheNap = Math.sin(Date.now() * 0.003) * 0.5;
     ctx.bezierCurveTo(
@@ -3302,7 +3422,7 @@ export function drawCuteKitten25D(
   // 5. FOREGROUND LIMBS (Z > 0: NEAR HAUNCH & NEAR PAWS)
   // Seamlessly integrated limbs with natural organic folds & continuous contours
   // -------------------------------------------------------------
-  if (state !== 'loaf') {
+  if (state !== 'loaf' && state !== 'sleeping') {
     ctx.save();
 
     if (state === 'belly_roll') {
@@ -3817,7 +3937,7 @@ export function drawCuteKitten25D(
   const eyeXR = lerp(5.6, 6.2, t) + lookShiftX * 0.45;
   const eyeYR = eyeY + lookShiftY * 0.45;
 
-  if (isBlinking || state === "loaf" || state === "purring" || state === "belly_roll") {
+  if (isBlinking || state === "sleeping" || state === "purring" || state === "belly_roll") {
     // Closed happy eye arcs (⌒   ⌒) bending together in perspective
     ctx.save();
     ctx.translate(eyeXL, eyeY + 0.6);

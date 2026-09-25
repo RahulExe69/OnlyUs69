@@ -420,6 +420,12 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     activeTextarea?.focus({ preventScroll: true });
     adjustTextareaHeight();
 
+    if (textToSend.toLowerCase().includes('/butterfly') || textToSend.includes('/🦋')) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('onlyus_spawn_butterfly'));
+      }
+    }
+
     await onSendMessage(textToSend);
   };
 

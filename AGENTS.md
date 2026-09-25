@@ -71,6 +71,7 @@ High-priority Firebase Cloud Messaging (FCM v1) for zero-latency background/lock
   - Procedural 2D canvas kitten living directly inside `#message-container`.
   - Uses message bubbles and input bar as platforms with synchronized scroll coordinates and keyboard avoidance.
   - Interactive gamified playroom with live vector canvas, visual coat options, wardrobe inventory, treat mini-actions, and symmetric dual-partner sync for Mochi's name and configuration via `app_config.pet_config` and realtime broadcasts.
+  - Realistic circadian sleep/wake rhythm: Yawning and deep sleep are rare feline events occurring only after prolonged wakefulness (>3.5m) and quiet periods, featuring 60-90s restorative snoozes, slow respiration, dream murmurs, and natural or interactive wakeups (petting, new messages, typing).
 - **Centralized Overlay Management (`src/lib/overlayManager.ts`)**:
   - All modal dialogs and full-screen sheets must register via `useOverlayBack` to ensure predictable hardware/browser back navigation without exiting the app.
 - **End-to-End Encryption (`src/lib/e2ee.ts`)**:
