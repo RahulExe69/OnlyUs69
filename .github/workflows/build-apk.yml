@@ -60,7 +60,20 @@ jobs:
 
           RAW_CODE="${{ inputs.version_code }}"
           if [ -z "$RAW_CODE" ]; then
-            RAW_CODE="${{ github.run_number }}"
+            if [[ ! "$CLEAN_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Version name must use MAJOR.MINOR.PATCH format (for example 1.5.0)."
+              exit 1
+            fi
+            IFS="." read -r MAJOR MINOR PATCH <<< "$CLEAN_NAME"
+            if (( MINOR >= 1000 || PATCH >= 1000 )); then
+              echo "::error::Minor and patch version numbers must each be below 1000."
+              exit 1
+            fi
+            RAW_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+          fi
+          if [[ ! "$RAW_CODE" =~ ^[0-9]+$ ]] || (( RAW_CODE <= 0 || RAW_CODE > 2100000000 )); then
+            echo "::error::Version code must be a positive integer no greater than 2100000000."
+            exit 1
           fi
 
           RAW_TAG="${{ inputs.version_tag }}"
