@@ -3,12 +3,16 @@ package com.onlyus.app;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageInfo;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -20,6 +24,8 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity implements SensorEventListener {
     private static MainActivity instance;
+    private final Handler otaHandler = new Handler(Looper.getMainLooper());
+    private boolean otaCheckStarted = false;
     private static volatile boolean isAppForeground = false;
     private SensorManager sensorManager;
 
@@ -59,6 +65,67 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
 
         // 3. Request app-specific permissions on initial launch
         requestAppPermissions(isNotes);
+
+        // Initialize the self-hosted web-bundle updater for both editions.
+        initializeOtaUpdater();
+    }
+
+
+    /**
+     * Applies a previously staged web bundle early during startup, then checks
+     * the OnlyUs Vercel deployment in the background. New bundles are staged
+     * for the next launch so the live chat is never replaced mid-session.
+     */
+    private void initializeOtaUpdater() {
+        final int currentVersionCode = getInstalledVersionCode();
+        otaHandler.post(() -> {
+            try {
+                OtaUpdateManager.applySavedOtaIfValid(MainActivity.this, currentVersionCode);
+            } catch (Exception e) {
+                Log.w("OnlyUsOTA", "Could not apply saved OTA bundle", e);
+            }
+        });
+
+        if (!otaCheckStarted) {
+            otaCheckStarted = true;
+            otaHandler.postDelayed(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    OtaUpdateManager.checkAndSyncInBackground(
+                        MainActivity.this, currentVersionCode, System.currentTimeMillis()
+                    );
+                }
+            }, 1200L);
+        }
+    }
+
+    private int getInstalledVersionCode() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return (int) info.getLongVersionCode();
+            }
+            return info.versionCode;
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
+    /**
+     * Never hot-swap assets over a mounted chat. OtaUpdateManager will keep a
+     * verified download pending until the next process launch.
+     */
+    public boolean isWebAppMounted() {
+        return true;
+    }
+
+    public void notifyOtaState(final String state, final int percent, final String errorMsg) {
+        if ("error".equals(state)) {
+            Log.w("OnlyUsOTA", errorMsg != null ? errorMsg : "OTA update failed");
+        }
+    }
+
+    public void reinjectBridgeAfterNavigation() {
+        // Capacitor reinitializes its native bridge when the local WebView bundle loads.
     }
 
     private void requestAppPermissions(boolean isNotes) {
