@@ -369,9 +369,12 @@ export const getThemeGlowColors = (themeName?: string | null): string[] => {
   return [dual.color2, dual.color1, theme.accent, dual.color2];
 };
 
+import { syncNativeSystemBars } from './nativeSystemBars';
+
 export const applyTheme = (themeName: ThemeName) => {
   const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
   const root = document.documentElement;
+  void syncNativeSystemBars(theme.bg);
   root.dataset.chatTheme = themeName;
   root.style.setProperty('--theme-bg', theme.bg);
   root.style.setProperty('--theme-text', theme.text);
