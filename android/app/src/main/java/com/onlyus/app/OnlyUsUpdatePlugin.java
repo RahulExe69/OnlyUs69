@@ -1,6 +1,9 @@
 package com.onlyus.app;
 
 import android.content.Intent;
+import android.app.PendingIntent;
+import android.content.pm.PackageInstaller;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
@@ -8,7 +11,6 @@ import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
 
-import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -47,6 +49,7 @@ public final class OnlyUsUpdatePlugin extends Plugin {
     private volatile String pendingSha256 = "";
     private volatile boolean waitingForInstallPermission = false;
     private volatile boolean installerLaunched = false;
+    private volatile int activeInstallSessionId = -1;
 
     @Override
     public void load() {
@@ -312,7 +315,7 @@ public final class OnlyUsUpdatePlugin extends Plugin {
             waitingForInstallPermission = false;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O
                     || activity.getPackageManager().canRequestPackageInstalls()) {
-                launchNativePackageInstaller(activity);
+                installWithPackageInstaller(activity);
             } else {
                 notifyProgress("error", 0, 0, 0,
                         "Allow OnlyUs to install unknown apps in Android settings, then try again.");
@@ -320,14 +323,13 @@ public final class OnlyUsUpdatePlugin extends Plugin {
             return;
         }
 
+        // Successful PackageInstaller sessions relaunch the app from the status receiver.
+        // This resume path remains as a fallback for OEMs that return to the old task.
         if (installerLaunched) {
             installerLaunched = false;
             if (pendingVersionCode > 0 && getInstalledVersionCode() >= pendingVersionCode) {
                 notifyProgress("installed", 100, 0, 0, "");
                 activity.runOnUiThread(activity::finishAffinity);
-            } else {
-                notifyProgress("ready", 100, 0, 0,
-                        "Installation was cancelled. Tap Try again to reopen Android's installer.");
             }
         }
     }
@@ -351,22 +353,116 @@ public final class OnlyUsUpdatePlugin extends Plugin {
                 activity.startActivity(permissionIntent);
                 return;
             }
-
-            Uri apkUri = FileProvider.getUriForFile(
-                    activity,
-                    activity.getPackageName() + ".fileprovider",
-                    file);
-            Intent installIntent = new Intent(Intent.ACTION_VIEW);
-            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-            installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            installerLaunched = true;
-            activity.startActivity(installIntent);
-            notifyProgress("installer", 100, file.length(), file.length(), "");
+            installWithPackageInstaller(activity);
         } catch (Exception e) {
             installerLaunched = false;
-            Log.e(TAG, "Could not open Android's package installer", e);
+            Log.e(TAG, "Could not start PackageInstaller session", e);
             notifyProgress("error", 0, file.length(), file.length(),
-                    "Could not open Android's installer. " + (e.getMessage() == null ? "" : e.getMessage()));
+                    "Could not start Android's installer. " + (e.getMessage() == null ? "" : e.getMessage()));
+        }
+    }
+
+    private void installWithPackageInstaller(MainActivity activity) {
+        File file = pendingApkFile;
+        if (file == null || !file.isFile() || !file.canRead()) {
+            notifyProgress("error", 0, 0, 0, "The verified update APK is unavailable.");
+            return;
+        }
+
+        PackageInstaller installer = activity.getPackageManager().getPackageInstaller();
+        int sessionId = -1;
+        try {
+            PackageInstaller.SessionParams params =
+                    new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName(activity.getPackageName());
+            params.setSize(file.length());
+
+            sessionId = installer.createSession(params);
+            try (PackageInstaller.Session session = installer.openSession(sessionId);
+                 InputStream input = new BufferedInputStream(new FileInputStream(file));
+                 java.io.OutputStream output = session.openWrite("onlyus-update.apk", 0, file.length())) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                }
+                session.fsync(output);
+            }
+
+            Intent statusIntent = new Intent(activity, OnlyUsInstallStatusReceiver.class);
+            statusIntent.setAction(OnlyUsInstallStatusReceiver.ACTION_INSTALL_STATUS);
+            statusIntent.putExtra(OnlyUsInstallStatusReceiver.EXTRA_SESSION_ID, sessionId);
+            int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pendingFlags |= PendingIntent.FLAG_MUTABLE;
+            PendingIntent statusPendingIntent = PendingIntent.getBroadcast(
+                    activity, sessionId, statusIntent, pendingFlags);
+
+            activeInstallSessionId = sessionId;
+            installerLaunched = true;
+            notifyProgress("installer", 100, file.length(), file.length(), "");
+            installer.openSession(sessionId).commit(statusPendingIntent.getIntentSender());
+        } catch (Exception e) {
+            if (sessionId >= 0) {
+                try { installer.abandonSession(sessionId); } catch (Exception ignored) {}
+            }
+            activeInstallSessionId = -1;
+            installerLaunched = false;
+            Log.e(TAG, "PackageInstaller session failed", e);
+            notifyProgress("error", 0, file.length(), file.length(),
+                    "Android could not start the update session. " +
+                    (e.getMessage() == null ? "" : e.getMessage()));
+        }
+    }
+
+    static void handleInstallStatus(Context context, Intent intent) {
+        int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        int sessionId = intent.getIntExtra(OnlyUsInstallStatusReceiver.EXTRA_SESSION_ID, -1);
+        OnlyUsUpdatePlugin plugin = sInstance;
+
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirmation = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirmation != null) {
+                confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    context.startActivity(confirmation);
+                } catch (Exception e) {
+                    Log.e(TAG, "Could not show Android's required update confirmation", e);
+                    if (plugin != null) {
+                        plugin.installerLaunched = false;
+                        plugin.notifyProgress("error", 0, 0, 0,
+                                "Android requires you to confirm this update, but its confirmation screen could not be opened.");
+                    }
+                }
+            }
+            return;
+        }
+
+        if (status == PackageInstaller.STATUS_SUCCESS) {
+            if (plugin != null) {
+                plugin.activeInstallSessionId = -1;
+                plugin.installerLaunched = false;
+                plugin.waitingForInstallPermission = false;
+                plugin.notifyProgress("installed", 100, 0, 0, "");
+            }
+            // MY_PACKAGE_REPLACED normally restarts the app on its own. This is a
+            // best-effort explicit launch for devices that don't restore the task.
+            Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                try { context.startActivity(launch); }
+                catch (Exception e) { Log.w(TAG, "Update installed; automatic relaunch was blocked", e); }
+            }
+            return;
+        }
+
+        if (plugin != null) {
+            plugin.activeInstallSessionId = -1;
+            plugin.installerLaunched = false;
+            String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            plugin.notifyProgress("ready", 100, 0, 0,
+                    (message == null || message.isEmpty())
+                            ? "Android did not complete the update. You can try again."
+                            : "Android did not complete the update: " + message);
         }
     }
 
