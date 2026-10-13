@@ -5,57 +5,61 @@ const NL = String.fromCharCode(10);
 const root = process.cwd();
 const packagePath = resolve(root, 'node_modules/@capacitor/android/package.json');
 const sourcePath = resolve(root, 'node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/SystemBars.java');
-if (!existsSync(packagePath) || !existsSync(sourcePath)) throw new Error('[OnlyUs keyboard patch] Capacitor Android source not found.');
+if (!existsSync(packagePath) || !existsSync(sourcePath)) {
+  throw new Error('[OnlyUs keyboard patch] Capacitor Android source was not found.');
+}
 const version = JSON.parse(readFileSync(packagePath, 'utf8')).version;
-if (version !== '8.5.3') throw new Error('[OnlyUs keyboard patch] Expected Capacitor Android 8.5.3, found ' + version + '. Review patch before upgrading.');
-const marker = 'ONLYUS_PASSTHROUGH_IME_FIX';
+if (version !== '8.5.3') {
+  throw new Error('[OnlyUs keyboard patch] Expected @capacitor/android 8.5.3, found ' + version + '. Review patch before upgrading.');
+}
+const marker = 'ONLYUS_NATIVE_RESIZE_IME_FIX';
 let source = readFileSync(sourcePath, 'utf8');
-if (source.includes(marker)) { console.log('[OnlyUs keyboard patch] Correct IME pass-through is already applied.'); process.exit(0); }
-const branchStartText = '            if (shouldPassthroughInsets) {';
-const legacyBranchAnchor = [
-  '            // We need to correct for a possible shown IME',
-  '            v.setPadding(',
-  '                systemBarsInsets.left,'
-].join(NL);
-const branchStart = source.indexOf(branchStartText);
-const legacyStart = source.indexOf(legacyBranchAnchor, branchStart + branchStartText.length);
-if (branchStart < 0 || legacyStart < 0) throw new Error('[OnlyUs keyboard patch] Could not identify SystemBars passthrough branch.');
-const correctedBranch = [
-  '            if (shouldPassthroughInsets) {',
-  '                // ' + marker + ': modern WebView handles IME viewport resizing when viewport-fit=cover is active.',
-  '                // Parent padding plus the WebView IME inset shifts the composer up and leaves a blank strip.',
-  '                v.setPadding(0, 0, 0, 0);',
+if (source.includes(marker)) {
+  console.log('[OnlyUs keyboard patch] Native-resize IME handling is already applied.');
+  process.exit(0);
+}
+const methodStartText = '    private void initWindowInsetsListener() {';
+const methodEndText = '    private void injectSafeAreaCSS(WindowInsetsCompat insets) {';
+const methodStart = source.indexOf(methodStartText);
+const methodEnd = source.indexOf(methodEndText, methodStart + methodStartText.length);
+if (methodStart < 0 || methodEnd < 0) {
+  throw new Error('[OnlyUs keyboard patch] Could not locate SystemBars.initWindowInsetsListener in the audited source.');
+}
+const method = [
+  '    private void initWindowInsetsListener() {',
+  '        if (INSETS_HANDLING_DISABLE.equals(insetsHandling)) {',
+  '            return;',
+  '        }',
   '',
-  '                WindowInsetsCompat newInsets = new WindowInsetsCompat.Builder(insets)',
-  '                    .setInsets(',
-  '                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout(),',
-  '                        Insets.of(',
-  '                            systemBarsInsets.left,',
-  '                            systemBarsInsets.top,',
-  '                            systemBarsInsets.right,',
-  '                            getBottomInset(systemBarsInsets, keyboardVisible)',
-  '                        )',
-  '                    )',
-  '                    .build();',
+  '        View view = getActivity().getWindow().getDecorView();',
+  '        ViewCompat.setOnApplyWindowInsetsListener(view, (v, insets) -> {',
+  '            Insets systemBarsInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());',
+  '            Insets imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime());',
+  '            boolean keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime());',
+  '            // ' + marker + ': avoid the viewport-fit=cover passthrough path, which can leave',
+  '            // a navigation-bar-height strip on WebViews whose internal IME resize is inaccurate.',
+  '            // Let the native parent own the resize, and zero the handled insets before WebView.',
+  '            boolean frameworkAlreadyResizedForIme = keyboardVisible && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R;',
+  '            int bottomPadding = keyboardVisible',
+  '                ? (frameworkAlreadyResizedForIme ? 0 : imeInsets.bottom)',
+  '                : systemBarsInsets.bottom;',
+  '            v.setPadding(systemBarsInsets.left, systemBarsInsets.top, systemBarsInsets.right, bottomPadding);',
   '',
-  '                injectSafeAreaCSS(newInsets);',
+  '            WindowInsetsCompat newInsets = new WindowInsetsCompat.Builder(insets)',
+  '                .setInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout(), Insets.of(0, 0, 0, 0))',
+  '                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)',
+  '                .setVisible(WindowInsetsCompat.Type.ime(), false)',
+  '                .build();',
   '',
-  '                // Keep IME insets in newInsets so WebView handles keyboard space once.',
-  '                return newInsets;',
-  '            }',
+  '            injectSafeAreaCSS(newInsets);',
+  '            return newInsets;',
+  '        });',
+  '    }',
   ''
 ].join(NL);
-source = source.slice(0, branchStart) + correctedBranch + source.slice(legacyStart);
-// Migrate installs that received the previous incorrect patch.
-source = source.split('WindowInsetsCompat newInsets = withOnlyUsNativeResizeInsets(new WindowInsetsCompat.Builder(insets))').join('WindowInsetsCompat newInsets = new WindowInsetsCompat.Builder(insets)');
-source = source.split('padForIme ? imeInsets.bottom : (keyboardVisible ? 0 : systemBarsInsets.bottom)').join('keyboardVisible ? imeInsets.bottom : systemBarsInsets.bottom');
-const oldHelperStartText = '    private WindowInsetsCompat.Builder withOnlyUsNativeResizeInsets(WindowInsetsCompat.Builder builder) {';
-const oldHelperStart = source.indexOf(oldHelperStartText);
-if (oldHelperStart >= 0) {
-  const oldHelperEnd = source.indexOf('    private void injectSafeAreaCSS(WindowInsetsCompat insets) {', oldHelperStart);
-  if (oldHelperEnd < 0) throw new Error('[OnlyUs keyboard patch] Could not remove old helper safely.');
-  source = source.slice(0, oldHelperStart) + source.slice(oldHelperEnd);
+source = source.slice(0, methodStart) + method + source.slice(methodEnd);
+if (!source.includes(marker) || source.includes('boolean shouldPassthroughInsets = getWebViewMajorVersion()')) {
+  throw new Error('[OnlyUs keyboard patch] Post-patch validation failed.');
 }
-if (!source.includes(marker) || source.includes('withOnlyUsNativeResizeInsets') || source.includes('padForIme ? imeInsets.bottom')) throw new Error('[OnlyUs keyboard patch] Post-patch validation failed.');
 writeFileSync(sourcePath, source, 'utf8');
-console.log('[OnlyUs keyboard patch] Applied zero-parent-padding IME pass-through to Capacitor Android ' + version + '.');
+console.log('[OnlyUs keyboard patch] Applied native-owned keyboard resize for Capacitor Android ' + version + '.');

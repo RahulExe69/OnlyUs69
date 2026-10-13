@@ -54,6 +54,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 }, ref) => {
   const [inputText, setInputText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const keyboardRecoveryTimerRef = useRef<number | null>(null);
   const pendingTimelineRecoveryExpiryRef = useRef<number | null>(null);
@@ -184,6 +185,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       void Keyboard.addListener('keyboardDidShow', () => {
         keyboardVisibleRef.current = true;
+        setIsKeyboardVisible(true);
         keyboardRecoveryInFlightRef.current = false;
         pendingTimelineKeyboardRecoveryRef.current = false;
         timelineGestureStartedWithKeyboardRef.current = false;
@@ -202,6 +204,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
       void Keyboard.addListener('keyboardDidHide', () => {
         keyboardVisibleRef.current = false;
+        setIsKeyboardVisible(false);
         const recentGestureEnd = Date.now() - lastTimelineGestureEndedAtRef.current < 220;
         const shouldRecover = pendingTimelineKeyboardRecoveryRef.current ||
           (timelineGestureStartedWithKeyboardRef.current &&
@@ -690,7 +693,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         )}
       </AnimatePresence>
 
-      <div className="relative flex items-end px-3 lg:px-4 gap-2 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] pt-1.5">
+      <div className={`relative flex items-end px-3 lg:px-4 gap-2 ${isKeyboardVisible ? 'pb-0' : 'pb-[max(0.875rem,env(safe-area-inset-bottom,0px))]'} pt-1.5`}>
         {/* Attachment menu button (hidden while actively recording) */}
         {!isRecording && !isPreviewing && (
           <button
