@@ -270,6 +270,16 @@ jobs:
             OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
+      - name: Validate public release configuration
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        env:
+          ONLYUS_RELEASE_TOKEN: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
+        run: |
+          if [ -z "$ONLYUS_RELEASE_TOKEN" ]; then
+            echo "::error::Missing ONLYUS_RELEASE_TOKEN. Add a fine-grained PAT in OnlyUs69 repository secrets with Contents: Read and write access only to RahulExe69/OnlyUs69-Releases."
+            exit 1
+          fi
+
       - name: Checkout public release repository
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         uses: actions/checkout@v4
@@ -286,16 +296,6 @@ jobs:
           RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
           RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
         run: node scripts/generate-release-notes.mjs
-
-      - name: Validate public release configuration
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
-        env:
-          ONLYUS_RELEASE_TOKEN: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
-        run: |
-          if [ -z "$ONLYUS_RELEASE_TOKEN" ]; then
-            echo "::error::Missing ONLYUS_RELEASE_TOKEN. Add a fine-grained PAT in OnlyUs69 repository secrets with Contents: Read and write access only to RahulExe69/OnlyUs69-Releases."
-            exit 1
-          fi
 
       - name: Publish signed APKs to public release repository
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
@@ -318,7 +318,7 @@ jobs:
             Notes-v${{ steps.vars.outputs.version_name }}.apk
 
       - name: Publish customer-facing update metadata
-        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         env:
           RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
           RELEASE_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
