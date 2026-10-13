@@ -61,6 +61,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const timelineGestureActiveRef = useRef(false);
   const timelineGestureStartedWithKeyboardRef = useRef(false);
   const keyboardVisibleRef = useRef(false);
+  const keyboardRecoveryInFlightRef = useRef(false);
   const pendingTimelineKeyboardRecoveryRef = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -183,6 +184,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       void Keyboard.addListener('keyboardDidShow', () => {
         keyboardVisibleRef.current = true;
+        keyboardRecoveryInFlightRef.current = false;
         pendingTimelineKeyboardRecoveryRef.current = false;
         timelineGestureStartedWithKeyboardRef.current = false;
         if (pendingTimelineRecoveryExpiryRef.current !== null) {
@@ -206,6 +208,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             (timelineGestureActiveRef.current || recentGestureEnd) &&
             (window as any).__keepChatInputActive === true);
         if (!shouldRecover || document.hidden) {
+          keyboardRecoveryInFlightRef.current = false;
           pendingTimelineKeyboardRecoveryRef.current = false;
           timelineGestureStartedWithKeyboardRef.current = false;
           if (!timelineGestureActiveRef.current) {
@@ -218,6 +221,9 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           }
           return;
         }
+        // Keep focus intent alive until keyboardDidShow confirms recovery. Android may
+        // deliver keyboardDidHide before the matching textarea onBlur callback.
+        keyboardRecoveryInFlightRef.current = true;
         pendingTimelineKeyboardRecoveryRef.current = false;
         timelineGestureStartedWithKeyboardRef.current = false;
         if (pendingTimelineRecoveryExpiryRef.current !== null) {
@@ -870,7 +876,11 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 onBlur={() => {
                   const withinRecentChatGesture = timelineGestureActiveRef.current ||
                     Date.now() - lastTimelineGestureEndedAtRef.current < 350;
-                  if (withinRecentChatGesture && keyboardVisibleRef.current) {
+                  const hasKeyboardIntent = keyboardVisibleRef.current ||
+                    timelineGestureStartedWithKeyboardRef.current ||
+                    keyboardRecoveryInFlightRef.current ||
+                    pendingTimelineKeyboardRecoveryRef.current;
+                  if (withinRecentChatGesture && hasKeyboardIntent) {
                     pendingTimelineKeyboardRecoveryRef.current = true;
                     if (pendingTimelineRecoveryExpiryRef.current !== null) {
                       window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
