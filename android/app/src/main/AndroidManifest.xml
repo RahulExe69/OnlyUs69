@@ -52,6 +52,11 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
+        <!-- Receives PackageInstaller session results and relaunches OnlyUs after a successful self-update. -->
+        <receiver
+            android:name=".OnlyUsInstallStatusReceiver"
+            android:exported="false" />
+
         <!-- Direct Reply Receiver: handles inline replies in background without opening MainActivity -->
         <receiver
             android:name=".DirectReplyReceiver"
