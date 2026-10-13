@@ -1,3 +1,5 @@
+import { syncNativeSystemBars } from './nativeSystemBars';
+
 export const THEMES = {
   light: {
     name: 'Clean Slate', note: 'Crisp, bright, and quietly minimal.', bg: '#F7F9FC', text: '#172033', header: 'rgba(255, 255, 255, .84)', owner: '#4263EB', ownerText: '#FFFFFF', partner: '#E8EDF6', partnerText: '#263247', input: '#FFFFFF', surface: '#FFFFFF', accent: '#4263EB', border: 'rgba(66, 99, 235, .16)', decoration: 'linear-gradient(135deg, rgba(66,99,235,.08), transparent 38%)', font: '"Inter", "Helvetica Neue", Arial, sans-serif'
@@ -368,8 +370,6 @@ export const getThemeGlowColors = (themeName?: string | null): string[] => {
   const dual = getThemeDualTone(themeName);
   return [dual.color2, dual.color1, theme.accent, dual.color2];
 };
-
-import { syncNativeSystemBars } from './nativeSystemBars';
 
 export const applyTheme = (themeName: ThemeName) => {
   const theme = THEMES[themeName] || THEMES[DEFAULT_THEME];
