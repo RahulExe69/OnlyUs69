@@ -167,6 +167,9 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
 
   // Element and platform caching for zero-flicker sub-millisecond tracking
   const attachedElementRef = useRef<HTMLElement | null>(null);
+  // Freeze Mochi's walk/jump decisions while her current message is being dragged for a reply.
+  const swipeLockedRef = useRef<boolean>(false);
+  const swipeLockedRatioRef = useRef<number>(0.5);
   const platformsCacheRef = useRef<Platform[]>([]);
   const lastScanTimeRef = useRef<number>(0);
   const lastEscapeJumpTimeRef = useRef<number>(0);
@@ -179,15 +182,6 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
   const lastSleepTimeRef = useRef<number>(Date.now());
   const lastYawnTimeRef = useRef<number>(Date.now());
   const lastInteractionTimeRef = useRef<number>(Date.now());
-
-  // Sound & Haptic
-  const triggerHaptic = useCallback((duration: number = 25) => {
-    if (typeof window !== 'undefined' && window.navigator?.vibrate) {
-      try {
-        window.navigator.vibrate(duration);
-      } catch (_) {}
-    }
-  }, []);
 
   // Quick speech or thought trigger
   const showSpeech = useCallback((text: string, durationFrames: number = 130, isThought: boolean = false) => {
@@ -528,7 +522,6 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     lastPetTimeRef.current = now;
     petCountRef.current = isRapidPet ? petCountRef.current + 1 : 1;
 
-    triggerHaptic(35);
 
     // Gently waking up from deep slumber when petted!
     if (stateRef.current === 'sleeping') {
@@ -645,11 +638,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         ];
         const phrase = funnyPhrases[Math.floor(Math.random() * funnyPhrases.length)];
         showSpeech(phrase, 90, false);
-        triggerHaptic(28);
         startJump(targetPlatform, false, true /* isEscapeJump */);
       }
     }
-  }, [scanPlatforms, startJump, showSpeech, triggerHaptic]);
+  }, [scanPlatforms, startJump, showSpeech]);
 
   // Main animation loop, physics simulation, zero-flicker scroll coordinates
   useEffect(() => {
@@ -807,11 +799,33 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         }
 
         // 1. Continuous Platform Anchor Sync
+        // Read the attached bubble's live DOM rectangle each frame so horizontal reply-swipe transforms
+        // are reflected immediately, not only when the slower platform cache is refreshed.
+        let livePlat = getPlatformRect(attachedPlatformIdRef.current);
+        const attachedRow = livePlat?.element instanceof HTMLElement
+          ? livePlat.element.closest<HTMLElement>('.chat-message-row')
+          : null;
+        const isAttachedMessageSwiping = attachedRow?.dataset.mochiSwipeActive === 'true';
+
+        if (isAttachedMessageSwiping) {
+          if (!swipeLockedRef.current) {
+            swipeLockedRatioRef.current = platformOffsetRatioRef.current;
+          }
+          swipeLockedRef.current = true;
+          platformOffsetRatioRef.current = swipeLockedRatioRef.current;
+          // Keep Mochi grounded on this exact bubble while it moves under her paws.
+          stateRef.current = 'idle';
+          stateTimerRef.current = 120;
+          maxStateTimerRef.current = 120;
+          jumpPlanRef.current = null;
+          jumpProgressRef.current = 0;
+        } else {
+          swipeLockedRef.current = false;
+        }
+
         const isAirborne = stateRef.current === 'jumping';
 
         if (!isAirborne) {
-          let livePlat = getPlatformRect(attachedPlatformIdRef.current);
-
           // If current platform is missing (e.g. message removed or initial load):
           if (!livePlat) {
             const bubbles = scrollPlatforms.filter((p) => p.isBubble);
@@ -1298,7 +1312,6 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             'Tumble! Meow! 🐾',
           ];
           showSpeech(tripPhrases[Math.floor(Math.random() * tripPhrases.length)], 85);
-          triggerHaptic(22);
           return;
         }
 
@@ -1651,7 +1664,6 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
             addParticle('🌸', 3);
             addParticle('✨', 2);
             showSpeech('*Achoo!* 🌸', 65, false);
-            triggerHaptic(25);
           }
         } else {
           // Wet fur head shake
