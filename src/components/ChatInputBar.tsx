@@ -867,7 +867,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                   setShowEmojiPicker(false);
                 }}
                 onBlur={() => {
-                  const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
                   const withinRecentChatGesture = timelineGestureActiveRef.current ||
                     Date.now() - lastTimelineGestureEndedAtRef.current < 250;
 
@@ -892,9 +891,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                   (window as any).__isChatInputFocused = false;
                   (window as any).__keepChatInputActive = false;
 
-                  // Android Back normally hides the IME without an input blur; if
-                  // it does blur, this path respects it unless a chat gesture is active.
-                  if (!isNativeAndroid) return;
                 }}
                 inputMode="text"
                 enterKeyHint="send"
