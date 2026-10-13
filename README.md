@@ -29,6 +29,14 @@ Built directly from this repository via GitHub Actions (`.github/workflows/build
 
 ---
 
+## 🌐 Self-hosted OTA Updates
+
+- Vite builds generate `dist/ota-manifest.json` with full SHA-256 hashes for the compiled assets.
+- The Android updater checks `https://onlyus69.vercel.app/ota-manifest.json`, reuses unchanged local assets, and downloads only changed files.
+- A downloaded bundle is hash-verified and staged locally; it activates on the next app launch rather than replacing a live chat session.
+- This updates **web assets only**. Changes to Android Java/Kotlin, Capacitor plugins, permissions, or native configuration still require a new APK.
+- The OTA-capable native updater first ships in **v1.5.1**. Existing installs need that APK once; later web-only updates can use OTA.
+
 ## 🚀 How to Build New APKs (Manual GitHub Workflow)
 
 1. Go to your repository on GitHub.
