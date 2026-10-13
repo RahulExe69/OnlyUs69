@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { App as CapApp } from '@capacitor/app';
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/RahulExe69/OnlyUs69-Releases/main/latest.json';
 
@@ -30,20 +29,10 @@ export interface ApkUpdateRelease {
   sizeBytes: number;
 }
 
-interface NativeApkUpdateBridge {
-  getPackageName: () => string;
-  getInstalledVersionName: () => string;
-  getInstalledVersionCode: () => number;
-  closeApp: () => void;
-  downloadAndInstallUpdate: (
-    downloadUrl: string,
-    expectedPackageId: string,
-    expectedVersionName: string,
-    expectedVersionCode: string,
-    expectedSha256: string,
-    expectedSizeBytes: string
-  ) => boolean;
-  installPendingUpdate?: () => boolean;
+interface AppInfo {
+  packageId: string;
+  versionName: string;
+  versionCode: number;
 }
 
 interface NativeProgress {
@@ -54,12 +43,29 @@ interface NativeProgress {
   error?: string;
 }
 
-declare global {
-  interface Window {
-    OnlyUsUpdate?: NativeApkUpdateBridge;
-    __onlyUsApkUpdateProgress?: (progress: NativeProgress) => void;
-  }
+interface UpdateStarted {
+  started: boolean;
 }
+
+interface OnlyUsUpdaterPlugin {
+  getAppInfo(): Promise<AppInfo>;
+  closeApp(): Promise<void>;
+  downloadAndInstallUpdate(options: {
+    downloadUrl: string;
+    expectedPackageId: string;
+    expectedVersionName: string;
+    expectedVersionCode: string;
+    expectedSha256: string;
+    expectedSizeBytes: string;
+  }): Promise<UpdateStarted>;
+  installPendingUpdate(): Promise<UpdateStarted>;
+  addListener(
+    eventName: 'progress',
+    listenerFunc: (progress: NativeProgress) => void
+  ): Promise<PluginListenerHandle>;
+}
+
+const OnlyUsUpdater = registerPlugin<OnlyUsUpdaterPlugin>('OnlyUsUpdater');
 
 export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
   const [release, setRelease] = useState<ApkUpdateRelease | null>(null);
@@ -78,26 +84,48 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
     const checkForUpdate = async () => {
       setStatus('checking');
       setErrorMessage('');
+      let progressListener: PluginListenerHandle | null = null;
 
       try {
-        // MainActivity injects this bridge early; retry briefly for WebView startup timing.
-        // Failure to reach the bridge or release server deliberately fails open.
-        let bridge = window.OnlyUsUpdate;
-        for (let attempt = 0; !bridge && attempt < 10; attempt += 1) {
-          await new Promise(resolve => window.setTimeout(resolve, 150));
-          bridge = window.OnlyUsUpdate;
-        }
-        if (!bridge) throw new Error('Native update bridge is unavailable.');
-
-        const packageId = String(bridge.getPackageName() || '');
-        const installedCode = Number(bridge.getInstalledVersionCode());
-        const installedName = String(bridge.getInstalledVersionName() || '1.0.0')
+        const nativeInfo = await OnlyUsUpdater.getAppInfo();
+        const packageId = String(nativeInfo.packageId || '');
+        const installedCode = Number(nativeInfo.versionCode);
+        const installedName = String(nativeInfo.versionName || '1.0.0')
           .replace(/-(rahul|nusrat)$/i, '');
+
         if (!packageId || !Number.isSafeInteger(installedCode) || installedCode < 1) {
           throw new Error('Installed app version could not be read.');
         }
         if (cancelled) return;
         setCurrentVersionName(installedName);
+
+        // Listen before downloading; native events provide progress and installer state.
+        progressListener = await OnlyUsUpdater.addListener('progress', event => {
+          setProgress(Math.max(0, Math.min(100, Number(event.progress) || 0)));
+          if (event.status === 'downloading') {
+            setStatus('downloading');
+            setErrorMessage('');
+          } else if (event.status === 'installer') {
+            setStatus('installer');
+            setErrorMessage('');
+          } else if (event.status === 'permission') {
+            setStatus('permission');
+            setErrorMessage(event.error || '');
+          } else if (event.status === 'ready') {
+            setStatus('ready');
+            setErrorMessage(event.error || 'The installer was closed before the update completed.');
+          } else if (event.status === 'installed') {
+            setStatus('installed');
+            setErrorMessage('');
+          } else if (event.status === 'error') {
+            setStatus('error');
+            setErrorMessage(event.error || 'The APK could not be downloaded or opened.');
+          }
+        });
+        if (cancelled) {
+          await progressListener.remove();
+          return;
+        }
 
         const response = await fetch(UPDATE_MANIFEST_URL + '?t=' + Date.now(), {
           cache: 'no-store',
@@ -162,86 +190,51 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         }
       } catch (error) {
         if (cancelled) return;
-        // No failed result is persisted: next app launch retries from scratch.
+        // Fail open: nothing is cached; the next app run retries the check.
         setRelease(null);
         setStatus('offline');
         setErrorMessage(error instanceof Error ? error.message : 'Update check unavailable.');
       }
+
+      return () => {
+        void progressListener?.remove();
+      };
     };
 
-    void checkForUpdate();
+    let removeProgressListener: (() => void) | undefined;
+    void checkForUpdate().then(cleanup => {
+      removeProgressListener = cleanup;
+    });
+
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
       controller.abort();
+      removeProgressListener?.();
     };
   }, [enabled]);
 
-  useEffect(() => {
-    window.__onlyUsApkUpdateProgress = (event: NativeProgress) => {
-      setProgress(Math.max(0, Math.min(100, Number(event.progress) || 0)));
-      if (event.status === 'downloading') {
-        setStatus('downloading');
-        setErrorMessage('');
-      } else if (event.status === 'installer') {
-        setStatus('installer');
-        setErrorMessage('');
-      } else if (event.status === 'permission') {
-        setStatus('permission');
-        setErrorMessage(event.error || '');
-      } else if (event.status === 'ready') {
-        setStatus('ready');
-        setErrorMessage(event.error || 'The installer was closed before the update completed.');
-      } else if (event.status === 'installed') {
-        setStatus('installed');
-        setErrorMessage('');
-      } else if (event.status === 'error') {
-        setStatus('error');
-        setErrorMessage(event.error || 'The APK could not be downloaded or opened.');
-      }
-    };
-    return () => {
-      delete window.__onlyUsApkUpdateProgress;
-    };
-  }, []);
-
   const closeApp = useCallback(() => {
-    try {
-      if (window.OnlyUsUpdate?.closeApp) {
-        window.OnlyUsUpdate.closeApp();
-        return;
-      }
-    } catch {
-      // Fall through to Capacitor's exit hook.
-    }
-    try {
-      void CapApp.exitApp();
-    } catch {
-      // A browser preview has no native application to close.
-    }
+    void OnlyUsUpdater.closeApp().catch(() => {
+      // Web previews have no native Android app to close.
+    });
   }, []);
 
-  const startUpdate = useCallback(() => {
+  const startUpdate = useCallback(async () => {
     if (!release) return;
-    const bridge = window.OnlyUsUpdate;
-    if (!bridge) {
-      setStatus('error');
-      setErrorMessage('The native installer is unavailable. Please reopen the app and try again.');
-      return;
-    }
     setErrorMessage('');
     setProgress(0);
     setStatus('downloading');
     try {
-      const started = bridge.downloadAndInstallUpdate(
-        release.downloadUrl,
-        release.packageId,
-        release.versionName,
-        String(release.versionCode),
-        release.sha256,
-        String(release.sizeBytes)
-      );
-      if (!started) {
+      const result = await OnlyUsUpdater.downloadAndInstallUpdate({
+        downloadUrl: release.downloadUrl,
+        expectedPackageId: release.packageId,
+        expectedVersionName: release.versionName,
+        expectedVersionCode: String(release.versionCode),
+        expectedSha256: release.sha256,
+        expectedSizeBytes: String(release.sizeBytes)
+      });
+      if (!result.started) {
         setStatus('error');
         setErrorMessage('The APK update could not be started. Tap Try again.');
       }
@@ -251,17 +244,18 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
     }
   }, [release]);
 
-  const retryUpdate = useCallback(() => {
+  const retryUpdate = useCallback(async () => {
     try {
-      if (window.OnlyUsUpdate?.installPendingUpdate?.()) {
+      const result = await OnlyUsUpdater.installPendingUpdate();
+      if (result.started) {
         setStatus('installer');
         setErrorMessage('');
         return;
       }
     } catch {
-      // If no verified staged APK exists, retry the download.
+      // No valid staged APK; retry the download below.
     }
-    startUpdate();
+    await startUpdate();
   }, [startUpdate]);
 
   return {
