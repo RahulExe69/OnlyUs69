@@ -1761,7 +1761,10 @@ export default function App() {
 
   const startReplyFromSelection = () => {
     if (selectedMessages.length === 1) {
-      setReplyingTo(selectedMessages[0]);
+      // Use a fresh reply request each time, even when the same message is selected
+      // again after Android Back hid the keyboard. ChatInputBar reacts to this change
+      // and explicitly asks the native keyboard to show.
+      setReplyingTo({ ...selectedMessages[0] });
       setEditingMessage(null);
       clearSelection();
       const el = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
