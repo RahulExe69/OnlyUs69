@@ -68,6 +68,13 @@ export const closeMobileKeyboard = () => {
 };
 
 export default function App() {
+  // Apply the startup theme once so the native status/navigation bars are themed
+  // immediately, then src/lib/themes.ts keeps them in sync with later theme changes.
+  useEffect(() => {
+    const startupTheme = document.documentElement.dataset.chatTheme;
+    if (isValidTheme(startupTheme)) applyTheme(startupTheme);
+  }, []);
+
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
@@ -535,37 +542,6 @@ export default function App() {
     return () => {
       if (minimizedTimerRef.current) {
         clearInterval(minimizedTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Native Mobile Keyboard Viewport Sync (Hardware-smooth keyboard resize without lag/jitter)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    let rafId: number;
-    const updateViewportHeight = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        document.documentElement.style.setProperty('--app-height', `${height}px`);
-      });
-    };
-
-    updateViewportHeight();
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateViewportHeight);
-    } else {
-      window.addEventListener('resize', updateViewportHeight);
-    }
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateViewportHeight);
-      } else {
-        window.removeEventListener('resize', updateViewportHeight);
       }
     };
   }, []);
@@ -2047,7 +2023,6 @@ export default function App() {
   return (
     <div 
       className="chat-theme flex h-[100dvh] max-h-[100dvh] bg-[var(--theme-bg)] text-[var(--theme-text)] font-sans overflow-hidden relative transition-colors duration-300"
-      style={{ height: 'var(--app-height, 100dvh)' }}
     >
       {activeHubTab === 'dashboard' ? (
         <MultiHubDashboard
