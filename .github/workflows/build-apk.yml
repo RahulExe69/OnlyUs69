@@ -12,20 +12,40 @@ on:
           - release
           - debug
       version_name:
-        description: 'APK Version Name (e.g. 1.5.0)'
+        description: 'APK Version Name (e.g. 1.5.2)'
         required: false
-        default: '1.5.1'
+        default: '1.5.2'
         type: string
       version_code:
-        description: 'APK Version Code (integer e.g. 2, 3... Leave empty to auto-use GitHub run number)'
+        description: 'Android versionCode (integer; leave blank to calculate from MAJOR.MINOR.PATCH)'
         required: false
         default: ''
         type: string
       version_tag:
-        description: 'GitHub Release Tag (e.g. v1.5.0, leave empty to auto-use v<version_name>)'
+        description: 'GitHub Release Tag (e.g. v1.5.2, leave empty to auto-use v<version_name>)'
         required: false
         default: ''
         type: string
+      publish_release:
+        description: 'Publish signed APKs and update metadata to the public OnlyUs69-Releases repository'
+        required: false
+        default: true
+        type: boolean
+      whats_new:
+        description: "Customer-facing What's new text shown inside the app (one item per line; required when publishing)"
+        required: false
+        default: ''
+        type: string
+
+  pull_request:
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'android/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'index.html'
+      - 'vite.config.*'
 
 permissions:
   contents: write
@@ -195,6 +215,8 @@ jobs:
             echo "Selected Nusrat APK (${BTYPE}): $NUSRAT_APK"
             echo "Selected Rahul APK (${BTYPE}): $RAHUL_APK"
             if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
+              cp "$NUSRAT_APK" Notes.apk
+              cp "$NUSRAT_APK" "Notes-v${VER}.apk"
               cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
               cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
             else
@@ -202,6 +224,8 @@ jobs:
               exit 1
             fi
             if [ -n "$RAHUL_APK" ] && [ -f "$RAHUL_APK" ]; then
+              cp "$RAHUL_APK" OnlyUs.apk
+              cp "$RAHUL_APK" "OnlyUs-v${VER}.apk"
               cp "$RAHUL_APK" OnlyUs-Rahul-Direct.apk
               cp "$RAHUL_APK" "OnlyUs-Rahul-Direct-v${VER}.apk"
             else
@@ -215,6 +239,8 @@ jobs:
         with:
           name: OnlyUs-Nusrat-Stealth-APK
           path: |
+            Notes.apk
+            Notes-v${{ steps.vars.outputs.version_name }}.apk
             OnlyUs-Nusrat-Stealth.apk
             OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
@@ -224,43 +250,83 @@ jobs:
         with:
           name: OnlyUs-Rahul-Direct-APK
           path: |
+            OnlyUs.apk
+            OnlyUs-v${{ steps.vars.outputs.version_name }}.apk
             OnlyUs-Rahul-Direct.apk
             OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
-      - name: Publish Dual APKs to GitHub Releases
-        uses: softprops/action-gh-release@v2
+      - name: Validate public release configuration
+        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ONLYUS_RELEASE_TOKEN: \${{ secrets.ONLYUS_RELEASE_TOKEN }}
+          IN_APP_RELEASE_NOTES: \${{ inputs.whats_new }}
+        run: |
+          if [ -z "$ONLYUS_RELEASE_TOKEN" ]; then
+            echo "::error::Missing ONLYUS_RELEASE_TOKEN. Add a fine-grained PAT in OnlyUs69 repository secrets with Contents: Read and write access only to RahulExe69/OnlyUs69-Releases."
+            exit 1
+          fi
+          if [ -z "$(printf '%s' "$IN_APP_RELEASE_NOTES" | tr -d '[:space:]')" ]; then
+            echo "::error::Enter customer-facing What's new notes (one item per line). These are shown inside OnlyUs and are separate from GitHub Release notes."
+            exit 1
+          fi
+
+      - name: Checkout public release repository
+        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        uses: actions/checkout@v4
         with:
-          tag_name: ${{ steps.vars.outputs.version_tag }}
-          name: OnlyUs Android Companion (${{ steps.vars.outputs.version_tag }})
+          repository: RahulExe69/OnlyUs69-Releases
+          ref: main
+          path: release-repo
+          token: \${{ secrets.ONLYUS_RELEASE_TOKEN }}
+
+      - name: Publish signed APKs to public release repository
+        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: RahulExe69/OnlyUs69-Releases
+          token: \${{ secrets.ONLYUS_RELEASE_TOKEN }}
+          tag_name: \${{ steps.vars.outputs.version_tag }}
+          name: OnlyUs Android Release (\${{ steps.vars.outputs.version_tag }})
           draft: false
           prerelease: false
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
           body: |
-            ### 💖 OnlyUs Android Dual Edition Companion Apps (${{ steps.vars.outputs.version_tag }})
+            Official signed Android companion APKs for OnlyUs.
 
-            - **Version:** `${{ steps.vars.outputs.version_name }}` (Code: `${{ steps.vars.outputs.version_code }}`)
-            - **Build Type:** `${{ steps.vars.outputs.build_type }}` (Signed with `onlyus.keystore` v1 & v2 scheme)
+            Choose the APK that matches the app already installed on your phone:
+            - OnlyUs.apk — standard OnlyUs edition (com.onlyus.app).
+            - Notes.apk — Notes edition (com.onlyus.notes).
 
-            Download the edition that fits your device:
-
-            - 📓 **`OnlyUs-Nusrat-Stealth.apk`** *(Nusrat Edition)*:
-              - Disguised on the home screen as **"Notes"** with a clean notepad interface.
-              - **Secret Unlock**: Type **`#6969#`** into the notepad search bar to reveal OnlyUs!
-              - **Panic Exit**: Shake phone to immediately exit and close the app.
-              - **Recent-Apps Protection**: Protected with `FLAG_SECURE` so recent-apps drawer shows blank.
-              - **Auto-Lock**: Returns to Notes when screen turns off or app is minimized.
-
-            - 💬 **`OnlyUs-Rahul-Direct.apk`** *(Rahul Edition)*:
-              - Appears on the home screen as **"OnlyUs"**.
-              - Direct entry into the full chat with notifications, instant real-time sync, voice notes, and games.
-              - Full inline reply from notification bar without background interruption.
+            The app's Play Store-style What's new notes are published separately in latest.json, not generated from GitHub commit titles.
           files: |
-            OnlyUs-Nusrat-Stealth.apk
-            OnlyUs-Rahul-Direct.apk
-            OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
-            OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
+            OnlyUs.apk
+            Notes.apk
+            OnlyUs-v\${{ steps.vars.outputs.version_name }}.apk
+            Notes-v\${{ steps.vars.outputs.version_name }}.apk
+
+      - name: Publish customer-facing update metadata
+        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        env:
+          IN_APP_RELEASE_NOTES: \${{ inputs.whats_new }}
+          RELEASE_VERSION_NAME: \${{ steps.vars.outputs.version_name }}
+          RELEASE_VERSION_CODE: \${{ steps.vars.outputs.version_code }}
+          RELEASE_VERSION_TAG: \${{ steps.vars.outputs.version_tag }}
+          RELEASE_REPO: RahulExe69/OnlyUs69-Releases
+          RELEASE_REPO_PATH: release-repo
+        run: |
+          node scripts/generate-release-metadata.mjs
+          git -C "$RELEASE_REPO_PATH" config user.name "github-actions[bot]"
+          git -C "$RELEASE_REPO_PATH" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$RELEASE_REPO_PATH" add latest.json
+          if ! git -C "$RELEASE_REPO_PATH" diff --cached --quiet; then
+            git -C "$RELEASE_REPO_PATH" commit -m "Publish update metadata for \${RELEASE_VERSION_TAG}"
+            git -C "$RELEASE_REPO_PATH" push origin HEAD:main
+          else
+            echo "Update metadata is already current."
+          fi
 
       - name: Workflow Summary (Success)
         if: success()
@@ -269,7 +335,7 @@ jobs:
           echo "Version: **${{ steps.vars.outputs.version_name }}** (Build code: **${{ steps.vars.outputs.version_code }}**)" >> $GITHUB_STEP_SUMMARY
           echo "Build Type: **${{ steps.vars.outputs.build_type }}** (Signed with keystore)" >> $GITHUB_STEP_SUMMARY
           echo "Release Tag: **${{ steps.vars.outputs.version_tag }}**" >> $GITHUB_STEP_SUMMARY
-          echo "Both APKs have been uploaded to **Artifacts** and published to the **GitHub Releases** tab." >> $GITHUB_STEP_SUMMARY
+          echo "Both APK variants are available as workflow artifacts. Public release publishing only runs when Publish release is enabled for a signed release build." >> $GITHUB_STEP_SUMMARY
           echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
           echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Inline Notifications)" >> $GITHUB_STEP_SUMMARY
 
