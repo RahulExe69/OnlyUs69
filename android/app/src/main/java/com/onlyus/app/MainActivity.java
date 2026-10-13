@@ -258,7 +258,7 @@ if (getBridge() != null && getBridge().getWebView() != null) {
     public void onResume() {
         super.onResume();
         isAppForeground = true;
-        OnlyUsUpdatePlugin.onActivityResumed(this)
+        OnlyUsUpdatePlugin.onActivityResumed(this);
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
         }
