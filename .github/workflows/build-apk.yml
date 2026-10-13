@@ -161,8 +161,17 @@ jobs:
             echo "ANDROID_HOME=$ANDROID_HOME"
             echo "Accepting Android SDK licenses..."
             yes | sdkmanager --licenses || true
-            echo "Ensuring platforms;android-36 and build-tools;36.0.0..."
-            sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+            # GitHub-hosted runners often already have these packages. Calling sdkmanager
+            # unconditionally causes slow remote repository scans on every build.
+            NEED_INSTALL=()
+            [ -d "$ANDROID_HOME/platforms/android-36" ] || NEED_INSTALL+=("platforms;android-36")
+            [ -d "$ANDROID_HOME/build-tools/36.0.0" ] || NEED_INSTALL+=("build-tools;36.0.0")
+            if [ "${#NEED_INSTALL[@]}" -gt 0 ]; then
+              echo "Installing only missing Android SDK packages: ${NEED_INSTALL[*]}"
+              sdkmanager "${NEED_INSTALL[@]}"
+            else
+              echo "Required Android SDK packages are already installed; skipping sdkmanager."
+            fi
             echo "Android SDK configuration completed."
           } 2>&1 | tee logs/step_setup_android.log
 
@@ -256,7 +265,7 @@ jobs:
           retention-days: 30
 
       - name: Validate public release configuration
-        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         env:
           ONLYUS_RELEASE_TOKEN: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
           IN_APP_RELEASE_NOTES: ${{ inputs.whats_new }}
