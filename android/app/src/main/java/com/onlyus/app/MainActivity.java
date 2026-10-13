@@ -28,9 +28,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     private boolean otaCheckStarted = false;
     private static volatile boolean isAppForeground = false;
     private SensorManager sensorManager;
-    private OnlyUsUpdateBridge apkUpdateBridge;
-
-    public static boolean isAppInForeground() {
+public static boolean isAppInForeground() {
         return isAppForeground;
     }
     private Sensor accelerometer;
@@ -42,10 +40,9 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OnlyUsNotificationPlugin.class);
+        registerPlugin(OnlyUsUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         instance = this;
-        apkUpdateBridge = new OnlyUsUpdateBridge(this);
-        attachApkUpdateBridge();
 
         boolean isNotes = getPackageName().contains("notes");
 
@@ -170,24 +167,10 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         }
     }
 
-    private void attachApkUpdateBridge() {
-        try {
-            if (apkUpdateBridge == null) {
-                apkUpdateBridge = new OnlyUsUpdateBridge(this);
-            }
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                getBridge().getWebView().addJavascriptInterface(apkUpdateBridge, "OnlyUsUpdate");
-            }
-        } catch (Exception e) {
-            Log.w("OnlyUsUpdater", "Could not attach native APK update bridge", e);
-        }
-    }
-
     @Override
     public void onStart() {
         super.onStart();
-        attachApkUpdateBridge();
-        if (getBridge() != null && getBridge().getWebView() != null) {
+if (getBridge() != null && getBridge().getWebView() != null) {
             android.webkit.WebView webView = getBridge().getWebView();
             android.webkit.WebSettings settings = webView.getSettings();
 
@@ -253,7 +236,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         super.onStop();
         // If in notes flavor and the app is stopped (Home button, switched apps, minimized, or screen locked)
         if (getPackageName().contains("notes")
-                && (apkUpdateBridge == null || !apkUpdateBridge.shouldKeepActivityAlive())) {
+                && (!OnlyUsUpdatePlugin.shouldKeepActivityAlive())) {
             finishAndRemoveTask();
             System.exit(0);
         }
@@ -265,7 +248,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
         // If system is trimming memory or user pressed UI overview/home
         if (getPackageName().contains("notes")
                 && level >= TRIM_MEMORY_UI_HIDDEN
-                && (apkUpdateBridge == null || !apkUpdateBridge.shouldKeepActivityAlive())) {
+                && (!OnlyUsUpdatePlugin.shouldKeepActivityAlive())) {
             finishAndRemoveTask();
             System.exit(0);
         }
@@ -275,9 +258,7 @@ public class MainActivity extends BridgeActivity implements SensorEventListener 
     public void onResume() {
         super.onResume();
         isAppForeground = true;
-        if (apkUpdateBridge != null) {
-            apkUpdateBridge.onActivityResumed();
-        }
+        OnlyUsUpdatePlugin.onActivityResumed(this)
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
         }
