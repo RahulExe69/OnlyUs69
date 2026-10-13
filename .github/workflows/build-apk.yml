@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve Versioning Parameters
         id: vars
@@ -231,8 +233,6 @@ jobs:
             if [ -n "$NUSRAT_APK" ] && [ -f "$NUSRAT_APK" ]; then
               cp "$NUSRAT_APK" Notes.apk
               cp "$NUSRAT_APK" "Notes-v${VER}.apk"
-              cp "$NUSRAT_APK" OnlyUs-Nusrat-Stealth.apk
-              cp "$NUSRAT_APK" "OnlyUs-Nusrat-Stealth-v${VER}.apk"
             else
               echo "::error::Nusrat APK not found"
               exit 1
@@ -240,8 +240,6 @@ jobs:
             if [ -n "$RAHUL_APK" ] && [ -f "$RAHUL_APK" ]; then
               cp "$RAHUL_APK" OnlyUs.apk
               cp "$RAHUL_APK" "OnlyUs-v${VER}.apk"
-              cp "$RAHUL_APK" OnlyUs-Rahul-Direct.apk
-              cp "$RAHUL_APK" "OnlyUs-Rahul-Direct-v${VER}.apk"
             else
               echo "::error::Rahul APK not found"
               exit 1
@@ -255,8 +253,6 @@ jobs:
           path: |
             Notes.apk
             Notes-v${{ steps.vars.outputs.version_name }}.apk
-            OnlyUs-Nusrat-Stealth.apk
-            OnlyUs-Nusrat-Stealth-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
       - name: Upload Rahul Direct APK to Artifacts
@@ -266,8 +262,6 @@ jobs:
           path: |
             OnlyUs.apk
             OnlyUs-v${{ steps.vars.outputs.version_name }}.apk
-            OnlyUs-Rahul-Direct.apk
-            OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
       - name: Validate public release configuration
@@ -346,8 +340,8 @@ jobs:
           echo "Build Type: **${{ steps.vars.outputs.build_type }}** (Signed with keystore)" >> $GITHUB_STEP_SUMMARY
           echo "Release Tag: **${{ steps.vars.outputs.version_tag }}**" >> $GITHUB_STEP_SUMMARY
           echo "Both APK variants are available as workflow artifacts. Public release publishing only runs when Publish release is enabled for a signed release build." >> $GITHUB_STEP_SUMMARY
-          echo "- **Nusrat Edition**: OnlyUs-Nusrat-Stealth.apk (Disguised Notepad + #6969# trigger + Shake panic)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Rahul Edition**: OnlyUs-Rahul-Direct.apk (Full direct chat + Inline Notifications)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Notes edition**: Notes.apk and Notes-v${{ steps.vars.outputs.version_name }}.apk" >> $GITHUB_STEP_SUMMARY
+          echo "- **Standard edition**: OnlyUs.apk and OnlyUs-v${{ steps.vars.outputs.version_name }}.apk" >> $GITHUB_STEP_SUMMARY
 
       - name: Diagnose Build Failure & Generate Fix Report
         if: failure()
