@@ -118,11 +118,19 @@ jobs:
         with:
           node-version: 22
 
+      - name: Cache npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
       - name: Install Node Dependencies
         id: step_install_deps
         run: |
           set -o pipefail
-          (npm ci || npm install) 2>&1 | tee logs/step_install_deps.log
+          npm install --no-audit --no-fund 2>&1 | tee logs/step_install_deps.log
 
       - name: Build Web Application
         id: step_build_web
@@ -159,18 +167,16 @@ jobs:
             export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
             export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
             echo "ANDROID_HOME=$ANDROID_HOME"
-            echo "Accepting Android SDK licenses..."
-            yes | sdkmanager --licenses || true
-            # GitHub-hosted runners often already have these packages. Calling sdkmanager
-            # unconditionally causes slow remote repository scans on every build.
+            # Avoid remote sdkmanager scans on runners that already have the required SDK.
             NEED_INSTALL=()
             [ -d "$ANDROID_HOME/platforms/android-36" ] || NEED_INSTALL+=("platforms;android-36")
             [ -d "$ANDROID_HOME/build-tools/36.0.0" ] || NEED_INSTALL+=("build-tools;36.0.0")
             if [ "${#NEED_INSTALL[@]}" -gt 0 ]; then
-              echo "Installing only missing Android SDK packages: ${NEED_INSTALL[*]}"
+              echo "Accepting licenses and installing only missing Android SDK packages: ${NEED_INSTALL[*]}"
+              yes | sdkmanager --licenses || true
               sdkmanager "${NEED_INSTALL[@]}"
             else
-              echo "Required Android SDK packages are already installed; skipping sdkmanager."
+              echo "Required Android SDK packages are already installed; skipping sdkmanager and license scans."
             fi
             echo "Android SDK configuration completed."
           } 2>&1 | tee logs/step_setup_android.log
@@ -264,23 +270,8 @@ jobs:
             OnlyUs-Rahul-Direct-v${{ steps.vars.outputs.version_name }}.apk
           retention-days: 30
 
-      - name: Validate public release configuration
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
-        env:
-          ONLYUS_RELEASE_TOKEN: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
-          IN_APP_RELEASE_NOTES: ${{ inputs.whats_new }}
-        run: |
-          if [ -z "$ONLYUS_RELEASE_TOKEN" ]; then
-            echo "::error::Missing ONLYUS_RELEASE_TOKEN. Add a fine-grained PAT in OnlyUs69 repository secrets with Contents: Read and write access only to RahulExe69/OnlyUs69-Releases."
-            exit 1
-          fi
-          if [ -z "$(printf '%s' "$IN_APP_RELEASE_NOTES" | tr -d '[:space:]')" ]; then
-            echo "::error::Enter customer-facing What's new notes (one item per line). These are shown inside OnlyUs and are separate from GitHub Release notes."
-            exit 1
-          fi
-
       - name: Checkout public release repository
-        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         uses: actions/checkout@v4
         with:
           repository: RahulExe69/OnlyUs69-Releases
@@ -288,8 +279,26 @@ jobs:
           path: release-repo
           token: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
 
+      - name: Generate Play Store-style release notes
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        env:
+          RELEASE_REPO_PATH: release-repo
+          RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+          RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
+        run: node scripts/generate-release-notes.mjs
+
+      - name: Validate public release configuration
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        env:
+          ONLYUS_RELEASE_TOKEN: ${{ secrets.ONLYUS_RELEASE_TOKEN }}
+        run: |
+          if [ -z "$ONLYUS_RELEASE_TOKEN" ]; then
+            echo "::error::Missing ONLYUS_RELEASE_TOKEN. Add a fine-grained PAT in OnlyUs69 repository secrets with Contents: Read and write access only to RahulExe69/OnlyUs69-Releases."
+            exit 1
+          fi
+
       - name: Publish signed APKs to public release repository
-        if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         uses: softprops/action-gh-release@v2
         with:
           repository: RahulExe69/OnlyUs69-Releases
@@ -301,14 +310,7 @@ jobs:
           make_latest: true
           overwrite_files: true
           fail_on_unmatched_files: true
-          body: |
-            Official signed Android companion APKs for OnlyUs.
-
-            Choose the APK that matches the app already installed on your phone:
-            - OnlyUs.apk — standard OnlyUs edition (com.onlyus.app).
-            - Notes.apk — Notes edition (com.onlyus.notes).
-
-            The app's Play Store-style What's new notes are published separately in latest.json, not generated from GitHub commit titles.
+          body_path: release-notes.md
           files: |
             OnlyUs.apk
             Notes.apk
@@ -318,12 +320,12 @@ jobs:
       - name: Publish customer-facing update metadata
         if: inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         env:
-          IN_APP_RELEASE_NOTES: ${{ inputs.whats_new }}
           RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
           RELEASE_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
           RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
           RELEASE_REPO: RahulExe69/OnlyUs69-Releases
           RELEASE_REPO_PATH: release-repo
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           node scripts/generate-release-metadata.mjs
           git -C "$RELEASE_REPO_PATH" config user.name "github-actions[bot]"
