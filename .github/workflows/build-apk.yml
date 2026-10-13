@@ -32,7 +32,7 @@ on:
         default: true
         type: boolean
       whats_new:
-        description: "Customer-facing What's new text shown inside the app (one item per line; required when publishing)"
+        description: "Customer-facing What's new notes shown in the app (separate items with |; required when publishing)"
         required: false
         default: ''
         type: string
@@ -74,7 +74,7 @@ jobs:
 
           RAW_NAME="${{ inputs.version_name }}"
           if [ -z "$RAW_NAME" ]; then
-            RAW_NAME="1.5.0"
+            RAW_NAME="1.5.2"
           fi
           CLEAN_NAME="${RAW_NAME#v}"
 
