@@ -226,6 +226,13 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           );
           if (isAnotherEditable) return;
 
+          // If the gesture has ended and the textarea never lost DOM focus, the
+          // hide was likely Android Back. Respect it instead of fighting the IME.
+          if (active === el && !timelineGestureActiveRef.current) {
+            (window as any).__keepChatInputActive = false;
+            return;
+          }
+
           if (document.activeElement !== el) el.focus({ preventScroll: true });
           if (document.activeElement !== el) return;
 
