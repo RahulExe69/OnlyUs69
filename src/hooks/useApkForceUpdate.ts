@@ -78,28 +78,16 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
     if (!enabled || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
     let cancelled = false;
+    let progressListener: PluginListenerHandle | null = null;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 6500);
 
     const checkForUpdate = async () => {
       setStatus('checking');
       setErrorMessage('');
-      let progressListener: PluginListenerHandle | null = null;
 
       try {
-        const nativeInfo = await OnlyUsUpdater.getAppInfo();
-        const packageId = String(nativeInfo.packageId || '');
-        const installedCode = Number(nativeInfo.versionCode);
-        const installedName = String(nativeInfo.versionName || '1.0.0')
-          .replace(/-(rahul|nusrat)$/i, '');
-
-        if (!packageId || !Number.isSafeInteger(installedCode) || installedCode < 1) {
-          throw new Error('Installed app version could not be read.');
-        }
-        if (cancelled) return;
-        setCurrentVersionName(installedName);
-
-        // Listen before downloading; native events provide progress and installer state.
+        // Subscribe before reading or downloading anything; progress comes from the native installer bridge.
         progressListener = await OnlyUsUpdater.addListener('progress', event => {
           setProgress(Math.max(0, Math.min(100, Number(event.progress) || 0)));
           if (event.status === 'downloading') {
@@ -124,8 +112,21 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         });
         if (cancelled) {
           await progressListener.remove();
+          progressListener = null;
           return;
         }
+
+        const nativeInfo = await OnlyUsUpdater.getAppInfo();
+        const packageId = String(nativeInfo.packageId || '');
+        const installedCode = Number(nativeInfo.versionCode);
+        const installedName = String(nativeInfo.versionName || '1.0.0')
+          .replace(/-(rahul|nusrat)$/i, '');
+
+        if (!packageId || !Number.isSafeInteger(installedCode) || installedCode < 1) {
+          throw new Error('Installed app version could not be read.');
+        }
+        if (cancelled) return;
+        setCurrentVersionName(installedName);
 
         const response = await fetch(UPDATE_MANIFEST_URL + '?t=' + Date.now(), {
           cache: 'no-store',
@@ -190,27 +191,19 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         }
       } catch (error) {
         if (cancelled) return;
-        // Fail open: nothing is cached; the next app run retries the check.
+        // Fail open: nothing is cached; the next app run retries from scratch.
         setRelease(null);
         setStatus('offline');
         setErrorMessage(error instanceof Error ? error.message : 'Update check unavailable.');
       }
-
-      return () => {
-        void progressListener?.remove();
-      };
     };
 
-    let removeProgressListener: (() => void) | undefined;
-    void checkForUpdate().then(cleanup => {
-      removeProgressListener = cleanup;
-    });
-
+    void checkForUpdate();
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
       controller.abort();
-      removeProgressListener?.();
+      if (progressListener) void progressListener.remove();
     };
   }, [enabled]);
 
