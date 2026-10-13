@@ -53,6 +53,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [inputText, setInputText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const focusRecoveryFrameRef = useRef<number | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
@@ -107,16 +108,36 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const recordedChunksRef = useRef<Blob[]>([]);
   const durationRef = useRef<number>(0);
 
-  // Expose focus and record methods
+  // Keep one stable focus path for tapping the composer and starting a reply.
+  // The lease remains active while the user stays in chat; closeMobileKeyboard()
+  // explicitly clears it before intentional navigation/modal dismissal.
+  const focusInput = useCallback(() => {
+    const el = inputRef?.current || localInputRef.current;
+    if (!el) return;
+
+    if (typeof window !== 'undefined') {
+      (window as any).__keepChatInputActive = true;
+    }
+    if (focusRecoveryFrameRef.current !== null) {
+      cancelAnimationFrame(focusRecoveryFrameRef.current);
+      focusRecoveryFrameRef.current = null;
+    }
+    el.focus({ preventScroll: true });
+  }, [inputRef]);
+
   useImperativeHandle(ref, () => ({
-    focusInput: () => {
-      const el = inputRef?.current || localInputRef.current;
-      el?.focus({ preventScroll: true });
-    },
+    focusInput,
     startVoiceRecording: () => {
       handleStartRecording();
     },
-  }));
+  }), [focusInput]);
+
+  useEffect(() => () => {
+    if (focusRecoveryFrameRef.current !== null) {
+      cancelAnimationFrame(focusRecoveryFrameRef.current);
+      focusRecoveryFrameRef.current = null;
+    }
+  }, []);
 
   useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
 
@@ -136,10 +157,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
   useEffect(() => {
     if (replyingTo) {
-      const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
-      el?.focus({ preventScroll: true });
+      // Works for both swipe-to-reply and the long-press Reply action.
+      focusInput();
     }
-  }, [replyingTo, inputRef]);
+  }, [replyingTo, focusInput]);
 
   useEffect(() => {
     const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
@@ -719,6 +740,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 onFocus={() => {
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = true;
+                    (window as any).__keepChatInputActive = true;
                   }
                   setShowEmojiPicker(false);
                 }}
@@ -726,6 +748,32 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = false;
                   }
+
+                  // Taps on chat controls can move DOM focus away from the textarea.
+                  // Restore it on the next frame only while the focus lease is active.
+                  // Navigation and intentional full-screen dismissals clear that lease first.
+                  if (typeof window === 'undefined' || (window as any).__keepChatInputActive !== true) return;
+                  if (focusRecoveryFrameRef.current !== null) {
+                    cancelAnimationFrame(focusRecoveryFrameRef.current);
+                  }
+                  focusRecoveryFrameRef.current = requestAnimationFrame(() => {
+                    focusRecoveryFrameRef.current = null;
+                    if ((window as any).__keepChatInputActive !== true || document.hidden) return;
+
+                    const el = inputRef?.current || localInputRef.current;
+                    const chatRoot = document.getElementById('chat-view-container');
+                    if (!el || !el.isConnected || !chatRoot?.contains(el)) return;
+
+                    const active = document.activeElement as HTMLElement | null;
+                    const isAnotherEditable = !!active && active !== el && (
+                      active.tagName === 'INPUT' ||
+                      active.tagName === 'TEXTAREA' ||
+                      active.isContentEditable
+                    );
+                    if (isAnotherEditable) return;
+
+                    el.focus({ preventScroll: true });
+                  });
                 }}
                 inputMode="text"
                 enterKeyHint="send"
