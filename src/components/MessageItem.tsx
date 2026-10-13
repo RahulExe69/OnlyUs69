@@ -79,6 +79,7 @@ function MessageItemComponent({
   const lastDoubleTapTimeRef = useRef<number>(0);
   const [showHeartBurst, setShowHeartBurst] = useState(false);
   const heartBurstTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mochiSwipeReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkSelectionActive = () => Boolean(isSelectionActiveRef?.current ?? selectionActive);
 
@@ -86,6 +87,8 @@ function MessageItemComponent({
     return () => {
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
       if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+      if (mochiSwipeReleaseTimerRef.current) clearTimeout(mochiSwipeReleaseTimerRef.current);
+      itemRef.current?.removeAttribute('data-mochi-swipe-active');
     };
   }, []);
 
@@ -522,6 +525,12 @@ function MessageItemComponent({
         }}
         onDragStart={() => {
           setIsSwiping(true);
+          if (mochiSwipeReleaseTimerRef.current) {
+            clearTimeout(mochiSwipeReleaseTimerRef.current);
+            mochiSwipeReleaseTimerRef.current = null;
+          }
+          // Let Mochi track this exact message through the swipe and its spring-back.
+          itemRef.current?.setAttribute('data-mochi-swipe-active', 'true');
           hasTriggeredReplyThreshold.current = false;
           if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
@@ -543,6 +552,11 @@ function MessageItemComponent({
         }}
         onDragEnd={(_e, info) => {
           setTimeout(() => setIsSwiping(false), 60);
+          if (mochiSwipeReleaseTimerRef.current) clearTimeout(mochiSwipeReleaseTimerRef.current);
+          mochiSwipeReleaseTimerRef.current = setTimeout(() => {
+            itemRef.current?.removeAttribute('data-mochi-swipe-active');
+            mochiSwipeReleaseTimerRef.current = null;
+          }, 280);
           const currentX = swipeX.get();
           const passedThreshold = isOwn
             ? (currentX <= -24 ||
