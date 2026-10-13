@@ -528,7 +528,6 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
     lastPetTimeRef.current = now;
     petCountRef.current = isRapidPet ? petCountRef.current + 1 : 1;
 
-    triggerHaptic(35);
 
     // Gently waking up from deep slumber when petted!
     if (stateRef.current === 'sleeping') {
@@ -645,11 +644,10 @@ export const ChatPetCompanion: React.FC<ChatPetCompanionProps> = ({
         ];
         const phrase = funnyPhrases[Math.floor(Math.random() * funnyPhrases.length)];
         showSpeech(phrase, 90, false);
-        triggerHaptic(28);
         startJump(targetPlatform, false, true /* isEscapeJump */);
       }
     }
-  }, [scanPlatforms, startJump, showSpeech, triggerHaptic]);
+  }, [scanPlatforms, startJump, showSpeech]);
 
   // Main animation loop, physics simulation, zero-flicker scroll coordinates
   useEffect(() => {
