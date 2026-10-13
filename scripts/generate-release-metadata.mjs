@@ -15,7 +15,7 @@ const repo = required('RELEASE_REPO');
 const outDir = resolve(process.env.RELEASE_REPO_PATH || 'release-repo');
 const rawNotes = required('IN_APP_RELEASE_NOTES');
 const releaseNotes = rawNotes
-  .split(/\r?\n/)
+   .split(/\r?\n|\s*\|\s*/)
   .map(line => line.trim().replace(/^[-*•]\s+/, '').trim())
   .filter(Boolean);
 
