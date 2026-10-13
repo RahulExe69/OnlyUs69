@@ -13,15 +13,14 @@ const versionCode = Number(required('RELEASE_VERSION_CODE'));
 const versionTag = required('RELEASE_VERSION_TAG');
 const repo = required('RELEASE_REPO');
 const outDir = resolve(process.env.RELEASE_REPO_PATH || 'release-repo');
-const rawNotes = required('IN_APP_RELEASE_NOTES');
-const releaseNotes = rawNotes
-   .split(/\r?\n|\s*\|\s*/)
-  .map(line => line.trim().replace(/^[-*•]\s+/, '').trim())
-  .filter(Boolean);
+const releaseNotes = JSON.parse(await readFile('release-notes.json', 'utf8'));
+const sourceCommit = required('GITHUB_SHA');
 
 if (!/^\d+\.\d+\.\d+$/.test(versionName)) throw new Error('Release version must be MAJOR.MINOR.PATCH.');
 if (!Number.isSafeInteger(versionCode) || versionCode < 1) throw new Error('Version code must be a positive integer.');
-if (releaseNotes.length === 0) throw new Error('Provide at least one customer-facing What’s new item.');
+if (!Array.isArray(releaseNotes) || !releaseNotes.length || releaseNotes.some(section => !section.title || !Array.isArray(section.items) || !section.items.length)) {
+  throw new Error('Generated release notes must contain titled sections with at least one item.');
+}
 
 const definitions = [
   { packageId: 'com.onlyus.app', assetName: 'OnlyUs.apk', file: 'OnlyUs.apk' },
@@ -48,9 +47,10 @@ const document = {
   versionName,
   versionCode,
   publishedAt: new Date().toISOString(),
+  sourceCommit,
   releaseNotes,
   editions
 };
 
 await writeFile(join(outDir, 'latest.json'), JSON.stringify(document, null, 2) + '\n', 'utf8');
-console.log('Generated public latest.json for ' + versionTag + ' with ' + releaseNotes.length + ' customer-facing note(s).');
+console.log('Generated public latest.json for ' + versionTag + ' with ' + releaseNotes.length + ' release-note section(s).');

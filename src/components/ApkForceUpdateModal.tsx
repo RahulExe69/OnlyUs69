@@ -128,14 +128,21 @@ export function ApkForceUpdateModal({
 
         <section className="mb-7">
           <h2 className="mb-3 text-base font-medium">What’s new</h2>
-          <ul className="space-y-2.5 text-sm leading-relaxed" style={{ color: isDark ? '#bdc1c6' : '#3c4043' }}>
-            {release.releaseNotes.map((note, index) => (
-              <li key={index} className="flex items-start gap-2.5">
-                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: isDark ? '#9aa0a6' : '#5f6368' }} />
-                <span>{note}</span>
-              </li>
+          <div className="space-y-5">
+            {release.releaseNotes.map((section, sectionIndex) => (
+              <div key={section.title + sectionIndex}>
+                <h3 className="mb-2 text-sm font-semibold" style={{ color: isDark ? '#e8eaed' : '#202124' }}>{section.title}</h3>
+                <ul className="space-y-2 text-sm leading-relaxed" style={{ color: isDark ? '#bdc1c6' : '#3c4043' }}>
+                  {section.items.map((note, index) => (
+                    <li key={index} className="flex items-start gap-2.5">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: isDark ? '#9aa0a6' : '#5f6368' }} />
+                      <span>{note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
 
         {busy && (
