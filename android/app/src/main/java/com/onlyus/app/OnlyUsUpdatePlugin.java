@@ -376,19 +376,13 @@ public final class OnlyUsUpdatePlugin extends Plugin {
                     new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName(activity.getPackageName());
             params.setSize(file.length());
-
-            sessionId = installer.createSession(params);
-            try (PackageInstaller.Session session = installer.openSession(sessionId);
-                 InputStream input = new BufferedInputStream(new FileInputStream(file));
-                 java.io.OutputStream output = session.openWrite("onlyus-update.apk", 0, file.length())) {
-                byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, read);
-                }
-                session.fsync(output);
+            // Ask Android to avoid confirmation only where policy permits. Android
+            // still decides whether this package qualifies for a user-action-free update.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
             }
 
+            sessionId = installer.createSession(params);
             Intent statusIntent = new Intent(activity, OnlyUsInstallStatusReceiver.class);
             statusIntent.setAction(OnlyUsInstallStatusReceiver.ACTION_INSTALL_STATUS);
             statusIntent.putExtra(OnlyUsInstallStatusReceiver.EXTRA_SESSION_ID, sessionId);
@@ -397,10 +391,19 @@ public final class OnlyUsUpdatePlugin extends Plugin {
             PendingIntent statusPendingIntent = PendingIntent.getBroadcast(
                     activity, sessionId, statusIntent, pendingFlags);
 
-            activeInstallSessionId = sessionId;
-            installerLaunched = true;
-            notifyProgress("installer", 100, file.length(), file.length(), "");
-            installer.openSession(sessionId).commit(statusPendingIntent.getIntentSender());
+            try (PackageInstaller.Session session = installer.openSession(sessionId);
+                 InputStream input = new BufferedInputStream(new FileInputStream(file))) {
+                try (java.io.OutputStream output = session.openWrite("onlyus-update.apk", 0, file.length())) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int read;
+                    while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+                    session.fsync(output);
+                }
+                activeInstallSessionId = sessionId;
+                installerLaunched = true;
+                notifyProgress("installer", 100, file.length(), file.length(), "");
+                session.commit(statusPendingIntent.getIntentSender());
+            }
         } catch (Exception e) {
             if (sessionId >= 0) {
                 try { installer.abandonSession(sessionId); } catch (Exception ignored) {}
