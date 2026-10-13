@@ -40,6 +40,8 @@ import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabas
 import { OnlyUsIntro } from './components/OnlyUsIntro';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
 import { PetSettingsModal } from './components/PetSettingsModal';
+import { ApkForceUpdateModal } from './components/ApkForceUpdateModal';
+import { useApkForceUpdate } from './hooks/useApkForceUpdate';
 
 // Dynamic lazy imports for heavy secondary modal dialogs
 const ProfileModal = lazy(() => import('./components/ProfileModal').then(m => ({ default: m.ProfileModal })));
@@ -155,6 +157,34 @@ export default function App() {
     sessionStorage.setItem('onlyus_vault_unlocked', 'true');
     setIsStealthUnlocked(true);
   }, []);
+
+  // Keep the Notes disguise locked: its APK update gate is only checked after the vault is unlocked.
+  // Direct OnlyUs checks as soon as the native app starts. A metadata/network failure never blocks startup.
+  const {
+    release: apkUpdateRelease,
+    currentVersionName: installedApkVersionName,
+    status: apkUpdateStatus,
+    progress: apkUpdateProgress,
+    errorMessage: apkUpdateError,
+    startUpdate: startApkUpdate,
+    retryUpdate: retryApkUpdate,
+    closeApp: closeForApkUpdate
+  } = useApkForceUpdate({
+    enabled: Capacitor.isNativePlatform() && (!isNotesFlavor || isStealthUnlocked)
+  });
+
+  const apkUpdateModal = apkUpdateRelease ? (
+    <ApkForceUpdateModal
+      release={apkUpdateRelease}
+      currentVersionName={installedApkVersionName}
+      status={apkUpdateStatus}
+      progress={apkUpdateProgress}
+      errorMessage={apkUpdateError}
+      onUpdate={startApkUpdate}
+      onRetry={retryApkUpdate}
+      onClose={closeForApkUpdate}
+    />
+  ) : null;
 
   // Panic shake listener when vault is unlocked: shake to exit & lock
   useEffect(() => {
@@ -1982,20 +2012,33 @@ export default function App() {
   if (showIntro || loading) {
     const activeIntroTheme = (userProfile?.theme as ThemeName) || (typeof window !== 'undefined' ? ((localStorage.getItem('onlyus_chat_theme') as ThemeName) || (document.documentElement.dataset.chatTheme as ThemeName)) : '3d-dark') || '3d-dark';
     return (
-      <OnlyUsIntro
-        ready={!loading}
-        onFinish={handleFinishIntro}
-        themeName={activeIntroTheme}
-      />
+      <>
+        <OnlyUsIntro
+          ready={!loading}
+          onFinish={handleFinishIntro}
+          themeName={activeIntroTheme}
+        />
+        {apkUpdateModal}
+      </>
     );
   }
 
   if (!user) {
-    return <LoginView error={error} onLogin={handleLogin} onPasscodeLogin={handlePasscodeLogin} />;
+    return (
+      <>
+        <LoginView error={error} onLogin={handleLogin} onPasscodeLogin={handlePasscodeLogin} />
+        {apkUpdateModal}
+      </>
+    );
   }
 
   if (error && !userProfile) {
-    return <UnauthorizedView error={error} onLogout={handleLogout} />;
+    return (
+      <>
+        <UnauthorizedView error={error} onLogout={handleLogout} />
+        {apkUpdateModal}
+      </>
+    );
   }
 
   return (
@@ -2507,6 +2550,7 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+      {apkUpdateModal}
     </div>
   );
 }

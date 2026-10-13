@@ -139,7 +139,18 @@ async function main() {
   const notesFullBuffer = Buffer.from(NOTES_FULL_SVG);
   const notesForegroundBuffer = Buffer.from(NOTES_FOREGROUND_SVG);
   const nusratAvatarFallbackBuffer = Buffer.from(NUSRAT_AVATAR_FALLBACK_SVG);
-  const faviconBuffer = fs.readFileSync(faviconPath);
+  let faviconBuffer = fs.readFileSync(faviconPath);
+  // Some checked-in WebP files can be unreadable by Sharp on CI despite having a RIFF header.
+  // Fall back to the repository's known-good launcher PNG so icon generation doesn't block APK builds.
+  try {
+    await sharp(faviconBuffer).metadata();
+  } catch (error) {
+    const fallbackIconPath = path.join(mainRes, 'mipmap-xxxhdpi', 'ic_launcher.png');
+    if (!fs.existsSync(fallbackIconPath)) throw error;
+    console.warn(`⚠️ ${faviconPath} could not be decoded; using existing launcher PNG as Rahul icon source.`);
+    faviconBuffer = fs.readFileSync(fallbackIconPath);
+    await sharp(faviconBuffer).metadata();
+  }
 
   console.log('🚀 Generating Android launcher & notification assets...');
 

@@ -29,7 +29,6 @@ android {
         nusrat {
             dimension "edition"
             applicationId "com.onlyus.notes"
-            versionNameSuffix "-nusrat"
             manifestPlaceholders = [
                 appName: "Notes"
             ]
@@ -37,7 +36,6 @@ android {
         rahul {
             dimension "edition"
             applicationId "com.onlyus.app"
-            versionNameSuffix "-rahul"
             manifestPlaceholders = [
                 appName: "OnlyUs"
             ]
