@@ -58,6 +58,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const keyboardRecoveryTimerRef = useRef<number | null>(null);
   const lastTimelineInteractionAtRef = useRef(0);
   const lastTimelineGestureEndedAtRef = useRef(0);
+  const lastGestureBlurAtRef = useRef(0);
   const timelineGestureActiveRef = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -185,6 +186,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       void Keyboard.addListener('keyboardDidShow', () => {
+        lastGestureBlurAtRef.current = 0;
         if (keyboardRecoveryTimerRef.current !== null) {
           window.clearTimeout(keyboardRecoveryTimerRef.current);
           keyboardRecoveryTimerRef.current = null;
@@ -202,7 +204,8 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           timelineGestureActiveRef.current ||
           now - lastTimelineGestureEndedAtRef.current < 650;
         const interactionIsRecent = now - lastTimelineInteractionAtRef.current < 650;
-        if (!gestureIsRecent && !interactionIsRecent) {
+        const focusLossWasRecent = now - lastGestureBlurAtRef.current < 350;
+        if (!gestureIsRecent && !interactionIsRecent && !focusLossWasRecent) {
           // No current/recent chat-body gesture: treat this as Android Back.
           (window as any).__keepChatInputActive = false;
           (window as any).__isChatInputFocused = false;
@@ -228,7 +231,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
           // If the gesture has ended and the textarea never lost DOM focus, the
           // hide was likely Android Back. Respect it instead of fighting the IME.
-          if (active === el && !timelineGestureActiveRef.current) {
+          if (active === el && !timelineGestureActiveRef.current && !focusLossWasRecent) {
             (window as any).__keepChatInputActive = false;
             return;
           }
@@ -871,6 +874,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                     Date.now() - lastTimelineGestureEndedAtRef.current < 250;
 
                   if (withinRecentChatGesture) {
+                    lastGestureBlurAtRef.current = Date.now();
                     // Reclaim focus before the IME finishes dismissing; do not call
                     // Keyboard.show() here. The native hide handler may only reopen it
                     // after this textarea is confirmed as the active element.
