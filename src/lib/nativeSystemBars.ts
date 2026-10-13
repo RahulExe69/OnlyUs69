@@ -26,7 +26,7 @@ function isLightColor(hex: string): boolean {
  * active chat theme. Android 15+ draws system bars edge-to-edge, so the window
  * background must match the page rather than relying only on bar-color setters.
  */
-export async function syncNativeSystemBars(backgroundColor: string, foregroundColor: string) {
+export async function syncNativeSystemBars(backgroundColor: string) {
   if (!Capacitor.isNativePlatform()) return;
 
   const darkIcons = isLightColor(backgroundColor);
