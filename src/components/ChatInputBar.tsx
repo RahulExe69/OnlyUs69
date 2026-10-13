@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Smile, Heart, Send, X, Mic, Square, Trash2, Play, Pause } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
+import { Capacitor } from '@capacitor/core';
+import { Keyboard } from '@capacitor/keyboard';
 
 export interface ChatInputBarHandle {
   focusInput: () => void;
@@ -54,6 +56,9 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const focusRecoveryFrameRef = useRef<number | null>(null);
+  const keyboardRecoveryTimerRef = useRef<number | null>(null);
+  const keyboardVisibleRef = useRef(false);
+  const lastChatInteractionAtRef = useRef(0);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
@@ -109,20 +114,29 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const durationRef = useRef<number>(0);
 
   // Keep one stable focus path for tapping the composer and starting a reply.
-  // The lease remains active while the user stays in chat; closeMobileKeyboard()
-  // explicitly clears it before intentional navigation/modal dismissal.
+  // In a native Android WebView, DOM focus alone is not enough: the IME can be
+  // hidden while the textarea stays focused. Use Capacitor's native keyboard API
+  // to explicitly reopen it when a reply action requests focus.
   const focusInput = useCallback(() => {
     const el = inputRef?.current || localInputRef.current;
-    if (!el) return;
+    if (!el || !el.isConnected) return;
 
     if (typeof window !== 'undefined') {
       (window as any).__keepChatInputActive = true;
+      (window as any).__isChatInputFocused = true;
     }
     if (focusRecoveryFrameRef.current !== null) {
       cancelAnimationFrame(focusRecoveryFrameRef.current);
       focusRecoveryFrameRef.current = null;
     }
     el.focus({ preventScroll: true });
+
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+      // show() works even when the WebView still considers this textarea focused.
+      void Keyboard.show().catch((error) => {
+        console.debug('Native keyboard show was unavailable:', error);
+      });
+    }
   }, [inputRef]);
 
   useImperativeHandle(ref, () => ({
@@ -137,7 +151,105 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       cancelAnimationFrame(focusRecoveryFrameRef.current);
       focusRecoveryFrameRef.current = null;
     }
+    if (keyboardRecoveryTimerRef.current !== null) {
+      window.clearTimeout(keyboardRecoveryTimerRef.current);
+      keyboardRecoveryTimerRef.current = null;
+    }
   }, []);
+
+  // Record interactions with the message timeline (including Mochi and scrolls).
+  // If Android hides the IME because of one of these interactions, the keyboard
+  // listener below can distinguish that from a Back-button dismissal.
+  useEffect(() => {
+    const chatRoot = document.getElementById('chat-view-container');
+    if (!chatRoot) return;
+
+    const markChatInteraction = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('#message-container')) return;
+      lastChatInteractionAtRef.current = Date.now();
+    };
+
+    chatRoot.addEventListener('pointerdown', markChatInteraction, true);
+    chatRoot.addEventListener('touchstart', markChatInteraction, { capture: true, passive: true });
+    chatRoot.addEventListener('touchmove', markChatInteraction, { capture: true, passive: true });
+    chatRoot.addEventListener('scroll', markChatInteraction, true);
+    chatRoot.addEventListener('wheel', markChatInteraction, true);
+
+    return () => {
+      chatRoot.removeEventListener('pointerdown', markChatInteraction, true);
+      chatRoot.removeEventListener('touchstart', markChatInteraction, true);
+      chatRoot.removeEventListener('touchmove', markChatInteraction, true);
+      chatRoot.removeEventListener('scroll', markChatInteraction, true);
+      chatRoot.removeEventListener('wheel', markChatInteraction, true);
+    };
+  }, []);
+
+  // Native keyboard events let us keep the IME alive across chat-body taps and
+  // scrolls, while treating a hide without a recent chat interaction as Back.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+
+    let mounted = true;
+    let showListener: { remove: () => Promise<void> } | null = null;
+    let hideListener: { remove: () => Promise<void> } | null = null;
+
+    void Keyboard.addListener('keyboardDidShow', () => {
+      keyboardVisibleRef.current = true;
+    }).then((listener) => {
+      if (!mounted) void listener.remove();
+      else showListener = listener;
+    }).catch((error) => console.debug('Keyboard show listener unavailable:', error));
+
+    void Keyboard.addListener('keyboardDidHide', () => {
+      keyboardVisibleRef.current = false;
+      if ((window as any).__keepChatInputActive !== true) return;
+
+      const recentChatInteraction = Date.now() - lastChatInteractionAtRef.current < 1200;
+      if (!recentChatInteraction) {
+        // No recent touch/scroll caused this hide, so respect Android Back.
+        (window as any).__keepChatInputActive = false;
+        (window as any).__isChatInputFocused = false;
+        return;
+      }
+
+      if (keyboardRecoveryTimerRef.current !== null) {
+        window.clearTimeout(keyboardRecoveryTimerRef.current);
+      }
+      keyboardRecoveryTimerRef.current = window.setTimeout(() => {
+        keyboardRecoveryTimerRef.current = null;
+        if ((window as any).__keepChatInputActive !== true || document.hidden) return;
+
+        const el = inputRef?.current || localInputRef.current;
+        const chatRoot = document.getElementById('chat-view-container');
+        if (!el || !el.isConnected || !chatRoot?.contains(el)) return;
+
+        const active = document.activeElement as HTMLElement | null;
+        const isAnotherEditable = !!active && active !== el && (
+          active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+        );
+        if (isAnotherEditable) return;
+
+        el.focus({ preventScroll: true });
+        void Keyboard.show().catch((error) => {
+          console.debug('Native keyboard recovery was unavailable:', error);
+        });
+      }, 80);
+    }).then((listener) => {
+      if (!mounted) void listener.remove();
+      else hideListener = listener;
+    }).catch((error) => console.debug('Keyboard hide listener unavailable:', error));
+
+    return () => {
+      mounted = false;
+      if (showListener) void showListener.remove();
+      if (hideListener) void hideListener.remove();
+      if (keyboardRecoveryTimerRef.current !== null) {
+        window.clearTimeout(keyboardRecoveryTimerRef.current);
+        keyboardRecoveryTimerRef.current = null;
+      }
+    };
+  }, [inputRef]);
 
   useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
 
@@ -744,10 +856,14 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                     (window as any).__isChatInputFocused = false;
                   }
 
-                  // Taps on chat controls can move DOM focus away from the textarea.
-                  // Restore it on the next frame only while the focus lease is active.
-                  // Navigation and intentional full-screen dismissals clear that lease first.
+                  // Native Android keyboard hiding is handled by Keyboard's native
+                  // events below; don't race that event or reopen after Android Back.
+                  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') return;
+
+                  // On web, recover blur only if a recent touch/scroll in the chat body
+                  // plausibly caused it. A Back/Escape dismissal must stay dismissed.
                   if (typeof window === 'undefined' || (window as any).__keepChatInputActive !== true) return;
+                  if (Date.now() - lastChatInteractionAtRef.current >= 1200) return;
                   if (focusRecoveryFrameRef.current !== null) {
                     cancelAnimationFrame(focusRecoveryFrameRef.current);
                   }
