@@ -174,7 +174,7 @@ export function ApkForceUpdateModal({
       <footer className="mx-auto w-full max-w-md px-6 pb-6 pt-2">
         <button
           type="button"
-          onClick={isDownloadError || status === 'ready' || status === 'permission' ? onRetry : onUpdate}
+          onClick={status === 'installed' ? onClose : isDownloadError || status === 'ready' || status === 'permission' ? onRetry : onUpdate}
           disabled={busy}
           className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-opacity disabled:cursor-wait disabled:opacity-60"
           style={{ background: isDark ? '#00a878' : '#01875f', color: isDark ? '#062016' : '#ffffff' }}
