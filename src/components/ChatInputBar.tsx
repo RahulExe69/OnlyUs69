@@ -196,12 +196,18 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
     void Keyboard.addListener('keyboardDidShow', () => {
       keyboardVisibleRef.current = true;
+      if (keyboardRecoveryTimerRef.current !== null) {
+        window.clearTimeout(keyboardRecoveryTimerRef.current);
+        keyboardRecoveryTimerRef.current = null;
+      }
     }).then((listener) => {
       if (!mounted) void listener.remove();
       else showListener = listener;
     }).catch((error) => console.debug('Keyboard show listener unavailable:', error));
 
     void Keyboard.addListener('keyboardDidHide', () => {
+      // Ignore duplicate hide notifications from platform/IME transitions.
+      if (!keyboardVisibleRef.current) return;
       keyboardVisibleRef.current = false;
       if ((window as any).__keepChatInputActive !== true) return;
 
