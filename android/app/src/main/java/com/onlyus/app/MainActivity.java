@@ -41,6 +41,7 @@ public static boolean isAppInForeground() {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OnlyUsNotificationPlugin.class);
         registerPlugin(OnlyUsUpdatePlugin.class);
+        registerPlugin(OnlyUsThemePlugin.class);
         super.onCreate(savedInstanceState);
         instance = this;
 
