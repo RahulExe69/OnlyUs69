@@ -21,7 +21,7 @@ export interface ApkUpdateRelease {
   versionName: string;
   versionCode: number;
   publishedAt: string;
-  releaseNotes: string[];
+  releaseNotes: Array<{ title: string; items: string[] }>;
   packageId: string;
   assetName: string;
   downloadUrl: string;
@@ -140,7 +140,12 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         const versionCode = Number(manifest?.versionCode);
         const packageAsset = manifest?.editions?.[packageId];
         const releaseNotes = Array.isArray(manifest?.releaseNotes)
-          ? manifest.releaseNotes.map((line: unknown) => String(line).trim()).filter(Boolean)
+          ? manifest.releaseNotes
+              .map((section: any) => ({
+                title: String(section?.title || '').trim(),
+                items: Array.isArray(section?.items) ? section.items.map((item: unknown) => String(item).trim()).filter(Boolean) : []
+              }))
+              .filter((section: { title: string; items: string[] }) => section.title && section.items.length > 0)
           : [];
 
         if (
