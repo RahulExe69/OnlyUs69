@@ -56,10 +56,12 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const keyboardRecoveryTimerRef = useRef<number | null>(null);
-  const lastTimelineInteractionAtRef = useRef(0);
+  const pendingTimelineRecoveryExpiryRef = useRef<number | null>(null);
   const lastTimelineGestureEndedAtRef = useRef(0);
-  const lastGestureBlurAtRef = useRef(0);
   const timelineGestureActiveRef = useRef(false);
+  const timelineGestureStartedWithKeyboardRef = useRef(false);
+  const keyboardVisibleRef = useRef(false);
+  const pendingTimelineKeyboardRecoveryRef = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
@@ -155,13 +157,12 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       const target = event.target;
       return target instanceof Element && !!target.closest('#message-container');
     };
-    const markTimelineInteraction = (event: Event) => {
-      if (isTimelineTarget(event)) lastTimelineInteractionAtRef.current = Date.now();
-    };
     const beginTimelineGesture = (event: Event) => {
-      if (!isTimelineTarget(event)) return;
+      if (!isTimelineTarget(event) || timelineGestureActiveRef.current) return;
       timelineGestureActiveRef.current = true;
-      lastTimelineInteractionAtRef.current = Date.now();
+      // Only a gesture that began with the IME open can preserve keyboard intent.
+      timelineGestureStartedWithKeyboardRef.current =
+        keyboardVisibleRef.current && (window as any).__keepChatInputActive === true;
     };
     const endTimelineGesture = () => {
       if (!timelineGestureActiveRef.current) return;
@@ -171,10 +172,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
     chatRoot.addEventListener('pointerdown', beginTimelineGesture, true);
     chatRoot.addEventListener('touchstart', beginTimelineGesture, { capture: true, passive: true });
-    chatRoot.addEventListener('touchmove', markTimelineInteraction, { capture: true, passive: true });
-    chatRoot.addEventListener('pointermove', markTimelineInteraction, true);
-    chatRoot.addEventListener('scroll', markTimelineInteraction, true);
-    chatRoot.addEventListener('wheel', markTimelineInteraction, true);
     window.addEventListener('pointerup', endTimelineGesture, true);
     window.addEventListener('pointercancel', endTimelineGesture, true);
     window.addEventListener('touchend', endTimelineGesture, true);
@@ -183,10 +180,15 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     let mounted = true;
     let showListener: { remove: () => Promise<void> } | null = null;
     let hideListener: { remove: () => Promise<void> } | null = null;
-
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       void Keyboard.addListener('keyboardDidShow', () => {
-        lastGestureBlurAtRef.current = 0;
+        keyboardVisibleRef.current = true;
+        pendingTimelineKeyboardRecoveryRef.current = false;
+        timelineGestureStartedWithKeyboardRef.current = false;
+        if (pendingTimelineRecoveryExpiryRef.current !== null) {
+          window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+          pendingTimelineRecoveryExpiryRef.current = null;
+        }
         if (keyboardRecoveryTimerRef.current !== null) {
           window.clearTimeout(keyboardRecoveryTimerRef.current);
           keyboardRecoveryTimerRef.current = null;
@@ -197,53 +199,49 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       }).catch((error) => console.debug('Keyboard show listener unavailable:', error));
 
       void Keyboard.addListener('keyboardDidHide', () => {
-        if ((window as any).__keepChatInputActive !== true || document.hidden) return;
-
-        const now = Date.now();
-        const gestureIsRecent =
-          timelineGestureActiveRef.current ||
-          now - lastTimelineGestureEndedAtRef.current < 650;
-        const interactionIsRecent = now - lastTimelineInteractionAtRef.current < 650;
-        const focusLossWasRecent = now - lastGestureBlurAtRef.current < 350;
-        if (!gestureIsRecent && !interactionIsRecent && !focusLossWasRecent) {
-          // No current/recent chat-body gesture: treat this as Android Back.
-          (window as any).__keepChatInputActive = false;
-          (window as any).__isChatInputFocused = false;
+        keyboardVisibleRef.current = false;
+        const recentGestureEnd = Date.now() - lastTimelineGestureEndedAtRef.current < 220;
+        const shouldRecover = pendingTimelineKeyboardRecoveryRef.current ||
+          (timelineGestureStartedWithKeyboardRef.current &&
+            (timelineGestureActiveRef.current || recentGestureEnd) &&
+            (window as any).__keepChatInputActive === true);
+        if (!shouldRecover || document.hidden) {
+          pendingTimelineKeyboardRecoveryRef.current = false;
+          timelineGestureStartedWithKeyboardRef.current = false;
+          if (!timelineGestureActiveRef.current) {
+            (window as any).__keepChatInputActive = false;
+            (window as any).__isChatInputFocused = false;
+          }
+          if (pendingTimelineRecoveryExpiryRef.current !== null) {
+            window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+            pendingTimelineRecoveryExpiryRef.current = null;
+          }
           return;
         }
-
-        if (keyboardRecoveryTimerRef.current !== null) {
-          window.clearTimeout(keyboardRecoveryTimerRef.current);
+        pendingTimelineKeyboardRecoveryRef.current = false;
+        timelineGestureStartedWithKeyboardRef.current = false;
+        if (pendingTimelineRecoveryExpiryRef.current !== null) {
+          window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+          pendingTimelineRecoveryExpiryRef.current = null;
         }
+        if (keyboardRecoveryTimerRef.current !== null) window.clearTimeout(keyboardRecoveryTimerRef.current);
         keyboardRecoveryTimerRef.current = window.setTimeout(() => {
           keyboardRecoveryTimerRef.current = null;
           if (!mounted || document.hidden || (window as any).__keepChatInputActive !== true) return;
-
           const el = inputRef?.current || localInputRef.current;
           const root = document.getElementById('chat-view-container');
           if (!el || !el.isConnected || !root?.contains(el)) return;
-
           const active = document.activeElement as HTMLElement | null;
           const isAnotherEditable = !!active && active !== el && (
             active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
           );
           if (isAnotherEditable) return;
-
-          // If the gesture has ended and the textarea never lost DOM focus, the
-          // hide was likely Android Back. Respect it instead of fighting the IME.
-          if (active === el && !timelineGestureActiveRef.current && !focusLossWasRecent) {
-            (window as any).__keepChatInputActive = false;
-            return;
-          }
-
-          if (document.activeElement !== el) el.focus({ preventScroll: true });
+          // The IME is only shown after the actual textarea owns DOM focus.
+          el.focus({ preventScroll: true });
           if (document.activeElement !== el) return;
-
-          // Re-show only after verifying focus. This prevents an orphaned IME.
-          void Keyboard.show().catch((error) => {
-            console.debug('Native keyboard focus recovery unavailable:', error);
-          });
-        }, 30);
+          (window as any).__isChatInputFocused = true;
+          void Keyboard.show().catch((error) => console.debug('Native keyboard focus recovery unavailable:', error));
+        }, 55);
       }).then((listener) => {
         if (!mounted) void listener.remove();
         else hideListener = listener;
@@ -254,10 +252,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       mounted = false;
       chatRoot.removeEventListener('pointerdown', beginTimelineGesture, true);
       chatRoot.removeEventListener('touchstart', beginTimelineGesture, true);
-      chatRoot.removeEventListener('touchmove', markTimelineInteraction, true);
-      chatRoot.removeEventListener('pointermove', markTimelineInteraction, true);
-      chatRoot.removeEventListener('scroll', markTimelineInteraction, true);
-      chatRoot.removeEventListener('wheel', markTimelineInteraction, true);
       window.removeEventListener('pointerup', endTimelineGesture, true);
       window.removeEventListener('pointercancel', endTimelineGesture, true);
       window.removeEventListener('touchend', endTimelineGesture, true);
@@ -267,6 +261,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
       if (keyboardRecoveryTimerRef.current !== null) {
         window.clearTimeout(keyboardRecoveryTimerRef.current);
         keyboardRecoveryTimerRef.current = null;
+      }
+      if (pendingTimelineRecoveryExpiryRef.current !== null) {
+        window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+        pendingTimelineRecoveryExpiryRef.current = null;
       }
     };
   }, [inputRef]);
@@ -871,13 +869,17 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 }}
                 onBlur={() => {
                   const withinRecentChatGesture = timelineGestureActiveRef.current ||
-                    Date.now() - lastTimelineGestureEndedAtRef.current < 250;
-
-                  if (withinRecentChatGesture) {
-                    lastGestureBlurAtRef.current = Date.now();
-                    // Reclaim focus before the IME finishes dismissing; do not call
-                    // Keyboard.show() here. The native hide handler may only reopen it
-                    // after this textarea is confirmed as the active element.
+                    Date.now() - lastTimelineGestureEndedAtRef.current < 350;
+                  if (withinRecentChatGesture && keyboardVisibleRef.current) {
+                    pendingTimelineKeyboardRecoveryRef.current = true;
+                    if (pendingTimelineRecoveryExpiryRef.current !== null) {
+                      window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+                    }
+                    // A timeline-caused blur gets one brief recovery attempt, then expires.
+                    pendingTimelineRecoveryExpiryRef.current = window.setTimeout(() => {
+                      pendingTimelineKeyboardRecoveryRef.current = false;
+                      pendingTimelineRecoveryExpiryRef.current = null;
+                    }, 1200);
                     queueMicrotask(() => {
                       const el = inputRef?.current || localInputRef.current;
                       const root = document.getElementById('chat-view-container');
@@ -891,10 +893,13 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                     });
                     return;
                   }
-
+                  pendingTimelineKeyboardRecoveryRef.current = false;
+                  if (pendingTimelineRecoveryExpiryRef.current !== null) {
+                    window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
+                    pendingTimelineRecoveryExpiryRef.current = null;
+                  }
                   (window as any).__isChatInputFocused = false;
                   (window as any).__keepChatInputActive = false;
-
                 }}
                 inputMode="text"
                 enterKeyHint="send"

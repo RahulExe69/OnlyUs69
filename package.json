@@ -4,6 +4,7 @@
   "version": "1.5.2",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-capacitor-systembars-keyboard.mjs",
     "dev": "vite",
     "build": "vite build && node scripts/generate-ota-manifest.mjs",
     "icons": "node scripts/generate-flavor-icons.js",
@@ -14,7 +15,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.1",
+    "@capacitor/android": "8.5.3",
     "@capacitor/app": "^8.1.1",
     "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.5.1",
