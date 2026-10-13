@@ -561,11 +561,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         {!isRecording && !isPreviewing && (
           <button
             type="button"
-            onPointerDown={() => {
-              if (document.activeElement instanceof HTMLElement) {
-                document.activeElement.blur();
-              }
-            }}
             onClick={onOpenAttachmentMenu}
             className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/15 transition-all active:scale-95 shadow-md cursor-pointer"
             aria-label="Open attachments menu"
@@ -797,11 +792,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             <div className="pr-2 mb-1.5 shrink-0">
               <button
                 type="button"
-                onPointerDown={() => {
-                  if (document.activeElement instanceof HTMLElement) {
-                    document.activeElement.blur();
-                  }
-                }}
                 onClick={onOpenNudgeMenu}
                 className="p-1.5 text-[var(--theme-accent)]/70 hover:text-[var(--theme-accent)] transition-colors active:scale-90 cursor-pointer"
                 aria-label="Send a feeling"
