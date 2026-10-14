@@ -235,6 +235,32 @@ async function main() {
     }
   }
 
+  // Export standalone 512x512 PNG masters as reviewable artifacts, in addition to the Android density assets.
+  const iconExportDir = path.join(process.cwd(), 'generated-icons');
+  fs.mkdirSync(iconExportDir, { recursive: true });
+  const onlyUsMasterSize = 512;
+  const onlyUsSafeSize = Math.round(onlyUsMasterSize * 0.78);
+  const onlyUsMasterArtwork = await sharp(faviconBuffer)
+    .resize(onlyUsSafeSize, onlyUsSafeSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const onlyUsMaster = await sharp({
+    create: {
+      width: onlyUsMasterSize,
+      height: onlyUsMasterSize,
+      channels: 4,
+      background: { r: 255, g: 248, b: 246, alpha: 1 }
+    }
+  })
+    .composite([{ input: onlyUsMasterArtwork, gravity: 'center' }])
+    .png()
+    .toBuffer();
+  await sharp(onlyUsMaster).png().toFile(path.join(iconExportDir, 'OnlyUs.png'));
+  await sharp(notesFullBuffer)
+    .resize(512, 512, { fit: 'cover' })
+    .png()
+    .toFile(path.join(iconExportDir, 'Notes.png'));
+
   console.log('✅ All flavor launcher & notification icons generated successfully!');
   process.exit(0);
 }
