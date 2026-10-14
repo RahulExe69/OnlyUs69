@@ -114,6 +114,12 @@ async function main() {
     }
   }).png().toBuffer();
 
+  // Upscale the small legacy source before extracting its alpha matte to avoid jagged cutout edges.
+  faviconBuffer = await sharp(faviconBuffer)
+    .resize(512, 512, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+    .png()
+    .toBuffer();
+
   const sourceMeta = await sharp(faviconBuffer).metadata();
   const sourceWidth = sourceMeta.width || 192;
   const sourceHeight = sourceMeta.height || sourceWidth;
