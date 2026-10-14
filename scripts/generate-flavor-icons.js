@@ -201,7 +201,7 @@ async function main() {
   console.log('[OnlyUs matte debug] source/shape samples:', JSON.stringify(debugPointInfo));
   console.log('[OnlyUs matte debug] dimensions:', JSON.stringify({
     sourceWidth, sourceHeight, shapeMaskBytes: shapeMask.length,
-    maskMax: Math.max(...shapeMask), maskNonzero: shapeMask.reduce((n, value) => n + (value > 18 ? 1 : 0), 0)
+    maskMax: shapeMask.reduce((max, value) => Math.max(max, value), 0), maskNonzero: shapeMask.reduce((n, value) => n + (value > 18 ? 1 : 0), 0)
   }));
 
   // Smooth the estimated edge colors vertically, then interpolate across each scanline.
