@@ -2350,11 +2350,13 @@ export default function App() {
           {showProfileModal && userProfile && (
             <ProfileModal 
               profile={userProfile} 
+              partnerProfile={partnerProfile}
               onClose={() => setShowProfileModal(false)}
               config={appConfig}
               isOwner={isOwner}
               onLogout={handleLogout}
               onProfileUpdated={(newMe) => setUserProfile(newMe)}
+              onPartnerUpdated={(newPartner) => setPartnerProfile(newPartner)}
               onLockVault={isNotesFlavor ? lockVault : undefined}
               isNotesFlavor={isNotesFlavor}
             />

@@ -11,15 +11,21 @@ export async function createImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
+export async function getCroppedImg(imageSrc: string, pixelCrop: Area, maxSize = 380): Promise<string> {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
   if (!ctx) return '';
 
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  // Downscale directly on canvas for an avatar-optimal square dimension (max 380x380 px)
+  // This automatically produces crisp output while keeping file size very small (<40KB)
+  const outputSize = Math.min(maxSize, Math.max(pixelCrop.width, 120));
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   ctx.drawImage(
     image,
@@ -29,11 +35,11 @@ export async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    outputSize,
+    outputSize
   );
 
-  return canvas.toDataURL('image/jpeg', 0.8);
+  return canvas.toDataURL('image/jpeg', 0.82);
 }
 
 interface ImageCropperModalProps {
@@ -53,11 +59,15 @@ export const ImageCropperModal: React.FC<ImageCropperModalProps> = ({ image, onC
 
   const showResult = async () => {
     try {
-      const croppedImage = await getCroppedImg(image, croppedAreaPixels!);
-      onDone(croppedImage);
+      if (!croppedAreaPixels) {
+        onDone(image);
+        return;
+      }
+      const croppedImage = await getCroppedImg(image, croppedAreaPixels);
+      onDone(croppedImage || image);
     } catch (e) {
-      console.error(e);
-      alert('Cropping failed.');
+      console.error("Cropping failed, falling back to original image:", e);
+      onDone(image);
     }
   };
 

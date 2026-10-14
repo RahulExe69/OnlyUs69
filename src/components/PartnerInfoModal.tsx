@@ -12,6 +12,7 @@ import { ImageCropperModal } from './ImageCropperModal';
 import { ThemeCustomizeSheet } from './ThemeCustomizePage';
 import { E2EEVerificationModal } from './E2EEVerificationModal';
 import { FireSphere } from './ui/fire-sphere';
+import { getActiveCloudinaryAccounts, uploadToCloudinary } from '../lib/cloudinary';
 
 export const ProfileMediaThumbnail: React.FC<{
   item: { url: string; id?: string; fileName?: string; type: string };
@@ -157,10 +158,14 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
     setTimeout(() => setToastMsg(null), 2500);
   };
 
-  const handlePhotoSelect = (target: 'partner' | 'me') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const triggerPhotoPick = (target: 'partner' | 'me') => {
+    setCropTarget(target);
+    photoInputRef.current?.click();
+  };
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCropTarget(target);
       const reader = new FileReader();
       reader.onload = () => {
         setTempImage(reader.result as string);
@@ -172,50 +177,64 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
   };
 
   const onCropComplete = async (croppedImage: string) => {
+    setShowCropper(false);
+    setIsSaving(true);
     try {
-      const response = await fetch(croppedImage);
-      const blob = await response.blob();
-      const compressedFile = await imageCompression(blob as File, {
-        maxSizeMB: 0.1,
-        maxWidthOrHeight: 400,
-        useWebWorker: true,
-      });
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const compressedBase64 = reader.result as string;
-        setShowCropper(false);
-        setIsSaving(true);
-        try {
-          if (cropTarget === 'partner') {
-            await supabase.from('users').update({
-              photo_url: compressedBase64
-            }).eq('role', partner.role);
+      let finalPhotoUrl = croppedImage;
 
-            if (onPartnerUpdated) {
-              onPartnerUpdated({ ...partner, photo_url: compressedBase64 });
-            }
-            showToast("Partner photo updated!");
-          } else if (myProfile) {
-            await supabase.from('users').update({
-              photo_url: compressedBase64
-            }).eq('id', myProfile.uid);
-
-            if (onMyProfileUpdated) {
-              onMyProfileUpdated({ ...myProfile, photo_url: compressedBase64 });
-            }
-            showToast("Profile photo updated!");
+      // Optional Cloudinary upload if available
+      try {
+        const accounts = getActiveCloudinaryAccounts();
+        if (accounts.length > 0) {
+          const response = await fetch(croppedImage);
+          const blob = await response.blob();
+          const cldRes = await uploadToCloudinary(blob, 'image', `avatar_${cropTarget}_${Date.now()}.jpg`);
+          if (cldRes?.secureUrl) {
+            finalPhotoUrl = cldRes.secureUrl;
           }
-        } catch (err) {
-          console.error("Error updating photo:", err);
-          showToast("Failed to save photo.");
-        } finally {
-          setIsSaving(false);
         }
-      };
-      reader.readAsDataURL(compressedFile);
-    } catch (error) {
-      console.error(error);
-      showToast("Failed to crop image.");
+      } catch (cldErr) {
+        console.warn("Cloudinary upload fallback to base64:", cldErr);
+      }
+
+      if (cropTarget === 'partner') {
+        const targetId = partner.id || partner.uid;
+        let updateRes = await supabase.from('users').update({ photo_url: finalPhotoUrl }).eq('id', targetId);
+        if (updateRes.error) {
+          updateRes = await supabase.from('users').update({ photo_url: finalPhotoUrl }).eq('role', partner.role);
+        }
+        if (updateRes.error) {
+          throw updateRes.error;
+        }
+
+        if (onPartnerUpdated) {
+          onPartnerUpdated({ ...partner, photo_url: finalPhotoUrl });
+        }
+        showToast("Partner photo updated! ❤️");
+      } else if (myProfile) {
+        const myTargetId = myProfile.id || myProfile.uid;
+        let updateRes = await supabase.from('users').update({ photo_url: finalPhotoUrl }).eq('id', myTargetId);
+        if (updateRes.error) {
+          updateRes = await supabase.from('users').update({ photo_url: finalPhotoUrl }).eq('role', myProfile.role);
+        }
+        if (updateRes.error) {
+          throw updateRes.error;
+        }
+
+        const updatedProfile = { ...myProfile, photo_url: finalPhotoUrl };
+        if (onMyProfileUpdated) {
+          onMyProfileUpdated(updatedProfile);
+        }
+        try {
+          localStorage.setItem('onlyus_cached_profile', JSON.stringify(updatedProfile));
+        } catch (e) {}
+        showToast("Your profile photo updated! ❤️");
+      }
+    } catch (err: any) {
+      console.error("Error updating photo:", err);
+      showToast("Failed to save photo: " + (err?.message || "network error"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -421,7 +440,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    photoInputRef.current?.click();
+                    triggerPhotoPick('partner');
                   }}
                   title="Change photo"
                   className="absolute bottom-0 right-0 sm:right-1 w-8 h-8 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center border-2 border-[var(--theme-surface)] shadow-md hover:scale-105 active:scale-90 transition-transform cursor-pointer z-20"
@@ -431,7 +450,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                 <input 
                   type="file" 
                   ref={photoInputRef} 
-                  onChange={handlePhotoSelect('partner')} 
+                  onChange={handlePhotoSelect} 
                   accept="image/*" 
                   className="hidden" 
                 />
@@ -723,13 +742,12 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
 
             <div className="mt-4 rounded-2xl bg-[var(--theme-bg)]/60 border border-[var(--theme-border)] overflow-hidden divide-y divide-[var(--theme-border)]/50 shadow-xs">
               {/* Member 1: Rahul / Owner / Me */}
-              <button 
-                type="button"
+              <div 
                 onClick={() => openEditNickname('me')}
                 className="w-full p-4 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-12 h-12 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden bg-[var(--theme-accent)]/15 border-2 border-[var(--theme-accent)]/30 ring-2 ring-[var(--theme-accent)]/15 flex-shrink-0 group/av">
                     {myProfile?.photo_url ? (
                       <img 
                         src={myProfile.photo_url} 
@@ -752,12 +770,24 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
-              </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerPhotoPick('me');
+                    }}
+                    title="Change my photo"
+                    className="p-2 rounded-xl bg-[var(--theme-accent)]/10 hover:bg-[var(--theme-accent)]/20 active:scale-95 text-[var(--theme-accent)] transition-all cursor-pointer flex items-center justify-center"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
+                </div>
+              </div>
 
               {/* Member 2: Partner / Nusrat */}
-              <button 
-                type="button"
+              <div 
                 onClick={() => openEditNickname('partner')}
                 className="w-full p-4 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
               >
@@ -788,8 +818,21 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
-              </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerPhotoPick('partner');
+                    }}
+                    title="Change partner's photo"
+                    className="p-2 rounded-xl bg-[var(--theme-accent)]/10 hover:bg-[var(--theme-accent)]/20 active:scale-95 text-[var(--theme-accent)] transition-all cursor-pointer flex items-center justify-center"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -858,6 +901,21 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                     {emoji}
                   </button>
                 ))}
+              </div>
+
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = editingTarget;
+                    setEditingTarget(null);
+                    if (target) triggerPhotoPick(target);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--theme-accent)]/10 hover:bg-[var(--theme-accent)]/20 active:scale-[0.98] text-[var(--theme-accent)] text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Change {editingTarget === 'partner' ? "Partner's" : "Your"} Profile Picture</span>
+                </button>
               </div>
 
               <button 

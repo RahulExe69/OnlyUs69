@@ -181,13 +181,13 @@ export function ApkForceUpdateModal({
       <footer className="mx-auto w-full max-w-md px-6 pb-6 pt-2">
         <button
           type="button"
-          onClick={status === 'installed' ? onClose : isDownloadError || status === 'ready' || status === 'permission' ? onRetry : onUpdate}
+          onClick={status === 'installed' ? onClose : isDownloadError || status === 'permission' ? onRetry : onUpdate}
           disabled={busy}
           className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-opacity disabled:cursor-wait disabled:opacity-60"
           style={{ background: isDark ? '#00a878' : '#01875f', color: isDark ? '#062016' : '#ffffff' }}
         >
           <Download size={18} />
-          {status === 'downloading' ? 'Downloading…' : status === 'installer' ? 'Installer opened' : status === 'installed' ? 'Close and reopen app' : isDownloadError || status === 'ready' || status === 'permission' ? 'Try again' : 'Update'}
+          {status === 'downloading' ? 'Downloading…' : status === 'installer' ? 'Installer opened' : status === 'installed' ? 'Close and reopen app' : isDownloadError || status === 'permission' ? 'Try again' : 'Update'}
         </button>
         <p className="mt-3 text-center text-xs" style={{ color: isDark ? '#9aa0a6' : '#5f6368' }}>
           Android may ask you to allow installs from this app.

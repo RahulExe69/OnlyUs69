@@ -1,36 +1,41 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { ChevronLeft, Camera, LogOut, KeyRound, RefreshCw, Check, Copy, UserPlus, X, EyeOff, BookOpen, Smartphone, Cloud, Heart, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { UserProfile, AppConfig, APP_VERSION } from '../types';
 import { useOverlayBack } from '../lib/overlayManager';
 import { ImageCropperModal } from './ImageCropperModal';
 import { CloudinarySettingsSection } from './CloudinarySettingsModal';
 import { FireSphere } from './ui/fire-sphere';
+import { getActiveCloudinaryAccounts, uploadToCloudinary } from '../lib/cloudinary';
 
 interface ProfileModalProps {
   profile: UserProfile;
+  partnerProfile?: UserProfile | null;
   onClose: () => void;
   config: AppConfig | null;
   isOwner: boolean;
   onLogout: () => void;
   onProfileUpdated?: (profile: UserProfile) => void;
+  onPartnerUpdated?: (partner: UserProfile) => void;
   onLockVault?: () => void;
   isNotesFlavor?: boolean;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
   profile,
+  partnerProfile,
   onClose,
   config,
   isOwner,
   onLogout,
   onProfileUpdated,
+  onPartnerUpdated,
   onLockVault,
   isNotesFlavor = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'me' | 'access' | 'cloud'>('me');
+  const [activeTab, setActiveTab] = useState<'me' | 'partner' | 'access' | 'cloud'>('me');
+  const [cropTarget, setCropTarget] = useState<'me' | 'partner'>('me');
   const [stealthEnabled, setStealthEnabled] = useState<boolean>(() => {
     return localStorage.getItem('onlyus_stealth_mode') === 'true';
   });
@@ -48,6 +53,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   );
   const [photo, setPhoto] = useState(profile.photo_url || '');
 
+  // Partner profile state
+  const [partnerName, setPartnerName] = useState(
+    partnerProfile?.display_name || (partnerProfile?.role === 'owner' ? 'Rahul' : 'Nusrat')
+  );
+  const [partnerUsername, setPartnerUsername] = useState(
+    partnerProfile?.username || (partnerProfile?.email ? partnerProfile.email.split('@')[0] : (partnerProfile?.role === 'owner' ? 'rahul' : 'nusrat'))
+  );
+  const [partnerPhoto, setPartnerPhoto] = useState(partnerProfile?.photo_url || '');
+
+  useEffect(() => {
+    if (partnerProfile) {
+      if (partnerProfile.display_name) setPartnerName(partnerProfile.display_name);
+      if (partnerProfile.photo_url !== undefined) setPartnerPhoto(partnerProfile.photo_url || '');
+      if (partnerProfile.username) setPartnerUsername(partnerProfile.username);
+    }
+  }, [partnerProfile]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
@@ -56,6 +78,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   useOverlayBack(showCropper, () => setShowCropper(false), 'profile-modal-cropper');
 
   const myFileInputRef = useRef<HTMLInputElement>(null);
+  const partnerFileInputRef = useRef<HTMLInputElement>(null);
 
   // Partner Management Logic (6-Digit Code + Email backup)
   const [partnerPasscode, setPartnerPasscode] = useState(config?.partner_passcode || '123456');
@@ -86,9 +109,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setEmails(emails.filter((e) => e !== email));
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (target: 'me' | 'partner') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setCropTarget(target);
       const reader = new FileReader();
       reader.onload = () => {
         setTempImage(reader.result as string);
@@ -102,23 +126,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const onCropComplete = async (croppedImage: string) => {
     try {
-      const response = await fetch(croppedImage);
-      const blob = await response.blob();
-      const compressedFile = await imageCompression(blob as File, {
-        maxSizeMB: 0.1,
-        maxWidthOrHeight: 400,
-        useWebWorker: true,
-      });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const compressedBase64 = reader.result as string;
-        setPhoto(compressedBase64);
-        setShowCropper(false);
-      };
-      reader.readAsDataURL(compressedFile);
+      let finalUrl = croppedImage;
+      // Optional Cloudinary upload if available
+      try {
+        const accounts = getActiveCloudinaryAccounts();
+        if (accounts.length > 0) {
+          const response = await fetch(croppedImage);
+          const blob = await response.blob();
+          const cldRes = await uploadToCloudinary(blob, 'image', `avatar_${cropTarget}_${Date.now()}.jpg`);
+          if (cldRes?.secureUrl) {
+            finalUrl = cldRes.secureUrl;
+          }
+        }
+      } catch (cldErr) {
+        console.warn("Cloudinary upload fallback to base64:", cldErr);
+      }
+
+      if (cropTarget === 'me') {
+        setPhoto(finalUrl);
+      } else {
+        setPartnerPhoto(finalUrl);
+      }
+      setShowCropper(false);
     } catch (error) {
-      console.error(error);
-      alert('Failed to process image.');
+      console.error("Error setting cropped photo:", error);
+      if (cropTarget === 'me') {
+        setPhoto(croppedImage);
+      } else {
+        setPartnerPhoto(croppedImage);
+      }
+      setShowCropper(false);
     }
   };
 
@@ -126,33 +163,79 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setIsSaving(true);
     try {
       const cleanName = name.trim();
-      const cleanUsername = username.trim().toLowerCase().replace(/^@+/, '').replace(/\s+/g, '');
-
-      await supabase.from('users').update({
+      const targetId = profile.id || profile.uid;
+      const updatePayload = {
         display_name: cleanName,
-        username: cleanUsername,
         photo_url: photo,
-      }).eq('id', profile.uid);
+      };
+
+      let { error: dbError } = await supabase.from('users').update(updatePayload).eq('id', targetId);
+      if (dbError) {
+        const fallback = await supabase.from('users').update(updatePayload).eq('role', profile.role);
+        if (fallback.error) throw fallback.error;
+      }
 
       const updated: UserProfile = {
         ...profile,
         display_name: cleanName,
-        username: cleanUsername,
+        username: username.trim().toLowerCase().replace(/^@+/, '').replace(/\s+/g, ''),
         photo_url: photo,
       };
 
       if (onProfileUpdated) {
         onProfileUpdated(updated);
       }
+      try {
+        localStorage.setItem('onlyus_cached_profile', JSON.stringify(updated));
+      } catch (e) {}
 
-      setSaveSuccessMsg('Profile updated!');
+      setSaveSuccessMsg('Profile updated! ❤️');
       setTimeout(() => {
         setSaveSuccessMsg(null);
-        onClose();
-      }, 800);
-    } catch (err) {
+      }, 1500);
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to save profile.');
+      alert('Failed to save profile: ' + (err?.message || 'Network error'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const savePartnerProfile = async () => {
+    if (!partnerProfile) return;
+    setIsSaving(true);
+    try {
+      const cleanName = partnerName.trim();
+      const targetId = partnerProfile.id || partnerProfile.uid;
+      const updatePayload = {
+        display_name: cleanName,
+        photo_url: partnerPhoto,
+      };
+
+      let { error: dbError } = await supabase.from('users').update(updatePayload).eq('id', targetId);
+      if (dbError) {
+        const fallback = await supabase.from('users').update(updatePayload).eq('role', partnerProfile.role);
+        if (fallback.error) throw fallback.error;
+      }
+
+      const updated: UserProfile = {
+        ...partnerProfile,
+        display_name: cleanName,
+        username: partnerUsername.trim().toLowerCase().replace(/^@+/, '').replace(/\s+/g, ''),
+        photo_url: partnerPhoto,
+      };
+
+      if (onPartnerUpdated) {
+        onPartnerUpdated(updated);
+      }
+
+      setSaveSuccessMsg("Partner's profile updated! ❤️");
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+      }, 1500);
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to save partner's profile: " + (err?.message || 'Network error'));
     } finally {
       setIsSaving(false);
     }
@@ -170,7 +253,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setSaveSuccessMsg('Access settings saved!');
       setTimeout(() => {
         setSaveSuccessMsg(null);
-        onClose();
       }, 800);
     } catch (err) {
       console.error(err);
@@ -196,21 +278,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         )}
       </div>
 
-      {isOwner && (
-        <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2">
+      <div className="flex border-b border-[var(--theme-border)] px-4 pt-2 bg-[var(--theme-surface)] flex-shrink-0 gap-2 overflow-x-auto no-scrollbar">
+        <button
+          onClick={() => setActiveTab('me')}
+          className={`flex-1 min-w-[90px] py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+            activeTab === 'me'
+              ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
+              : 'border-transparent text-[var(--theme-text)]/50'
+          }`}
+        >
+          My Profile
+        </button>
+        {partnerProfile && (
           <button
-            onClick={() => setActiveTab('me')}
-            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
-              activeTab === 'me'
+            onClick={() => setActiveTab('partner')}
+            className={`flex-1 min-w-[90px] py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+              activeTab === 'partner'
                 ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
                 : 'border-transparent text-[var(--theme-text)]/50'
             }`}
           >
-            My Profile
+            <Heart className="w-3.5 h-3.5" />
+            <span>Partner</span>
           </button>
+        )}
+        {isOwner && (
           <button
             onClick={() => setActiveTab('access')}
-            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+            className={`flex-1 min-w-[90px] py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
               activeTab === 'access'
                 ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
                 : 'border-transparent text-[var(--theme-text)]/50'
@@ -218,19 +313,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           >
             PIN Access
           </button>
-          <button
-            onClick={() => setActiveTab('cloud')}
-            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center justify-center gap-1.5 ${
-              activeTab === 'cloud'
-                ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
-                : 'border-transparent text-[var(--theme-text)]/50'
-            }`}
-          >
-            <Cloud className="w-3.5 h-3.5" />
-            <span>Cloud</span>
-          </button>
-        </div>
-      )}
+        )}
+        <button
+          onClick={() => setActiveTab('cloud')}
+          className={`flex-1 min-w-[90px] py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+            activeTab === 'cloud'
+              ? 'border-[var(--theme-accent)] text-[var(--theme-accent)]'
+              : 'border-transparent text-[var(--theme-text)]/50'
+          }`}
+        >
+          <Cloud className="w-3.5 h-3.5" />
+          <span>Cloud</span>
+        </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[var(--theme-bg)] text-[var(--theme-text)]">
         {activeTab === 'me' && (
@@ -261,7 +356,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <input
                   type="file"
                   ref={myFileInputRef}
-                  onChange={handleFileChange}
+                  onChange={handleFileChange('me')}
                   accept="image/*"
                   className="hidden"
                 />
@@ -385,6 +480,87 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     OnlyUs v{APP_VERSION} • {isNotesFlavor ? 'Notes Stealth Edition' : 'Direct Edition'}
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'partner' && partnerProfile && (
+          <div className="max-w-md mx-auto space-y-7">
+            {/* Avatar Section */}
+            <div className="flex flex-col items-center">
+              <div className="relative group flex items-center justify-center">
+                {/* 3D Lovely 🩷 Heart Sphere Animation around Partner's Picture */}
+                <FireSphere className="w-36 h-36" pulseScale={1.2}>
+                  <div className="w-32 h-32 rounded-full bg-[var(--theme-accent)]/15 overflow-hidden border-4 border-[var(--theme-accent)]/40 shadow-xl relative ring-4 ring-[var(--theme-accent)]/20">
+                    {partnerPhoto ? (
+                      <img src={partnerPhoto} alt="Partner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-5xl font-bold text-[var(--theme-accent)]">
+                        {partnerName?.[0] || 'P'}
+                      </div>
+                    )}
+                  </div>
+                </FireSphere>
+                <button
+                  type="button"
+                  onClick={() => partnerFileInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform z-20 cursor-pointer"
+                  title="Change partner's photo"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+                <input
+                  type="file"
+                  ref={partnerFileInputRef}
+                  onChange={handleFileChange('partner')}
+                  accept="image/*"
+                  className="hidden"
+                />
+              </div>
+              <p className="mt-3 text-[11px] font-bold text-[var(--theme-text)]/60 uppercase tracking-widest">
+                Tap camera to change partner&apos;s photo
+              </p>
+            </div>
+
+            {/* Form Fields */}
+            <div className="space-y-5">
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">
+                  Partner&apos;s Display Name
+                </label>
+                <input
+                  value={partnerName}
+                  onChange={(e) => setPartnerName(e.target.value)}
+                  placeholder="Partner's display name..."
+                  className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl px-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-[var(--theme-text)]/60 mb-2 block ml-1">
+                  Visual Username / Handle
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-4 text-[var(--theme-accent)] font-bold text-[15px] select-none">@</span>
+                  <input
+                    value={partnerUsername}
+                    onChange={(e) => setPartnerUsername(e.target.value.toLowerCase().replace(/\s+/g, '').replace(/^@+/, ''))}
+                    placeholder="partner"
+                    className="w-full bg-[var(--theme-input-bg)] border border-[var(--theme-border)] text-[var(--theme-text)] rounded-2xl pl-9 pr-5 py-4 text-[15px] shadow-inner focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/20 font-medium font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-[var(--theme-border)] flex flex-col gap-3.5">
+                <button
+                  type="button"
+                  onClick={savePartnerProfile}
+                  disabled={isSaving}
+                  className="w-full h-14 bg-[var(--theme-accent)] text-white rounded-2xl text-[13px] font-bold uppercase tracking-widest shadow-xl shadow-[var(--theme-accent)]/15 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSaving ? 'Saving...' : 'Save Partner Changes'}
+                </button>
               </div>
             </div>
           </div>
