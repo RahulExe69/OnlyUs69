@@ -155,6 +155,7 @@ jobs:
           name: OnlyUs-Notes-Launcher-PNGs
           path: |
             generated-icons/OnlyUs.png
+            generated-icons/OnlyUs-Foreground.png
             generated-icons/Notes.png
           if-no-files-found: error
           retention-days: 30
