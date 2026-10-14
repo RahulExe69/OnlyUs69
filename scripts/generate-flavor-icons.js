@@ -145,7 +145,7 @@ async function main() {
 
   const tileRaw = await sharp(onlyUsTileBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const channels = tileRaw.info.channels;
-  const rowBackground = Array.from({ length: sourceHeight }, () => [0, 0, 0]);
+  const rowBackground = Array.from({ length: sourceHeight }, () => [\n    { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }\n  ]);
   const median = values => {
     if (!values.length) return 0;
     values.sort((a, b) => a - b);
@@ -169,7 +169,7 @@ async function main() {
       }
     }
     if (leftEdge < 0) {
-      rowBackground[y] = y > 0 ? [...rowBackground[y - 1]] : [244, 76, 128];
+      rowBackground[y] = y > 0 ? rowBackground[y - 1].map(v => ({ ...v })) : [\n        { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }\n      ];
       continue;
     }
     for (let channel = 0; channel < 3; channel++) {
@@ -265,7 +265,7 @@ async function main() {
     // Legacy standard & round icons for Rahul
     const legacyRahulSize = Math.round(size * 0.90);
     const rahulLegacyIcon = await sharp(onlyUsForegroundBuffer)
-      .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: ONLYUS_BACKGROUND })
+      .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
 
