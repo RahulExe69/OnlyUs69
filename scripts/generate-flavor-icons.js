@@ -95,6 +95,22 @@ async function main() {
     console.warn(`⚠️ Existing launcher PNG could not be decoded; using ${faviconPath} as the OnlyUs icon source.`);
   }
 
+  // The legacy PNG has dark pixels baked into the rounded corners on some builds.
+  // Re-mask just the outside corners to transparency so they reveal the intended neutral tile,
+  // without redrawing or recoloring the existing OnlyUs heart/person artwork.
+  const sourceMeta = await sharp(faviconBuffer).metadata();
+  const sourceWidth = sourceMeta.width || 192;
+  const sourceHeight = sourceMeta.height || sourceWidth;
+  const sourceCornerRadius = Math.round(Math.min(sourceWidth, sourceHeight) * 0.23);
+  const roundedSourceMask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${sourceWidth}" height="${sourceHeight}" viewBox="0 0 ${sourceWidth} ${sourceHeight}"><rect width="${sourceWidth}" height="${sourceHeight}" rx="${sourceCornerRadius}" fill="#FFFFFF"/></svg>`
+  );
+  faviconBuffer = await sharp(faviconBuffer)
+    .ensureAlpha()
+    .composite([{ input: roundedSourceMask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
   console.log('🚀 Generating Android launcher & notification assets...');
 
   // 1. Generate Mipmap Launcher Icons
