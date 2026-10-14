@@ -2,6 +2,10 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
+// Brand-pink launcher background; this matches the dominant lower/mid tone of the OnlyUs tile.
+const ONLYUS_BACKGROUND = { r: 246, g: 79, b: 130, alpha: 1 };
+const ONLYUS_BACKGROUND_HEX = '#F64F82';
+
 const DENSITIES = [
   { name: 'mdpi', size: 48, statSize: 24 },
   { name: 'hdpi', size: 72, statSize: 36 },
@@ -96,7 +100,7 @@ async function main() {
   }
 
   // The legacy PNG has dark pixels baked into the rounded corners on some builds.
-  // Re-mask just the outside corners to transparency so they reveal the intended neutral tile,
+  // Re-mask just the outside corners to transparency so they reveal the intended brand-pink tile,
   // without redrawing or recoloring the existing OnlyUs heart/person artwork.
   // Remove the source's near-black fringe pixels (there are no black details in the heart/person mark).
   const sourceRaster = await sharp(faviconBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -165,7 +169,7 @@ async function main() {
     // Legacy standard & round icons for Rahul
     const legacyRahulSize = Math.round(size * 0.78);
     const rahulLegacyIcon = await sharp(faviconBuffer)
-      .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: { r: 255, g: 248, b: 246, alpha: 1 } })
+      .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: ONLYUS_BACKGROUND })
       .png()
       .toBuffer();
 
@@ -174,7 +178,7 @@ async function main() {
         width: size,
         height: size,
         channels: 4,
-        background: { r: 255, g: 248, b: 246, alpha: 1 }
+        background: ONLYUS_BACKGROUND
       }
     })
       .composite([{ input: rahulLegacyIcon, gravity: 'center' }])
@@ -280,7 +284,7 @@ async function main() {
       width: onlyUsMasterSize,
       height: onlyUsMasterSize,
       channels: 4,
-      background: { r: 255, g: 248, b: 246, alpha: 1 }
+      background: ONLYUS_BACKGROUND
     }
   })
     .composite([{ input: onlyUsMasterArtwork, gravity: 'center' }])
