@@ -206,14 +206,14 @@ async function main() {
     };
   }));
 
-  const foregroundRaw = Buffer.from(tileRaw.data);
+  const matteRaw = Buffer.alloc(sourceWidth * sourceHeight);
   for (let y = 0; y < sourceHeight; y++) {
     const bounds = smoothBackground[y];
     for (let x = 0; x < sourceWidth; x++) {
       const idx = (y * sourceWidth + x) * channels;
-      const shape = shapeMask[y * sourceWidth + x] / 255;
-      if (shape <= 0 || tileRaw.data[idx + 3] === 0) {
-        foregroundRaw[idx + 3] = 0;
+      const pixel = y * sourceWidth + x;
+      if (tileRaw.data[idx + 3] === 0 || shapeMask[pixel] === 0) {
+        matteRaw[pixel] = 0;
         continue;
       }
       const t = sourceWidth > 1 ? x / (sourceWidth - 1) : 0;
@@ -225,8 +225,21 @@ async function main() {
       }
       distance = Math.sqrt(distance);
       const linear = Math.max(0, Math.min(1, (distance - 10) / 29));
-      const matte = linear * linear * (3 - 2 * linear);
-      foregroundRaw[idx + 3] = Math.round(255 * matte * shape * tileRaw.data[idx + 3] / 255);
+      matteRaw[pixel] = Math.round(255 * linear * linear * (3 - 2 * linear));
+    }
+  }
+  // Smooth the extracted alpha matte at high resolution to remove compression speckles along highlights.
+  const smoothMatte = await sharp(matteRaw, {
+    raw: { width: sourceWidth, height: sourceHeight, channels: 1 }
+  }).blur(1.1).raw().toBuffer();
+  const foregroundRaw = Buffer.from(tileRaw.data);
+  for (let y = 0; y < sourceHeight; y++) {
+    for (let x = 0; x < sourceWidth; x++) {
+      const idx = (y * sourceWidth + x) * channels;
+      const pixel = y * sourceWidth + x;
+      const shape = shapeMask[pixel] / 255;
+      const sourceAlpha = tileRaw.data[idx + 3] / 255;
+      foregroundRaw[idx + 3] = Math.round(255 * (smoothMatte[pixel] / 255) * shape * sourceAlpha);
     }
   }
   const onlyUsForegroundBuffer = await sharp(foregroundRaw, {
