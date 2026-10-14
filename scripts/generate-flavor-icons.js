@@ -353,6 +353,9 @@ async function main() {
         .png()
         .toFile(path.join(dir, 'ic_nusrat_avatar.png'));
 
+      const drawableRoundCircleSvg = Buffer.from(
+        `<svg width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="white"/></svg>`
+      );
       // App icon in drawable folder: isolated foreground over the solid brand-pink canvas.
       const drawableMark = await sharp(onlyUsForegroundBuffer)
         .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -363,7 +366,7 @@ async function main() {
       }).composite([{ input: drawableMark, gravity: 'center' }]).png().toBuffer();
       await sharp(drawableIcon).png().toFile(path.join(dir, 'ic_launcher.png'));
       await sharp(drawableIcon)
-        .composite([{ input: roundCircleSvg, blend: 'dest-in' }])
+        .composite([{ input: drawableRoundCircleSvg, blend: 'dest-in' }])
         .png()
         .toFile(path.join(dir, 'ic_launcher_round.png'));
     }
