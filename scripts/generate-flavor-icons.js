@@ -116,7 +116,7 @@ async function main() {
 
   // Upscale the small legacy source before extracting its alpha matte to avoid jagged cutout edges.
   faviconBuffer = await sharp(faviconBuffer)
-    .resize(512, 512, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
+    .resize(400, 400, { fit: 'fill', kernel: sharp.kernel.lanczos3 })
     .png()
     .toBuffer();
 
@@ -170,24 +170,12 @@ async function main() {
   };
 
   for (let y = 0; y < sourceHeight; y++) {
-    let leftEdge = -1, rightEdge = -1;
-    for (let x = 0; x < sourceWidth; x++) {
-      if (shapeMask[y * sourceWidth + x] > 18) {
-        if (leftEdge < 0) leftEdge = x;
-        rightEdge = x;
-      }
-    }
-    if (leftEdge < 0) {
-      rowBackground[y] = y > 0 ? rowBackground[y - 1].map(v => ({ ...v })) : [
-        { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }
-      ];
-      continue;
-    }
     for (let channel = 0; channel < 3; channel++) {
-      const left = rowSamples(y, leftEdge - 20, leftEdge - 4, channel);
-      const right = rowSamples(y, rightEdge + 4, rightEdge + 20, channel);
-      const fallbackLeft = rowSamples(y, 6, Math.max(7, Math.round(sourceWidth * 0.12)), channel);
-      const fallbackRight = rowSamples(y, Math.min(sourceWidth - 7, Math.round(sourceWidth * 0.88)), sourceWidth - 6, channel);
+      // These fixed side bands stay outside the logo, even on rows crossing the heads and torsos.
+      const left = rowSamples(y, 14, 50, channel);
+      const right = rowSamples(y, sourceWidth - 50, sourceWidth - 14, channel);
+      const fallbackLeft = rowSamples(y, 5, 65, channel);
+      const fallbackRight = rowSamples(y, sourceWidth - 65, sourceWidth - 5, channel);
       const l = median(left.length >= 4 ? left : fallbackLeft);
       const r = median(right.length >= 4 ? right : fallbackRight);
       rowBackground[y][channel] = { left: l, right: r };
