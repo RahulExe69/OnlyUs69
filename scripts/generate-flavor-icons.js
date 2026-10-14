@@ -243,7 +243,7 @@ async function main() {
   // Smooth the extracted alpha matte at high resolution to remove compression speckles along highlights.
   const smoothMatte = await sharp(matteRaw, {
     raw: { width: sourceWidth, height: sourceHeight, channels: 1 }
-  }).blur(1.1).raw().toBuffer();
+  }).blur(1.1).greyscale().removeAlpha().raw().toBuffer();
   const foregroundRaw = Buffer.from(tileRaw.data);
   for (let y = 0; y < sourceHeight; y++) {
     for (let x = 0; x < sourceWidth; x++) {
