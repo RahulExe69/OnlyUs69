@@ -145,6 +145,7 @@ async function main() {
   `);
   const shapeMask = await sharp(shapeSvg)
     .resize(sourceWidth, sourceHeight, { fit: 'fill' })
+    .flatten({ background: '#000' })
     .greyscale()
     .blur(0.5)
     .raw()
