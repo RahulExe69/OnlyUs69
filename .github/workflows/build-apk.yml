@@ -149,6 +149,17 @@ jobs:
           set -o pipefail
           npm run icons 2>&1 | tee logs/step_icons.log
 
+      - name: Upload launcher icon PNG masters
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnlyUs-Notes-Launcher-PNGs
+          path: |
+            generated-icons/OnlyUs.png
+            generated-icons/OnlyUs-Foreground.png
+            generated-icons/Notes.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Set up Java JDK 21
         id: step_setup_java
         uses: actions/setup-java@v5
