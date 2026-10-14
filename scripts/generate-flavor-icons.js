@@ -145,7 +145,9 @@ async function main() {
 
   const tileRaw = await sharp(onlyUsTileBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const channels = tileRaw.info.channels;
-  const rowBackground = Array.from({ length: sourceHeight }, () => [\n    { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }\n  ]);
+  const rowBackground = Array.from({ length: sourceHeight }, () => [
+    { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }
+  ]);
   const median = values => {
     if (!values.length) return 0;
     values.sort((a, b) => a - b);
@@ -169,7 +171,9 @@ async function main() {
       }
     }
     if (leftEdge < 0) {
-      rowBackground[y] = y > 0 ? rowBackground[y - 1].map(v => ({ ...v })) : [\n        { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }\n      ];
+      rowBackground[y] = y > 0 ? rowBackground[y - 1].map(v => ({ ...v })) : [
+        { left: 244, right: 244 }, { left: 76, right: 76 }, { left: 128, right: 128 }
+      ];
       continue;
     }
     for (let channel = 0; channel < 3; channel++) {
@@ -179,7 +183,6 @@ async function main() {
       const fallbackRight = rowSamples(y, Math.min(sourceWidth - 7, Math.round(sourceWidth * 0.88)), sourceWidth - 6, channel);
       const l = median(left.length >= 4 ? left : fallbackLeft);
       const r = median(right.length >= 4 ? right : fallbackRight);
-      rowBackground[y][channel] = (Number.isFinite(l) ? l : 0) * 0.5 + (Number.isFinite(r) ? r : 0) * 0.5;
       rowBackground[y][channel] = { left: l, right: r };
     }
   }
