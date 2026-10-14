@@ -87,7 +87,7 @@ async function main() {
   // never compounds the safe padding on already-padded launcher images. It is regenerated at the
   // same size from this buffer later in the script, so its artwork remains unchanged between builds.
   // The legacy WebP favicon is not reliably decoded by Sharp on every CI runner.
-  const currentOnlyUsPngPath = path.join(rahulRes, 'drawable-xxxhdpi', 'ic_launcher.png');
+  const currentOnlyUsPngPath = path.join(process.cwd(), 'assets', 'onlyus-icon-master.png');
   let faviconBuffer;
   try {
     faviconBuffer = fs.readFileSync(currentOnlyUsPngPath);
@@ -99,10 +99,7 @@ async function main() {
     console.warn(`⚠️ Existing launcher PNG could not be decoded; using ${faviconPath} as the OnlyUs icon source.`);
   }
 
-  // The legacy PNG has dark pixels baked into the rounded corners on some builds.
-  // Re-mask just the outside corners to transparency so they reveal the intended brand-pink tile,
-  // without redrawing or recoloring the existing OnlyUs heart/person artwork.
-  // Remove the source's near-black fringe pixels (there are no black details in the heart/person mark).
+  // Clean the legacy source's near-black corner pixels and preserve its rounded tile edge.
   const sourceRaster = await sharp(faviconBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   for (let i = 0; i < sourceRaster.data.length; i += sourceRaster.info.channels) {
     if (sourceRaster.data[i] < 32 && sourceRaster.data[i + 1] < 32 && sourceRaster.data[i + 2] < 32) {
@@ -124,11 +121,110 @@ async function main() {
   const roundedSourceMask = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${sourceWidth}" height="${sourceHeight}" viewBox="0 0 ${sourceWidth} ${sourceHeight}"><rect width="${sourceWidth}" height="${sourceHeight}" rx="${sourceCornerRadius}" fill="#FFFFFF"/></svg>`
   );
-  faviconBuffer = await sharp(faviconBuffer)
+  const onlyUsTileBuffer = await sharp(faviconBuffer)
     .ensureAlpha()
     .composite([{ input: roundedSourceMask, blend: 'dest-in' }])
     .png()
     .toBuffer();
+
+  // Build a transparent foreground by separating the sculpted heart/people mark from the pink tile.
+  // The geometry bounds the mark; a per-row pink backdrop estimate preserves gradients and soft edges.
+  const shapeSvg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+      <path d="M62 141 L76 128 L98 120 L124 118 L151 124 L175 137 L192 160 L200 187 L209 160 L228 137 L252 125 L280 120 L305 125 L326 138 L338 160 L341 184 L333 212 L315 238 L290 262 L262 283 L233 304 L200 343 L167 304 L138 283 L110 262 L87 238 L71 212 L61 184 Z" fill="#fff"/>
+      <circle cx="134" cy="89" r="38" fill="#fff"/>
+      <circle cx="268" cy="109" r="36" fill="#fff"/>
+    </svg>
+  `);
+  const shapeMask = await sharp(shapeSvg)
+    .resize(sourceWidth, sourceHeight, { fit: 'fill' })
+    .greyscale()
+    .blur(0.5)
+    .raw()
+    .toBuffer();
+
+  const tileRaw = await sharp(onlyUsTileBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const channels = tileRaw.info.channels;
+  const rowBackground = Array.from({ length: sourceHeight }, () => [0, 0, 0]);
+  const median = values => {
+    if (!values.length) return 0;
+    values.sort((a, b) => a - b);
+    return values[Math.floor(values.length / 2)];
+  };
+  const rowSamples = (y, from, to, channel) => {
+    const vals = [];
+    for (let x = Math.max(0, from); x < Math.min(sourceWidth, to); x++) {
+      const idx = (y * sourceWidth + x) * channels;
+      if (tileRaw.data[idx + 3] > 180 && shapeMask[y * sourceWidth + x] < 18) vals.push(tileRaw.data[idx + channel]);
+    }
+    return vals;
+  };
+
+  for (let y = 0; y < sourceHeight; y++) {
+    let leftEdge = -1, rightEdge = -1;
+    for (let x = 0; x < sourceWidth; x++) {
+      if (shapeMask[y * sourceWidth + x] > 18) {
+        if (leftEdge < 0) leftEdge = x;
+        rightEdge = x;
+      }
+    }
+    if (leftEdge < 0) {
+      rowBackground[y] = y > 0 ? [...rowBackground[y - 1]] : [244, 76, 128];
+      continue;
+    }
+    for (let channel = 0; channel < 3; channel++) {
+      const left = rowSamples(y, leftEdge - 20, leftEdge - 4, channel);
+      const right = rowSamples(y, rightEdge + 4, rightEdge + 20, channel);
+      const fallbackLeft = rowSamples(y, 6, Math.max(7, Math.round(sourceWidth * 0.12)), channel);
+      const fallbackRight = rowSamples(y, Math.min(sourceWidth - 7, Math.round(sourceWidth * 0.88)), sourceWidth - 6, channel);
+      const l = median(left.length >= 4 ? left : fallbackLeft);
+      const r = median(right.length >= 4 ? right : fallbackRight);
+      rowBackground[y][channel] = (Number.isFinite(l) ? l : 0) * 0.5 + (Number.isFinite(r) ? r : 0) * 0.5;
+      rowBackground[y][channel] = { left: l, right: r };
+    }
+  }
+
+  // Smooth the estimated edge colors vertically, then interpolate across each scanline.
+  const smoothBackground = rowBackground.map((_, y) => [0, 1, 2].map(channel => {
+    const leftVals = [], rightVals = [];
+    for (let k = Math.max(0, y - 2); k <= Math.min(sourceHeight - 1, y + 2); k++) {
+      leftVals.push(rowBackground[k][channel].left);
+      rightVals.push(rowBackground[k][channel].right);
+    }
+    return {
+      left: leftVals.reduce((a, b) => a + b, 0) / leftVals.length,
+      right: rightVals.reduce((a, b) => a + b, 0) / rightVals.length
+    };
+  }));
+
+  const foregroundRaw = Buffer.from(tileRaw.data);
+  for (let y = 0; y < sourceHeight; y++) {
+    const bounds = smoothBackground[y];
+    for (let x = 0; x < sourceWidth; x++) {
+      const idx = (y * sourceWidth + x) * channels;
+      const shape = shapeMask[y * sourceWidth + x] / 255;
+      if (shape <= 0 || tileRaw.data[idx + 3] === 0) {
+        foregroundRaw[idx + 3] = 0;
+        continue;
+      }
+      const t = sourceWidth > 1 ? x / (sourceWidth - 1) : 0;
+      let distance = 0;
+      for (let channel = 0; channel < 3; channel++) {
+        const bg = bounds[channel].left * (1 - t) + bounds[channel].right * t;
+        const delta = tileRaw.data[idx + channel] - bg;
+        distance += delta * delta;
+      }
+      distance = Math.sqrt(distance);
+      const linear = Math.max(0, Math.min(1, (distance - 10) / 29));
+      const matte = linear * linear * (3 - 2 * linear);
+      foregroundRaw[idx + 3] = Math.round(255 * matte * shape * tileRaw.data[idx + 3] / 255);
+    }
+  }
+  const onlyUsForegroundBuffer = await sharp(foregroundRaw, {
+    raw: { width: sourceWidth, height: sourceHeight, channels }
+  }).png().toBuffer();
+  // Keep the complete original icon around only for reference; generated launchers use the separated mark.
+  faviconBuffer = onlyUsTileBuffer;
 
   console.log('🚀 Generating Android launcher & notification assets...');
 
@@ -145,8 +241,8 @@ async function main() {
     // --- Rahul Launcher Icons (Safe Zone scaled, never zoomed or cut off) ---
     // Keep the existing OnlyUs artwork intact, but leave enough clear space for launcher masks.
     // The source PNG already has rounded transparent corners, so 78% keeps visible art within the safe zone.
-    const safeRahulFgSize = Math.round(size * 0.78);
-    const rahulFgIcon = await sharp(faviconBuffer)
+    const safeRahulFgSize = Math.round(size * 0.90);
+    const rahulFgIcon = await sharp(onlyUsForegroundBuffer)
       .resize(safeRahulFgSize, safeRahulFgSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
@@ -167,8 +263,8 @@ async function main() {
     await sharp(rahulForeground).toFile(path.join(mainDir, 'ic_launcher_foreground.png'));
 
     // Legacy standard & round icons for Rahul
-    const legacyRahulSize = Math.round(size * 0.78);
-    const rahulLegacyIcon = await sharp(faviconBuffer)
+    const legacyRahulSize = Math.round(size * 0.90);
+    const rahulLegacyIcon = await sharp(onlyUsForegroundBuffer)
       .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: ONLYUS_BACKGROUND })
       .png()
       .toBuffer();
@@ -257,25 +353,28 @@ async function main() {
         .png()
         .toFile(path.join(dir, 'ic_nusrat_avatar.png'));
 
-      // App favicon in drawable folder
-      await sharp(faviconBuffer)
-        .resize(size, size, { fit: 'cover' })
+      // App icon in drawable folder: isolated foreground over the solid brand-pink canvas.
+      const drawableMark = await sharp(onlyUsForegroundBuffer)
+        .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
         .png()
-        .toFile(path.join(dir, 'ic_launcher.png'));
-
-      await sharp(faviconBuffer)
-        .resize(size, size, { fit: 'cover' })
+        .toBuffer();
+      const drawableIcon = await sharp({
+        create: { width: size, height: size, channels: 4, background: ONLYUS_BACKGROUND }
+      }).composite([{ input: drawableMark, gravity: 'center' }]).png().toBuffer();
+      await sharp(drawableIcon).png().toFile(path.join(dir, 'ic_launcher.png'));
+      await sharp(drawableIcon)
+        .composite([{ input: roundCircleSvg, blend: 'dest-in' }])
         .png()
         .toFile(path.join(dir, 'ic_launcher_round.png'));
     }
   }
 
-  // Export standalone 512x512 PNG masters as reviewable artifacts, in addition to the Android density assets.
+  // Export standalone 512x512 PNG masters for download/use outside Android resources.
   const iconExportDir = path.join(process.cwd(), 'generated-icons');
   fs.mkdirSync(iconExportDir, { recursive: true });
   const onlyUsMasterSize = 512;
-  const onlyUsSafeSize = Math.round(onlyUsMasterSize * 0.78);
-  const onlyUsMasterArtwork = await sharp(faviconBuffer)
+  const onlyUsSafeSize = Math.round(onlyUsMasterSize * 0.90);
+  const onlyUsMasterArtwork = await sharp(onlyUsForegroundBuffer)
     .resize(onlyUsSafeSize, onlyUsSafeSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
@@ -286,11 +385,12 @@ async function main() {
       channels: 4,
       background: ONLYUS_BACKGROUND
     }
-  })
-    .composite([{ input: onlyUsMasterArtwork, gravity: 'center' }])
-    .png()
-    .toBuffer();
+  }).composite([{ input: onlyUsMasterArtwork, gravity: 'center' }]).png().toBuffer();
   await sharp(onlyUsMaster).png().toFile(path.join(iconExportDir, 'OnlyUs.png'));
+  await sharp(onlyUsForegroundBuffer)
+    .resize(onlyUsMasterSize, onlyUsMasterSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(path.join(iconExportDir, 'OnlyUs-Foreground.png'));
   await sharp(notesFullBuffer)
     .resize(512, 512, { fit: 'cover' })
     .png()
