@@ -137,6 +137,7 @@ async function main() {
   // The geometry bounds the mark; a per-row pink backdrop estimate preserves gradients and soft edges.
   const shapeSvg = Buffer.from(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+      <rect width="400" height="400" fill="#000"/>
       <path d="M62 141 L76 128 L98 120 L124 118 L151 124 L175 137 L192 160 L200 187 L209 160 L228 137 L252 125 L280 120 L305 125 L326 138 L338 160 L341 184 L333 212 L315 238 L290 262 L262 283 L233 304 L200 343 L167 304 L138 283 L110 262 L87 238 L71 212 L61 184 Z" fill="#fff"/>
       <circle cx="134" cy="89" r="38" fill="#fff"/>
       <circle cx="268" cy="109" r="36" fill="#fff"/>
