@@ -98,6 +98,21 @@ async function main() {
   // The legacy PNG has dark pixels baked into the rounded corners on some builds.
   // Re-mask just the outside corners to transparency so they reveal the intended neutral tile,
   // without redrawing or recoloring the existing OnlyUs heart/person artwork.
+  // Remove the source's near-black fringe pixels (there are no black details in the heart/person mark).
+  const sourceRaster = await sharp(faviconBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < sourceRaster.data.length; i += sourceRaster.info.channels) {
+    if (sourceRaster.data[i] < 32 && sourceRaster.data[i + 1] < 32 && sourceRaster.data[i + 2] < 32) {
+      sourceRaster.data[i + 3] = 0;
+    }
+  }
+  faviconBuffer = await sharp(sourceRaster.data, {
+    raw: {
+      width: sourceRaster.info.width,
+      height: sourceRaster.info.height,
+      channels: sourceRaster.info.channels
+    }
+  }).png().toBuffer();
+
   const sourceMeta = await sharp(faviconBuffer).metadata();
   const sourceWidth = sourceMeta.width || 192;
   const sourceHeight = sourceMeta.height || sourceWidth;
