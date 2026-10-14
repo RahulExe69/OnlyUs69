@@ -79,9 +79,11 @@ async function main() {
   // A single square master keeps both legacy and adaptive launcher PNGs visually consistent.
   const notesForegroundBuffer = Buffer.from(NOTES_ICON_SVG);
   const nusratAvatarFallbackBuffer = Buffer.from(NUSRAT_AVATAR_FALLBACK_SVG);
-  // Use the checked-in high-density launcher PNG as the master so the OnlyUs artwork remains identical.
+  // Use the checked-in full-size drawable PNG as the immutable master so rerunning this script
+  // never compounds the safe padding on already-padded launcher images. It is regenerated at the
+  // same size from this buffer later in the script, so its artwork remains unchanged between builds.
   // The legacy WebP favicon is not reliably decoded by Sharp on every CI runner.
-  const currentOnlyUsPngPath = path.join(mainRes, 'mipmap-xxxhdpi', 'ic_launcher.png');
+  const currentOnlyUsPngPath = path.join(rahulRes, 'drawable-xxxhdpi', 'ic_launcher.png');
   let faviconBuffer;
   try {
     faviconBuffer = fs.readFileSync(currentOnlyUsPngPath);
