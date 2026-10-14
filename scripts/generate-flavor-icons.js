@@ -99,31 +99,36 @@ async function main() {
     console.warn(`⚠️ Existing launcher PNG could not be decoded; using ${faviconPath} as the OnlyUs icon source.`);
   }
 
-  // Keep the original source unchanged for legacy icons and notification art.
-  // For adaptive icons, remove the baked pink tile from the foreground using color segmentation,
-  // so Android's own brand-pink background is visible around the original heart/people artwork.
-  const originalOnlyUsBuffer = faviconBuffer;
-  const sourceMeta = await sharp(originalOnlyUsBuffer).metadata();
-  const sourceWidth = sourceMeta.width || 192;
-  const sourceHeight = sourceMeta.height || sourceWidth;
-  const sourceRaw = await sharp(originalOnlyUsBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const channels = sourceRaw.info.channels;
-  const cutout = Buffer.from(sourceRaw.data);
-  for (let i = 0; i < cutout.length; i += channels) {
-    const r = cutout[i], g = cutout[i + 1], b = cutout[i + 2];
-    // Pink tile colors are strongly red/magenta. Keep the white/pale artwork and its highlights.
-    const pinkness = r - g;
-    const magenta = r - b;
-    const brightness = (r + g + b) / 3;
-    if (pinkness > 34 && magenta > 8 && brightness < 226) {
-      cutout[i + 3] = 0;
+  // The legacy PNG has dark pixels baked into the rounded corners on some builds.
+  // Re-mask just the outside corners to transparency so they reveal the intended brand-pink tile,
+  // without redrawing or recoloring the existing OnlyUs heart/person artwork.
+  // Remove the source's near-black fringe pixels (there are no black details in the heart/person mark).
+  const sourceRaster = await sharp(faviconBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < sourceRaster.data.length; i += sourceRaster.info.channels) {
+    if (sourceRaster.data[i] < 32 && sourceRaster.data[i + 1] < 32 && sourceRaster.data[i + 2] < 32) {
+      sourceRaster.data[i + 3] = 0;
     }
   }
-  const adaptiveOnlyUsBuffer = await sharp(cutout, {
-    raw: { width: sourceWidth, height: sourceHeight, channels }
+  faviconBuffer = await sharp(sourceRaster.data, {
+    raw: {
+      width: sourceRaster.info.width,
+      height: sourceRaster.info.height,
+      channels: sourceRaster.info.channels
+    }
   }).png().toBuffer();
-  // Use the extracted artwork only for adaptive foregrounds. The original remains available below.
-  faviconBuffer = adaptiveOnlyUsBuffer;
+
+  const sourceMeta = await sharp(faviconBuffer).metadata();
+  const sourceWidth = sourceMeta.width || 192;
+  const sourceHeight = sourceMeta.height || sourceWidth;
+  const sourceCornerRadius = Math.round(Math.min(sourceWidth, sourceHeight) * 0.23);
+  const roundedSourceMask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${sourceWidth}" height="${sourceHeight}" viewBox="0 0 ${sourceWidth} ${sourceHeight}"><rect width="${sourceWidth}" height="${sourceHeight}" rx="${sourceCornerRadius}" fill="#FFFFFF"/></svg>`
+  );
+  faviconBuffer = await sharp(faviconBuffer)
+    .ensureAlpha()
+    .composite([{ input: roundedSourceMask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
 
   console.log('🚀 Generating Android launcher & notification assets...');
 
@@ -163,7 +168,7 @@ async function main() {
 
     // Legacy standard & round icons for Rahul
     const legacyRahulSize = Math.round(size * 0.78);
-    const rahulLegacyIcon = await sharp(originalOnlyUsBuffer)
+    const rahulLegacyIcon = await sharp(faviconBuffer)
       .resize(legacyRahulSize, legacyRahulSize, { fit: 'contain', background: ONLYUS_BACKGROUND })
       .png()
       .toBuffer();
@@ -253,7 +258,7 @@ async function main() {
         .toFile(path.join(dir, 'ic_nusrat_avatar.png'));
 
       // App favicon in drawable folder
-      await sharp(originalOnlyUsBuffer)
+      await sharp(faviconBuffer)
         .resize(size, size, { fit: 'cover' })
         .png()
         .toFile(path.join(dir, 'ic_launcher.png'));
@@ -270,7 +275,7 @@ async function main() {
   fs.mkdirSync(iconExportDir, { recursive: true });
   const onlyUsMasterSize = 512;
   const onlyUsSafeSize = Math.round(onlyUsMasterSize * 0.78);
-  const onlyUsMasterArtwork = await sharp(originalOnlyUsBuffer)
+  const onlyUsMasterArtwork = await sharp(faviconBuffer)
     .resize(onlyUsSafeSize, onlyUsSafeSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
