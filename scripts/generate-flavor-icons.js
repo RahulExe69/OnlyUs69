@@ -79,17 +79,18 @@ async function main() {
   // A single square master keeps both legacy and adaptive launcher PNGs visually consistent.
   const notesForegroundBuffer = Buffer.from(NOTES_ICON_SVG);
   const nusratAvatarFallbackBuffer = Buffer.from(NUSRAT_AVATAR_FALLBACK_SVG);
-  let faviconBuffer = fs.readFileSync(faviconPath);
-  // Some checked-in WebP files can be unreadable by Sharp on CI despite having a RIFF header.
-  // Fall back to the repository's known-good launcher PNG so icon generation doesn't block APK builds.
+  // Use the checked-in high-density launcher PNG as the master so the OnlyUs artwork remains identical.
+  // The legacy WebP favicon is not reliably decoded by Sharp on every CI runner.
+  const currentOnlyUsPngPath = path.join(mainRes, 'mipmap-xxxhdpi', 'ic_launcher.png');
+  let faviconBuffer;
   try {
+    faviconBuffer = fs.readFileSync(currentOnlyUsPngPath);
     await sharp(faviconBuffer).metadata();
-  } catch (error) {
-    const fallbackIconPath = path.join(mainRes, 'mipmap-xxxhdpi', 'ic_launcher.png');
-    if (!fs.existsSync(fallbackIconPath)) throw error;
-    console.warn(`⚠️ ${faviconPath} could not be decoded; using existing launcher PNG as Rahul icon source.`);
-    faviconBuffer = fs.readFileSync(fallbackIconPath);
+    console.log('Using the existing high-density OnlyUs launcher PNG as the artwork source.');
+  } catch (pngError) {
+    faviconBuffer = fs.readFileSync(faviconPath);
     await sharp(faviconBuffer).metadata();
+    console.warn(`⚠️ Existing launcher PNG could not be decoded; using ${faviconPath} as the OnlyUs icon source.`);
   }
 
   console.log('🚀 Generating Android launcher & notification assets...');
