@@ -164,7 +164,7 @@ async function main() {
     const vals = [];
     for (let x = Math.max(0, from); x < Math.min(sourceWidth, to); x++) {
       const idx = (y * sourceWidth + x) * channels;
-      if (tileRaw.data[idx + 3] > 180 && shapeMask[y * sourceWidth + x] < 18) vals.push(tileRaw.data[idx + channel]);
+      if (tileRaw.data[idx + 3] > 180) vals.push(tileRaw.data[idx + channel]);
     }
     return vals;
   };
