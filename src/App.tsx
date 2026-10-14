@@ -289,7 +289,7 @@ export default function App() {
       } catch {}
     };
   }, []);
-  const { messages, setMessages, messagesLoading, refetchCatchUp } = useMessageSync({
+  const { messages, setMessages, messagesLoading, refetchCatchUp, loadOlderMessages, hasMoreHistory } = useMessageSync({
     user,
     userProfile,
     partnerProfile,
@@ -3247,23 +3247,27 @@ const ChatView = React.memo(function ChatView({
   }, [messages, role]);
 
   const [messageLimit, setMessageLimit] = useState(50);
+  const pendingHistoryScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
 
-  const handleLoadEarlier = useCallback(() => {
+  const handleLoadEarlier = useCallback(async () => {
     const el = scrollRef.current;
-    if (!el) {
-      setMessageLimit(prev => prev + 50);
-      return;
-    }
-    const prevScrollHeight = el.scrollHeight;
-    const prevScrollTop = el.scrollTop;
-    setMessageLimit(prev => prev + 50);
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        const heightDiff = scrollRef.current.scrollHeight - prevScrollHeight;
-        scrollRef.current.scrollTop = prevScrollTop + heightDiff;
+    if (!el || isLoadingEarlier) return;
+
+    pendingHistoryScrollRestoreRef.current = {
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    };
+    setIsLoadingEarlier(true);
+    try {
+      if (hasMoreHistory && visibleMessages.length <= messageLimit + 50) {
+        await loadOlderMessages();
       }
-    });
-  }, []);
+      setMessageLimit((prev) => prev + 50);
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [isLoadingEarlier, hasMoreHistory, visibleMessages.length, messageLimit, loadOlderMessages]);
 
   const visibleMessages = useMemo(() => {
     const seen = new Set<string>();
@@ -3279,7 +3283,7 @@ const ChatView = React.memo(function ChatView({
     return visibleMessages.slice(-messageLimit);
   }, [visibleMessages, messageLimit]);
 
-  const hasMoreMessages = visibleMessages.length > messageLimit;
+  const hasMoreMessages = visibleMessages.length > messageLimit || hasMoreHistory;
 
   // Memoized lookup map for instant O(1) reply message resolution
   const messagesMap = useMemo(() => {
@@ -3367,8 +3371,20 @@ const ChatView = React.memo(function ChatView({
   }, [visibleMessages, role, partnerLastReadMillis]);
 
   useEffect(() => {
-    setTimeout(() => scrollToBottom(false), 50);
-  }, [displayedMessages.length]);
+    const pendingRestore = pendingHistoryScrollRestoreRef.current;
+    if (pendingRestore && scrollRef.current) {
+      const el = scrollRef.current;
+      requestAnimationFrame(() => {
+        const heightDiff = el.scrollHeight - pendingRestore.scrollHeight;
+        el.scrollTop = pendingRestore.scrollTop + heightDiff;
+        pendingHistoryScrollRestoreRef.current = null;
+      });
+      return;
+    }
+
+    const timer = window.setTimeout(() => scrollToBottom(false), 50);
+    return () => window.clearTimeout(timer);
+  }, [displayedMessages.length, messageLimit]);
 
   const toggleReaction = useCallback(async (msgId: string, emoji: string) => {
     const msg = messages.find(m => m.id === msgId);
@@ -3465,10 +3481,12 @@ const ChatView = React.memo(function ChatView({
             <div className="flex justify-center mb-4">
               <button 
                 onClick={handleLoadEarlier}
+                disabled={isLoadingEarlier}
+                aria-busy={isLoadingEarlier}
                 className="text-xs font-semibold px-4 py-2 bg-[var(--theme-surface)]/90 hover:bg-[var(--theme-surface)] text-[var(--theme-accent)] rounded-full shadow-sm border border-[var(--theme-border)] hover:border-[var(--theme-accent)]/40 transition-all active:scale-95 flex items-center gap-1.5"
               >
-                <RefreshCw className="w-3 h-3" />
-                Load earlier messages ({visibleMessages.length - messageLimit} more)
+                <RefreshCw className={`w-3 h-3 ${isLoadingEarlier ? 'animate-spin' : ''}`} />
+                {isLoadingEarlier ? 'Loading earlier messages…' : 'Load 50 earlier messages'}
               </button>
             </div>
           )}
