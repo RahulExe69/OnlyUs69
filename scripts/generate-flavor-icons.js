@@ -184,27 +184,6 @@ async function main() {
     }
   }
 
-  const debugPointInfo = [];
-  for (const point of [
-    { name: 'left-head', x: 134, y: 89 },
-    { name: 'right-head', x: 268, y: 109 },
-    { name: 'heart-centre', x: 200, y: 228 },
-    { name: 'outer-background', x: 20, y: 200 }
-  ]) {
-    const i = (point.y * sourceWidth + point.x) * tileRaw.info.channels;
-    const mi = point.y * sourceWidth + point.x;
-    debugPointInfo.push({
-      ...point,
-      source: [tileRaw.data[i], tileRaw.data[i + 1], tileRaw.data[i + 2], tileRaw.data[i + 3]],
-      mask: shapeMask[mi]
-    });
-  }
-  console.log('[OnlyUs matte debug] source/shape samples:', JSON.stringify(debugPointInfo));
-  console.log('[OnlyUs matte debug] dimensions:', JSON.stringify({
-    sourceWidth, sourceHeight, shapeMaskBytes: shapeMask.length,
-    maskMax: shapeMask.reduce((max, value) => Math.max(max, value), 0), maskNonzero: shapeMask.reduce((n, value) => n + (value > 18 ? 1 : 0), 0)
-  }));
-
   // Smooth the estimated edge colors vertically, then interpolate across each scanline.
   const smoothBackground = rowBackground.map((_, y) => [0, 1, 2].map(channel => {
     const leftVals = [], rightVals = [];
@@ -254,35 +233,6 @@ async function main() {
       foregroundRaw[idx + 3] = Math.round(255 * (smoothMatte[pixel] / 255) * shape * sourceAlpha);
     }
   }
-  const matteSamples = [];
-  for (const point of [
-    { name: 'left-head', x: 134, y: 89 },
-    { name: 'right-head', x: 268, y: 109 },
-    { name: 'heart-centre', x: 200, y: 228 },
-    { name: 'outer-background', x: 20, y: 200 }
-  ]) {
-    const pixel = point.y * sourceWidth + point.x;
-    const idx = pixel * channels;
-    matteSamples.push({
-      ...point,
-      sourceAlpha: tileRaw.data[idx + 3],
-      shape: shapeMask[pixel],
-      matte: matteRaw[pixel],
-      smoothMatte: smoothMatte[pixel],
-      outputAlpha: foregroundRaw[idx + 3]
-    });
-  }
-  console.log('[OnlyUs matte debug] raw/smoothed layout:', JSON.stringify({
-    channels, tileBytes: tileRaw.data.length, matteBytes: matteRaw.length,
-    smoothMatteBytes: smoothMatte.length,
-    smoothNonzero: smoothMatte.reduce((n, value) => n + (value > 0 ? 1 : 0), 0),
-    samples: matteSamples
-  }));
-  console.log('[OnlyUs matte debug] alpha counts:', JSON.stringify({
-    matteNonzero: matteRaw.reduce((n, value) => n + (value > 0 ? 1 : 0), 0),
-    foregroundNonzero: Array.from({ length: sourceWidth * sourceHeight }, (_, pixel) => foregroundRaw[pixel * channels + 3]).reduce((n, value) => n + (value > 0 ? 1 : 0), 0),
-    foregroundOpaque: Array.from({ length: sourceWidth * sourceHeight }, (_, pixel) => foregroundRaw[pixel * channels + 3]).reduce((n, value) => n + (value === 255 ? 1 : 0), 0)
-  }));
   const onlyUsForegroundBuffer = await sharp(foregroundRaw, {
     raw: { width: sourceWidth, height: sourceHeight, channels }
   }).png().toBuffer();
