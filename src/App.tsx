@@ -3265,7 +3265,7 @@ const ChatView = React.memo(function ChatView({
     };
     setIsLoadingEarlier(true);
     try {
-      if (hasMoreHistory && visibleMessages.length <= messageLimit + 50) {
+      if (hasMoreHistory) {
         await loadOlderMessages();
       }
       setMessageLimit((prev) => prev + 50);
