@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
-const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/RahulExe69/OnlyUs69-Releases/main/latest.json';
+const LATEST_RELEASE_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases/latest';
 
 export type ApkUpdateStatus =
   | 'idle'
@@ -128,15 +128,32 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         if (cancelled) return;
         setCurrentVersionName(installedName);
 
-        const response = await fetch(UPDATE_MANIFEST_URL + '?t=' + Date.now(), {
+        const response = await fetch(LATEST_RELEASE_API + '?t=' + Date.now(), {
+          cache: 'no-store',
+          headers: { Accept: 'application/vnd.github+json' },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error('GitHub Releases returned HTTP ' + response.status + '.');
+
+        const githubRelease = await response.json();
+        const tagName = String(githubRelease?.tag_name || '').trim();
+        const versionName = tagName.replace(/^v/i, '');
+        const releaseAssets = Array.isArray(githubRelease?.assets) ? githubRelease.assets : [];
+        const metadataAsset = releaseAssets.find((asset: any) => asset?.name === 'onlyus-update-metadata.json');
+        if (!metadataAsset?.browser_download_url) {
+          throw new Error('This release does not include update verification metadata. Installations can retry the check after a compatible release is published.');
+        }
+        const metadataResponse = await fetch(String(metadataAsset.browser_download_url) + '?t=' + Date.now(), {
           cache: 'no-store',
           headers: { Accept: 'application/json' },
           signal: controller.signal
         });
-        if (!response.ok) throw new Error('Update metadata returned HTTP ' + response.status + '.');
-
-        const manifest = await response.json();
-        const versionName = String(manifest?.versionName || '').trim().replace(/^v/i, '');
+        if (!metadataResponse.ok) throw new Error('Release verification metadata returned HTTP ' + metadataResponse.status + '.');
+        const manifest = await metadataResponse.json();
+        if (String(manifest?.versionTag || '') !== tagName) {
+          throw new Error('Release metadata does not match the latest release tag.');
+        }
+        const versionName = String(manifest?.versionName || versionName).trim().replace(/^v/i, '');
         const versionCode = Number(manifest?.versionCode);
         const packageAsset = manifest?.editions?.[packageId];
         const releaseNotes = Array.isArray(manifest?.releaseNotes)
