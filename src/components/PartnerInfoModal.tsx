@@ -518,9 +518,6 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
                 </button>
-
-       </button>
-                )}
               </div>
             </div>
 
