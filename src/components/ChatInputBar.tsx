@@ -56,14 +56,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const keyboardRecoveryTimerRef = useRef<number | null>(null);
-  const pendingTimelineRecoveryExpiryRef = useRef<number | null>(null);
-  const lastTimelineGestureEndedAtRef = useRef(0);
-  const timelineGestureActiveRef = useRef(false);
-  const timelineGestureStartedWithKeyboardRef = useRef(false);
-  const keyboardVisibleRef = useRef(false);
-  const keyboardRecoveryInFlightRef = useRef(false);
-  const pendingTimelineKeyboardRecoveryRef = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dedicated single-line placeholder ticker to prevent wrapping into 2 rows
@@ -118,9 +110,8 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const recordedChunksRef = useRef<Blob[]>([]);
   const durationRef = useRef<number>(0);
 
-  // Focus the real textarea before asking Android to display its IME. After
-  // Keyboard.show resolves, re-check DOM focus: a visible IME without an active
-  // textarea is exactly the broken "fake keyboard" state we must avoid.
+  // Focus the real textarea only. Do not explicitly invoke the native IME
+  // or automatically reopen it after timeline scroll/resize gestures.
   const focusInput = useCallback(() => {
     const el = inputRef?.current || localInputRef.current;
     if (!el || !el.isConnected) return;
@@ -128,140 +119,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     (window as any).__keepChatInputActive = true;
     (window as any).__isChatInputFocused = true;
     el.focus({ preventScroll: true });
-
-    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-      requestAnimationFrame(() => {
-        if (!el.isConnected) return;
-        if (document.activeElement !== el) el.focus({ preventScroll: true });
-        if (document.activeElement !== el) return;
-
-        void Keyboard.show().then(() => {
-          requestAnimationFrame(() => {
-            if (!el.isConnected || document.hidden) return;
-            const active = document.activeElement as HTMLElement | null;
-            const isAnotherEditable = !!active && active !== el && (
-              active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
-            );
-            if (isAnotherEditable) return;
-            if (document.activeElement !== el) el.focus({ preventScroll: true });
-            if (document.activeElement === el) {
-              (window as any).__isChatInputFocused = true;
-              (window as any).__keepChatInputActive = true;
-            }
-          });
-        }).catch((error) => {
-          console.debug('Native keyboard show was unavailable:', error);
-        });
-      });
-    }
-  }, [inputRef]);
-
-  // Scroll gestures may transiently blur a focused textarea on Android WebView.
-  // Do not refocus/show the IME while the finger is still moving: wait for the
-  // gesture to finish, restore real DOM focus, then show the keyboard.
-  const scheduleTimelineFocusRecovery = useCallback((delay = 110) => {
-    if (keyboardRecoveryTimerRef.current !== null) {
-      window.clearTimeout(keyboardRecoveryTimerRef.current);
-    }
-
-    keyboardRecoveryTimerRef.current = window.setTimeout(() => {
-      keyboardRecoveryTimerRef.current = null;
-      if (!pendingTimelineKeyboardRecoveryRef.current) return;
-      if (timelineGestureActiveRef.current) return;
-
-      if (document.hidden || (window as any).__keepChatInputActive !== true) {
-        pendingTimelineKeyboardRecoveryRef.current = false;
-        keyboardRecoveryInFlightRef.current = false;
-        return;
-      }
-
-      const el = inputRef?.current || localInputRef.current;
-      const root = document.getElementById('chat-view-container');
-      if (!el || !el.isConnected || !root?.contains(el)) {
-        pendingTimelineKeyboardRecoveryRef.current = false;
-        keyboardRecoveryInFlightRef.current = false;
-        return;
-      }
-
-      const active = document.activeElement as HTMLElement | null;
-      const isAnotherEditable = !!active && active !== el && (
-        active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
-      );
-      if (isAnotherEditable) {
-        pendingTimelineKeyboardRecoveryRef.current = false;
-        keyboardRecoveryInFlightRef.current = false;
-        (window as any).__isChatInputFocused = false;
-        (window as any).__keepChatInputActive = false;
-        return;
-      }
-
-      pendingTimelineKeyboardRecoveryRef.current = false;
-      keyboardRecoveryInFlightRef.current = true;
-      if (pendingTimelineRecoveryExpiryRef.current !== null) {
-        window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-        pendingTimelineRecoveryExpiryRef.current = null;
-      }
-
-      el.focus({ preventScroll: true });
-      if (document.activeElement !== el) {
-        keyboardRecoveryInFlightRef.current = false;
-        return;
-      }
-
-      (window as any).__isChatInputFocused = true;
-      (window as any).__keepChatInputActive = true;
-
-      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-        requestAnimationFrame(() => {
-          if (!el.isConnected || document.hidden || timelineGestureActiveRef.current) {
-            keyboardRecoveryInFlightRef.current = false;
-            return;
-          }
-
-          const activeAfterFrame = document.activeElement as HTMLElement | null;
-          const anotherEditableAfterFrame = !!activeAfterFrame && activeAfterFrame !== el && (
-            activeAfterFrame.tagName === 'INPUT' ||
-            activeAfterFrame.tagName === 'TEXTAREA' ||
-            activeAfterFrame.isContentEditable
-          );
-          if (anotherEditableAfterFrame) {
-            keyboardRecoveryInFlightRef.current = false;
-            return;
-          }
-
-          if (document.activeElement !== el) el.focus({ preventScroll: true });
-          if (document.activeElement !== el) {
-            keyboardRecoveryInFlightRef.current = false;
-            return;
-          }
-
-          // The textarea is confirmed as the active DOM element before showing IME.
-          void Keyboard.show().then(() => {
-            requestAnimationFrame(() => {
-              if (el.isConnected && document.activeElement !== el && !document.hidden) {
-                const current = document.activeElement as HTMLElement | null;
-                const anotherEditable = !!current && current !== el && (
-                  current.tagName === 'INPUT' || current.tagName === 'TEXTAREA' || current.isContentEditable
-                );
-                if (!anotherEditable && !timelineGestureActiveRef.current) {
-                  el.focus({ preventScroll: true });
-                }
-              }
-              keyboardRecoveryInFlightRef.current = false;
-              if (document.activeElement === el) {
-                (window as any).__isChatInputFocused = true;
-                (window as any).__keepChatInputActive = true;
-              }
-            });
-          }).catch((error) => {
-            keyboardRecoveryInFlightRef.current = false;
-            console.debug('Native keyboard focus recovery unavailable:', error);
-          });
-        });
-      } else {
-        keyboardRecoveryInFlightRef.current = false;
-      }
-    }, delay);
   }, [inputRef]);
 
   useImperativeHandle(ref, () => ({
@@ -273,149 +130,35 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
   useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
 
+  // Track keyboard visibility for layout only. Do not reopen the keyboard
+  // or refocus the input in response to scrolling or keyboard visibility events.
   useEffect(() => {
-    const chatRoot = document.getElementById('chat-view-container');
-    if (!chatRoot) return;
-
-    const isTimelineTarget = (event: Event) => {
-      const target = event.target;
-      return target instanceof Element && !!target.closest('#message-container');
-    };
-    const beginTimelineGesture = (event: Event) => {
-      if (!isTimelineTarget(event) || timelineGestureActiveRef.current) return;
-      timelineGestureActiveRef.current = true;
-      timelineGestureStartedWithKeyboardRef.current =
-        keyboardVisibleRef.current && (window as any).__keepChatInputActive === true;
-    };
-    const endTimelineGesture = () => {
-      if (!timelineGestureActiveRef.current) return;
-      timelineGestureActiveRef.current = false;
-      lastTimelineGestureEndedAtRef.current = Date.now();
-      // Only recover once the user has finished scrolling. Trying to show the IME
-      // mid-swipe can leave Android displaying a keyboard with no focused textarea.
-      if (pendingTimelineKeyboardRecoveryRef.current) {
-        scheduleTimelineFocusRecovery(110);
-      }
-    };
-
-    chatRoot.addEventListener('pointerdown', beginTimelineGesture, true);
-    chatRoot.addEventListener('touchstart', beginTimelineGesture, { capture: true, passive: true });
-    window.addEventListener('pointerup', endTimelineGesture, true);
-    window.addEventListener('pointercancel', endTimelineGesture, true);
-    window.addEventListener('touchend', endTimelineGesture, true);
-    window.addEventListener('touchcancel', endTimelineGesture, true);
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
     let mounted = true;
     let showListener: { remove: () => Promise<void> } | null = null;
     let hideListener: { remove: () => Promise<void> } | null = null;
-    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-      void Keyboard.addListener('keyboardDidShow', () => {
-        keyboardVisibleRef.current = true;
-        setIsKeyboardVisible(true);
-        keyboardRecoveryInFlightRef.current = false;
-        pendingTimelineKeyboardRecoveryRef.current = false;
-        timelineGestureStartedWithKeyboardRef.current = false;
-        if (pendingTimelineRecoveryExpiryRef.current !== null) {
-          window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-          pendingTimelineRecoveryExpiryRef.current = null;
-        }
-        if (keyboardRecoveryTimerRef.current !== null) {
-          window.clearTimeout(keyboardRecoveryTimerRef.current);
-          keyboardRecoveryTimerRef.current = null;
-        }
 
-        // Native IME visibility alone is not proof that the textarea has focus.
-        // If Android opens the keyboard during a scroll/resize race, reconnect it
-        // to the chat field without opening the IME a second time.
-        requestAnimationFrame(() => {
-          if (!mounted || document.hidden || timelineGestureActiveRef.current) return;
-          if ((window as any).__keepChatInputActive !== true) return;
-          const el = inputRef?.current || localInputRef.current;
-          const root = document.getElementById('chat-view-container');
-          if (!el || !el.isConnected || !root?.contains(el)) return;
+    void Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    }).then((listener) => {
+      if (!mounted) void listener.remove();
+      else showListener = listener;
+    }).catch((error) => console.debug('Keyboard show listener unavailable:', error));
 
-          const active = document.activeElement as HTMLElement | null;
-          const isAnotherEditable = !!active && active !== el && (
-            active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
-          );
-          if (isAnotherEditable) return;
-          if (document.activeElement !== el) el.focus({ preventScroll: true });
-          if (document.activeElement === el) {
-            (window as any).__isChatInputFocused = true;
-            (window as any).__keepChatInputActive = true;
-          }
-        });
-      }).then((listener) => {
-        if (!mounted) void listener.remove();
-        else showListener = listener;
-      }).catch((error) => console.debug('Keyboard show listener unavailable:', error));
-
-      void Keyboard.addListener('keyboardDidHide', () => {
-        keyboardVisibleRef.current = false;
-        setIsKeyboardVisible(false);
-        const recentGestureEnd = Date.now() - lastTimelineGestureEndedAtRef.current < 220;
-        const shouldRecover = pendingTimelineKeyboardRecoveryRef.current ||
-          (timelineGestureStartedWithKeyboardRef.current &&
-            (timelineGestureActiveRef.current || recentGestureEnd) &&
-            (window as any).__keepChatInputActive === true);
-
-        if (!shouldRecover || document.hidden) {
-          keyboardRecoveryInFlightRef.current = false;
-          pendingTimelineKeyboardRecoveryRef.current = false;
-          timelineGestureStartedWithKeyboardRef.current = false;
-          if (!timelineGestureActiveRef.current) {
-            (window as any).__keepChatInputActive = false;
-            (window as any).__isChatInputFocused = false;
-          }
-          if (pendingTimelineRecoveryExpiryRef.current !== null) {
-            window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-            pendingTimelineRecoveryExpiryRef.current = null;
-          }
-          if (keyboardRecoveryTimerRef.current !== null) {
-            window.clearTimeout(keyboardRecoveryTimerRef.current);
-            keyboardRecoveryTimerRef.current = null;
-          }
-          return;
-        }
-
-        // Keep the recovery intent alive until the active swipe finishes.
-        pendingTimelineKeyboardRecoveryRef.current = true;
-        keyboardRecoveryInFlightRef.current = false;
-        timelineGestureStartedWithKeyboardRef.current = false;
-        if (pendingTimelineRecoveryExpiryRef.current !== null) {
-          window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-        }
-        pendingTimelineRecoveryExpiryRef.current = window.setTimeout(() => {
-          pendingTimelineKeyboardRecoveryRef.current = false;
-          pendingTimelineRecoveryExpiryRef.current = null;
-        }, 1200);
-        scheduleTimelineFocusRecovery(110);
-      }).then((listener) => {
-        if (!mounted) void listener.remove();
-        else hideListener = listener;
-      }).catch((error) => console.debug('Keyboard hide listener unavailable:', error));
-    }
+    void Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    }).then((listener) => {
+      if (!mounted) void listener.remove();
+      else hideListener = listener;
+    }).catch((error) => console.debug('Keyboard hide listener unavailable:', error));
 
     return () => {
       mounted = false;
-      chatRoot.removeEventListener('pointerdown', beginTimelineGesture, true);
-      chatRoot.removeEventListener('touchstart', beginTimelineGesture, true);
-      window.removeEventListener('pointerup', endTimelineGesture, true);
-      window.removeEventListener('pointercancel', endTimelineGesture, true);
-      window.removeEventListener('touchend', endTimelineGesture, true);
-      window.removeEventListener('touchcancel', endTimelineGesture, true);
       if (showListener) void showListener.remove();
       if (hideListener) void hideListener.remove();
-      if (keyboardRecoveryTimerRef.current !== null) {
-        window.clearTimeout(keyboardRecoveryTimerRef.current);
-        keyboardRecoveryTimerRef.current = null;
-      }
-      if (pendingTimelineRecoveryExpiryRef.current !== null) {
-        window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-        pendingTimelineRecoveryExpiryRef.current = null;
-      }
     };
-  }, [inputRef, scheduleTimelineFocusRecovery]);
+  }, []);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = inputRef?.current || localInputRef.current;
@@ -1016,32 +759,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                   setShowEmojiPicker(false);
                 }}
                 onBlur={() => {
-                  const withinRecentChatGesture = timelineGestureActiveRef.current ||
-                    Date.now() - lastTimelineGestureEndedAtRef.current < 350;
-                  const hasKeyboardIntent = keyboardVisibleRef.current ||
-                    timelineGestureStartedWithKeyboardRef.current ||
-                    keyboardRecoveryInFlightRef.current ||
-                    pendingTimelineKeyboardRecoveryRef.current;
-                  if (withinRecentChatGesture && hasKeyboardIntent) {
-                    pendingTimelineKeyboardRecoveryRef.current = true;
-                    if (pendingTimelineRecoveryExpiryRef.current !== null) {
-                      window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-                    }
-                    // A timeline-caused blur gets one brief recovery attempt, then expires.
-                    pendingTimelineRecoveryExpiryRef.current = window.setTimeout(() => {
-                      pendingTimelineKeyboardRecoveryRef.current = false;
-                      pendingTimelineRecoveryExpiryRef.current = null;
-                    }, 1200);
-                    // Defer recovery until the swipe ends; immediate focus while the
-                    // finger is moving races Android's IME/blur transitions.
-                    scheduleTimelineFocusRecovery(110);
-                    return;
-                  }
-                  pendingTimelineKeyboardRecoveryRef.current = false;
-                  if (pendingTimelineRecoveryExpiryRef.current !== null) {
-                    window.clearTimeout(pendingTimelineRecoveryExpiryRef.current);
-                    pendingTimelineRecoveryExpiryRef.current = null;
-                  }
                   (window as any).__isChatInputFocused = false;
                   (window as any).__keepChatInputActive = false;
                 }}
