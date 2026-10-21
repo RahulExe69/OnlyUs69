@@ -41,16 +41,57 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleHardRefresh = () => {
+    // Do not clear all session storage: other app flows may keep transient state there.
+    // Use a one-shot recovery marker so a broken chunk cannot trap the user in a
+    // reload loop when the deployed bundle is still inconsistent.
+    const key = 'onlyus_chunk_recovery_attempt';
     try {
-      sessionStorage.clear();
+      const lastAttempt = Number(sessionStorage.getItem(key) || '0');
+      const now = Date.now();
+      if (lastAttempt && now - lastAttempt < 60_000) {
+        // A fresh load already failed recently. Stop retrying and leave the real
+        // error visible instead of repeatedly showing a misleading update prompt.
+        this.setState({
+          hasError: true,
+          error: new Error('The latest app bundle could not be loaded. Please try again after the deployment finishes.')
+        });
+        return;
+      }
+      sessionStorage.setItem(key, String(now));
     } catch (e) {
-      console.warn(e);
+      console.warn('Could not persist chunk-recovery state:', e);
     }
-    window.location.reload();
+
+    // A query marker forces a distinct navigation request while preserving the
+    // current path and existing query parameters. It is intentionally not a cache
+    // purge and does not remove auth/session data.
+    const url = new URL(window.location.href);
+    url.searchParams.set('__onlyus_recover', String(Date.now()));
+    window.location.replace(url.toString());
   };
 
   public override render() {
     if (this.state.hasError) {
+      const errorMsg = this.state.error?.message || '';
+      const isChunkLoadError =
+        errorMsg.includes('Failed to fetch dynamically imported module') ||
+        errorMsg.includes('Importing a module script failed') ||
+        errorMsg.includes('Loading chunk') ||
+        errorMsg.includes('is not a valid JavaScript MIME type') ||
+        errorMsg.includes('latest app bundle could not be loaded');
+
+      if (!isChunkLoadError) {
+        return (
+          <div className="min-h-screen bg-[var(--theme-bg,#FFF0F3)] text-[var(--theme-text,#1a1a1a)] flex flex-col items-center justify-center p-6 text-center font-sans">
+            <div className="w-full max-w-sm bg-white/90 rounded-3xl p-6 shadow-xl border border-[#FFCCD5]">
+              <h2 className="text-lg font-bold text-[#590D22] mb-2">Something went wrong</h2>
+              <p className="text-sm text-[#6E6E6E] mb-4">The app encountered an error that a reload may not fix.</p>
+              <button onClick={() => window.location.reload()} className="w-full py-3 px-4 rounded-2xl bg-[#FF4D6D] text-white font-bold text-sm">Reload app</button>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-[#FFF0F3] text-[#1a1a1a] flex flex-col items-center justify-center p-6 text-center select-none font-sans">
           <div className="w-full max-w-sm bg-white/90 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-[#FFCCD5] flex flex-col items-center">
