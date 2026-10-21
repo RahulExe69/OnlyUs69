@@ -331,6 +331,7 @@ jobs:
             Notes.apk
             OnlyUs-v${{ steps.vars.outputs.version_name }}.apk
             Notes-v${{ steps.vars.outputs.version_name }}.apk
+            onlyus-update-metadata.json
 
       - name: Workflow Summary (Success)
         if: success()
