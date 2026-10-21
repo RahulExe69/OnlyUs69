@@ -302,6 +302,16 @@ jobs:
           RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
         run: node scripts/generate-release-notes.mjs
 
+      - name: Generate update verification metadata
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        env:
+          RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+          RELEASE_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
+          RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
+          RELEASE_REPO: RahulExe69/OnlyUs69-Releases
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/generate-release-metadata.mjs
+
       - name: Publish signed APKs to public release repository
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
         uses: softprops/action-gh-release@v2
@@ -321,27 +331,6 @@ jobs:
             Notes.apk
             OnlyUs-v${{ steps.vars.outputs.version_name }}.apk
             Notes-v${{ steps.vars.outputs.version_name }}.apk
-
-      - name: Publish customer-facing update metadata
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
-        env:
-          RELEASE_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
-          RELEASE_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
-          RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
-          RELEASE_REPO: RahulExe69/OnlyUs69-Releases
-          RELEASE_REPO_PATH: release-repo
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          node scripts/generate-release-metadata.mjs
-          git -C "$RELEASE_REPO_PATH" config user.name "github-actions[bot]"
-          git -C "$RELEASE_REPO_PATH" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$RELEASE_REPO_PATH" add latest.json
-          if ! git -C "$RELEASE_REPO_PATH" diff --cached --quiet; then
-            git -C "$RELEASE_REPO_PATH" commit -m "Publish update metadata for ${RELEASE_VERSION_TAG}"
-            git -C "$RELEASE_REPO_PATH" push origin HEAD:main
-          else
-            echo "Update metadata is already current."
-          fi
 
       - name: Workflow Summary (Success)
         if: success()
