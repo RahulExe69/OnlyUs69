@@ -180,6 +180,8 @@ public class OnlyUsNotificationPlugin extends Plugin {
         }
 
         createNotificationChannel(context);
+        // A single conversation notification ID also keeps reply/open PendingIntents stable.
+        final int conversationNotificationId = 69001;
 
         // 1. Content Intent: Tapping notification body opens MainActivity
         Intent openIntent = new Intent(context, MainActivity.class);
@@ -193,7 +195,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
         }
         PendingIntent openPendingIntent = PendingIntent.getActivity(
             context,
-            notificationId,
+            conversationNotificationId,
             openIntent,
             activityFlags
         );
@@ -206,7 +208,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
         Intent replyIntent = new Intent(context, DirectReplyReceiver.class);
         replyIntent.setAction(DirectReplyReceiver.ACTION_DIRECT_REPLY);
         replyIntent.setPackage(context.getPackageName());
-        replyIntent.putExtra("notification_id", notificationId);
+        replyIntent.putExtra("notification_id", conversationNotificationId);
         replyIntent.putExtra("reply_role", replyRole != null && !replyRole.isEmpty() ? replyRole : "owner");
         replyIntent.putExtra("sender_name", title);
 
@@ -216,7 +218,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
         }
         PendingIntent replyPendingIntent = PendingIntent.getBroadcast(
             context,
-            notificationId,
+            conversationNotificationId,
             replyIntent,
             broadcastFlags
         );
@@ -235,7 +237,6 @@ public class OnlyUsNotificationPlugin extends Plugin {
 
         // Keep one stable notification for this one-to-one chat and render it
         // with Android's native MessagingStyle rather than a plain BigText notification.
-        final int conversationNotificationId = 69001;
         final String historyKey = "chat_notification_history_" + context.getPackageName();
         final SharedPreferences notificationPrefs = context.getSharedPreferences("onlyus_notification_state", Context.MODE_PRIVATE);
         org.json.JSONArray history = new org.json.JSONArray();
