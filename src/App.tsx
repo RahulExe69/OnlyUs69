@@ -2660,6 +2660,21 @@ const ChatView = React.memo(function ChatView({
     el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }, []);
 
+  const handlePasteMedia = (files: File[]) => {
+    const validFiles: SelectedMediaFile[] = files
+      .filter((file) => file.type.startsWith('image/'))
+      .map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        type: 'image' as const,
+      }));
+
+    if (validFiles.length === 0) return;
+    setSelectedMediaFiles(validFiles);
+    setShowMediaPreviewModal(true);
+    onSetShowAttachmentMenu(false);
+  };
+
   const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -3625,6 +3640,7 @@ const ChatView = React.memo(function ChatView({
         onSendVoiceNote={handleSendVoiceNote}
         onEditMessage={handleEditMessage}
         onOpenAttachmentMenu={() => onSetShowAttachmentMenu(true)}
+        onPasteMedia={handlePasteMedia}
         onOpenNudgeMenu={() => onSetShowNudgeMenu(true)}
         onBroadcastTyping={onBroadcastTyping}
         externalTriggerVoiceRecord={triggerVoiceRecord}
