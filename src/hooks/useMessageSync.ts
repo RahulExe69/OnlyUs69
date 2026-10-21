@@ -64,6 +64,8 @@ export function useMessageSync({
   const channelRef = useRef<any>(null);
   const isFetchingRef = useRef(false);
   const initialFetchDoneRef = useRef(false);
+  const isFetchingOlderRef = useRef(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
   // Sync cache whenever messages state changes (debounced to avoid blocking main thread on reload)
   useEffect(() => {
@@ -258,6 +260,7 @@ export function useMessageSync({
           }
 
           setMessages(uniqueMapped);
+          setHasMoreHistory(data.length === 100);
           cacheMessages(uniqueMapped);
           initialFetchDoneRef.current = true;
         }
@@ -467,10 +470,59 @@ export function useMessageSync({
     };
   }, [user?.id, currentRole, processRawMessages, refetchCatchUp, userProfile?.role, onScrollToBottom]);
 
+  const loadOlderMessages = useCallback(async () => {
+    if (!user || !hasMoreHistory || isFetchingOlderRef.current) return;
+
+    const currentList = messagesRef.current;
+    const oldestMessage = currentList.find(
+      (message) => !message.id.startsWith('temp_') && !message.id.startsWith('optimistic_')
+    );
+    const oldestCreatedAt = oldestMessage?.created_at || oldestMessage?.timestamp;
+    if (!oldestCreatedAt) {
+      setHasMoreHistory(false);
+      return;
+    }
+
+    isFetchingOlderRef.current = true;
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .lt('created_at', oldestCreatedAt)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        setHasMoreHistory(false);
+        return;
+      }
+
+      const decrypted = await decryptRawMessagesBatch(data);
+      const processed = processRawMessages(decrypted, currentList);
+      setMessages((prev) => {
+        const byId = new Map(prev.map((message) => [message.id, message]));
+        processed.forEach((message) => byId.set(message.id, message as Message));
+        return Array.from(byId.values()).sort((left, right) => {
+          const leftTime = new Date(left.created_at || left.timestamp || 0).getTime();
+          const rightTime = new Date(right.created_at || right.timestamp || 0).getTime();
+          return leftTime - rightTime;
+        });
+      });
+      setHasMoreHistory(data.length === 50);
+    } catch (error) {
+      console.warn('[useMessageSync] Could not load older messages:', error);
+    } finally {
+      isFetchingOlderRef.current = false;
+    }
+  }, [user, hasMoreHistory, processRawMessages]);
+
   return {
     messages,
     setMessages,
     messagesLoading,
     refetchCatchUp,
+    loadOlderMessages,
+    hasMoreHistory,
   };
 }
