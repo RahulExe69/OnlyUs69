@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink, Cat } from 'lucide-react';
+import { ArrowLeft, Camera, Heart, UserCheck, Link2, ChevronRight, X, Check, Play, Film, Image as ImageIcon, ShieldCheck, Sparkles, ExternalLink } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '../lib/supabase';
 import { UserProfile, Message, APP_VERSION, PetSettings } from '../types';
@@ -11,7 +11,6 @@ import { hydrateMessageMedia } from '../lib/dateUtils';
 import { ImageCropperModal } from './ImageCropperModal';
 import { ThemeCustomizeSheet } from './ThemeCustomizePage';
 import { E2EEVerificationModal } from './E2EEVerificationModal';
-import { FireSphere } from './ui/fire-sphere';
 import { getActiveCloudinaryAccounts, uploadToCloudinary } from '../lib/cloudinary';
 
 export const ProfileMediaThumbnail: React.FC<{
@@ -413,27 +412,25 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
             {/* Centered Avatar and Name */}
             <div className="flex flex-col items-center pt-5 pb-5 px-4">
               <div className="relative group flex items-center justify-center">
-                {/* 3D Lovely 🩷 Heart Sphere Animation around Profile Picture */}
-                <FireSphere className="w-28 h-28 sm:w-32 sm:h-32" pulseScale={1.15}>
-                  <div 
-                    className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[var(--theme-accent)]/40 shadow-xl ring-4 ring-[var(--theme-accent)]/20 cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)] relative"
-                    onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
-                    title="View full photo"
-                  >
-                    {partner.photo_url ? (
-                      <img 
-                        src={partner.photo_url} 
-                        alt={currentPartnerNickname} 
-                        className="w-full h-full object-cover" 
-                        referrerPolicy="no-referrer" 
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-[var(--theme-accent)] bg-[var(--theme-accent)]/10">
-                        {currentPartnerNickname?.[0] || 'P'}
-                      </div>
-                    )}
-                  </div>
-                </FireSphere>
+                {/* Clean dashboard-style avatar: circular, softly bordered, no canvas glow */}
+                <div 
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border border-[var(--theme-border)] shadow-md cursor-pointer active:scale-95 transition-transform bg-[var(--theme-surface)] relative"
+                  onClick={() => partner.photo_url && onViewImage(partner.photo_url)}
+                  title="View full photo"
+                >
+                  {partner.photo_url ? (
+                    <img 
+                      src={partner.photo_url} 
+                      alt={currentPartnerNickname} 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-3xl sm:text-4xl font-bold text-[var(--theme-accent)] bg-[var(--theme-accent)]/10">
+                      {currentPartnerNickname?.[0] || 'P'}
+                    </div>
+                  )}
+                </div>
 
                 {/* Direct Camera Button to update photo */}
                 <button 
@@ -522,26 +519,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
                   <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
                 </button>
 
-                {/* Chat Pet Companion */}
-                {onOpenPetSettings && (
-                  <button 
-                    type="button"
-                    onClick={onOpenPetSettings}
-                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[var(--theme-accent)]/5 active:bg-[var(--theme-accent)]/10 transition-colors text-left group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-[var(--theme-accent)]/15 text-[var(--theme-accent)] flex items-center justify-center flex-shrink-0 shadow-xs">
-                        <Cat className="w-5 h-5 text-[var(--theme-accent)]" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-[var(--theme-text)] leading-tight">Pet</p>
-                        <p className="text-[12px] text-[var(--theme-text)]/60 mt-0.5 leading-tight">
-                          {petSettings?.name || 'Mochi'} • {petSettings?.enabled ? 'Active in chat' : 'Resting'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-[var(--theme-text)]/40 group-hover:text-[var(--theme-text)]/70 transition-colors flex-shrink-0" />
-                  </button>
+       </button>
                 )}
               </div>
             </div>
