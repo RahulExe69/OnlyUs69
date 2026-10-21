@@ -12,7 +12,7 @@ const versionName = required('RELEASE_VERSION_NAME').replace(/^v/i, '');
 const versionCode = Number(required('RELEASE_VERSION_CODE'));
 const versionTag = required('RELEASE_VERSION_TAG');
 const repo = required('RELEASE_REPO');
-const outDir = resolve(process.env.RELEASE_REPO_PATH || 'release-repo');
+const outDir = resolve(process.cwd());
 const releaseNotes = JSON.parse(await readFile('release-notes.json', 'utf8'));
 const sourceCommit = required('GITHUB_SHA');
 
@@ -46,11 +46,12 @@ const document = {
   appName: 'OnlyUs',
   versionName,
   versionCode,
+  versionTag,
   publishedAt: new Date().toISOString(),
   sourceCommit,
   releaseNotes,
   editions
 };
 
-await writeFile(join(outDir, 'latest.json'), JSON.stringify(document, null, 2) + '\n', 'utf8');
-console.log('Generated public latest.json for ' + versionTag + ' with ' + releaseNotes.length + ' release-note section(s).');
+await writeFile(join(outDir, 'onlyus-update-metadata.json'), JSON.stringify(document, null, 2) + '\n', 'utf8');
+console.log('Generated release-attached update metadata for ' + versionTag + ' with ' + releaseNotes.length + ' release-note section(s).');
