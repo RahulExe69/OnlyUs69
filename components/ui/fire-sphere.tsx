@@ -168,6 +168,12 @@ function FireSphere({
       powerPreference: 'low-power'
     });
     renderer.setClearColor(0x000000, 0);
+    // Bloom post-processing can leave a rectangular haze around transparent WebGL
+    // canvases on mobile GPUs. Fade the canvas edges radially so the avatar aura
+    // blends into the page instead of exposing the square render target.
+    renderer.domElement.style.background = 'transparent';
+    renderer.domElement.style.maskImage = 'radial-gradient(ellipse closest-side, #000 48%, transparent 100%)';
+    renderer.domElement.style.webkitMaskImage = 'radial-gradient(ellipse closest-side, #000 48%, transparent 100%)';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     mountRef.current.appendChild(renderer.domElement);
