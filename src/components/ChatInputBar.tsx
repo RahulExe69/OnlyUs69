@@ -22,6 +22,7 @@ interface ChatInputBarProps {
   onEditMessage: (id: string, text: string) => Promise<void> | void;
   onBroadcastTyping: (isTyping: boolean) => void;
   onOpenAttachmentMenu: () => void;
+  onPasteMedia?: (files: File[]) => void;
   onOpenNudgeMenu: () => void;
   userProfile: UserProfile | null;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
@@ -46,6 +47,7 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   onEditMessage,
   onBroadcastTyping,
   onOpenAttachmentMenu,
+  onPasteMedia,
   onOpenNudgeMenu,
   userProfile,
   inputRef,
@@ -751,6 +753,17 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 rows={1}
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
+                onPaste={(e) => {
+                  const clipboardItems = Array.from(e.clipboardData.items);
+                  const imageFiles = clipboardItems
+                    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+                    .map((item) => item.getAsFile())
+                    .filter((file): file is File => !!file);
+                  if (imageFiles.length > 0 && onPasteMedia) {
+                    e.preventDefault();
+                    onPasteMedia(imageFiles);
+                  }
+                }}
                 onFocus={() => {
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = true;
