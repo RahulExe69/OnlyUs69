@@ -2298,6 +2298,8 @@ export default function App() {
                 messages={messages}
                 setMessages={setMessages}
                 messagesLoading={messagesLoading}
+                hasMoreHistory={hasMoreHistory}
+                loadOlderMessages={loadOlderMessages}
                 selectedMessages={selectedMessages}
                 onToggleSelect={toggleSelectMessage}
                 onClearSelection={clearSelection}
@@ -2540,6 +2542,8 @@ const ChatView = React.memo(function ChatView({
   messages,
   setMessages,
   messagesLoading,
+  hasMoreHistory,
+  loadOlderMessages,
   selectedMessages, 
   onToggleSelect, 
   onClearSelection, 
@@ -2579,6 +2583,8 @@ const ChatView = React.memo(function ChatView({
   messages: Message[],
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
   messagesLoading: boolean,
+  hasMoreHistory: boolean,
+  loadOlderMessages: () => Promise<void>,
   selectedMessages: Message[], 
   onToggleSelect: (msg: Message) => void, 
   onClearSelection: () => void,
@@ -3272,7 +3278,7 @@ const ChatView = React.memo(function ChatView({
     } finally {
       setIsLoadingEarlier(false);
     }
-  }, [isLoadingEarlier, hasMoreHistory, visibleMessages.length, messageLimit, loadOlderMessages]);
+  }, [isLoadingEarlier, hasMoreHistory, loadOlderMessages]);
 
   const visibleMessages = useMemo(() => {
     const seen = new Set<string>();
