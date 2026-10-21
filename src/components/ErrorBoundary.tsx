@@ -77,8 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
         errorMsg.includes('Failed to fetch dynamically imported module') ||
         errorMsg.includes('Importing a module script failed') ||
         errorMsg.includes('Loading chunk') ||
-        errorMsg.includes('is not a valid JavaScript MIME type') ||
-        errorMsg.includes('latest app bundle could not be loaded');
+        errorMsg.includes('is not a valid JavaScript MIME type');
 
       if (!isChunkLoadError) {
         return (
