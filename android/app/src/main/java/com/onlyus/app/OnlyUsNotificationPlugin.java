@@ -233,22 +233,63 @@ public class OnlyUsNotificationPlugin extends Plugin {
         // 3. Large Icon: Nusrat's Actual Profile Picture (circular cropped)
         Bitmap largeAvatar = resolveCircularAvatar(context, avatarUrl);
 
-        // 4. Multi-line expanded style for 5-6 lines of message preview
-        NotificationCompat.BigTextStyle bigTextStyle = new NotificationCompat.BigTextStyle()
-            .setBigContentTitle(title)
-            .bigText(body);
+        // Keep one stable notification for this one-to-one chat and render it
+        // with Android's native MessagingStyle rather than a plain BigText notification.
+        final int conversationNotificationId = 69001;
+        final String historyKey = "chat_notification_history_" + context.getPackageName();
+        final SharedPreferences notificationPrefs = context.getSharedPreferences("onlyus_notification_state", Context.MODE_PRIVATE);
+        org.json.JSONArray history = new org.json.JSONArray();
+        try {
+            org.json.JSONArray saved = new org.json.JSONArray(notificationPrefs.getString(historyKey, "[]"));
+            int start = Math.max(0, saved.length() - 7);
+            for (int i = start; i < saved.length(); i++) {
+                org.json.JSONObject item = saved.optJSONObject(i);
+                if (item != null) history.put(item);
+            }
+        } catch (Exception ignored) {}
 
-        // 5. Build Notification with Heads-Up High Priority
+        try {
+            org.json.JSONObject latest = new org.json.JSONObject();
+            latest.put("title", title);
+            latest.put("body", body);
+            latest.put("time", System.currentTimeMillis());
+            history.put(latest);
+            notificationPrefs.edit().putString(historyKey, history.toString()).apply();
+        } catch (Exception ignored) {}
+
+        androidx.core.app.Person me = new androidx.core.app.Person.Builder()
+            .setName("You")
+            .build();
+        NotificationCompat.MessagingStyle messagingStyle = new NotificationCompat.MessagingStyle(me)
+            .setConversationTitle(title)
+            .setGroupConversation(false);
+
+        for (int i = 0; i < history.length(); i++) {
+            org.json.JSONObject item = history.optJSONObject(i);
+            if (item == null) continue;
+            String messageBody = item.optString("body", "");
+            long messageTime = item.optLong("time", System.currentTimeMillis());
+            String messageTitle = item.optString("title", title);
+            androidx.core.app.Person messageSender = new androidx.core.app.Person.Builder()
+                .setName(messageTitle)
+                .setIcon(largeAvatar != null ? androidx.core.graphics.drawable.IconCompat.createWithBitmap(largeAvatar) : null)
+                .build();
+            messagingStyle.addMessage(messageBody, messageTime, messageSender);
+        }
+
+        // Android supplies the conversation layout, individual message rows, and expansion.
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, OnlyUsConfig.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_onlyus)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(bigTextStyle)
+            .setStyle(messagingStyle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setColor(0xFFE11D48)
             .setContentIntent(openPendingIntent)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setGroup("onlyus_chat_conversation")
             .addAction(replyAction);
 
         if (largeAvatar != null) {
@@ -256,7 +297,7 @@ public class OnlyUsNotificationPlugin extends Plugin {
         }
 
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build());
+            NotificationManagerCompat.from(context).notify(conversationNotificationId, builder.build());
         } catch (SecurityException se) {
             Log.e(TAG, "Missing POST_NOTIFICATIONS permission: " + se.getMessage());
         } catch (Exception e) {
