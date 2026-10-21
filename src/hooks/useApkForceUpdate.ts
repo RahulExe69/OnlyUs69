@@ -137,7 +137,7 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
 
         const githubRelease = await response.json();
         const tagName = String(githubRelease?.tag_name || '').trim();
-        const versionName = tagName.replace(/^v/i, '');
+        const releaseTagVersionName = tagName.replace(/^v/i, '');
         const releaseAssets = Array.isArray(githubRelease?.assets) ? githubRelease.assets : [];
         const metadataAsset = releaseAssets.find((asset: any) => asset?.name === 'onlyus-update-metadata.json');
         if (!metadataAsset?.browser_download_url) {
@@ -153,7 +153,7 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
         if (String(manifest?.versionTag || '') !== tagName) {
           throw new Error('Release metadata does not match the latest release tag.');
         }
-        const versionName = String(manifest?.versionName || versionName).trim().replace(/^v/i, '');
+        const versionName = String(manifest?.versionName || releaseTagVersionName).trim().replace(/^v/i, '');
         const versionCode = Number(manifest?.versionCode);
         const packageAsset = manifest?.editions?.[packageId];
         const releaseNotes = Array.isArray(manifest?.releaseNotes)
