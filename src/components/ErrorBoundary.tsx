@@ -84,7 +84,11 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="min-h-screen bg-[var(--theme-bg,#FFF0F3)] text-[var(--theme-text,#1a1a1a)] flex flex-col items-center justify-center p-6 text-center font-sans">
             <div className="w-full max-w-sm bg-white/90 rounded-3xl p-6 shadow-xl border border-[#FFCCD5]">
               <h2 className="text-lg font-bold text-[#590D22] mb-2">Something went wrong</h2>
-              <p className="text-sm text-[#6E6E6E] mb-4">The app encountered an error that a reload may not fix.</p>
+              <p className="text-sm text-[#6E6E6E] mb-3">The app hit an error while rendering. The details below will help identify the real cause.</p>
+              <div className="w-full mb-4 rounded-xl bg-black/5 p-3 text-left">
+                <p className="text-xs font-semibold text-[#590D22] mb-1">Error details</p>
+                <pre className="text-xs text-[#4B3440] whitespace-pre-wrap break-words max-h-40 overflow-auto">{this.state.error?.message || 'No error message was provided.'}</pre>
+              </div>
               <button onClick={() => window.location.reload()} className="w-full py-3 px-4 rounded-2xl bg-[#FF4D6D] text-white font-bold text-sm">Reload app</button>
             </div>
           </div>
