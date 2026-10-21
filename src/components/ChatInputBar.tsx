@@ -110,11 +110,15 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
   const recordedChunksRef = useRef<Blob[]>([]);
   const durationRef = useRef<number>(0);
 
-  // Expose normal input focus and recording controls. Do not force the keyboard
-  // back open when the user scrolls or interacts with the message timeline.
+  // Focus the real textarea only. Do not explicitly invoke the native IME
+  // or automatically reopen it after timeline scroll/resize gestures.
   const focusInput = useCallback(() => {
     const el = inputRef?.current || localInputRef.current;
-    el?.focus({ preventScroll: true });
+    if (!el || !el.isConnected) return;
+
+    (window as any).__keepChatInputActive = true;
+    (window as any).__isChatInputFocused = true;
+    el.focus({ preventScroll: true });
   }, [inputRef]);
 
   useImperativeHandle(ref, () => ({
@@ -124,7 +128,11 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
     },
   }), [focusInput]);
 
-    useEffect(() => {
+  useOverlayBack(showEmojiPicker, () => setShowEmojiPicker(false), 'chat-emoji-picker');
+
+  // Track keyboard visibility for layout only. Do not reopen the keyboard
+  // or refocus the input in response to scrolling or keyboard visibility events.
+  useEffect(() => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
     let mounted = true;
@@ -168,10 +176,10 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
 
   useEffect(() => {
     if (replyingTo) {
-      const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
-      el?.focus({ preventScroll: true });
+      // Works for both swipe-to-reply and the long-press Reply action.
+      focusInput();
     }
-  }, [replyingTo, inputRef]);
+  }, [replyingTo, focusInput]);
 
   useEffect(() => {
     const el = inputRef?.current || localInputRef.current || (document.getElementById('chat-message-input') as HTMLTextAreaElement | null);
@@ -572,11 +580,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         {!isRecording && !isPreviewing && (
           <button
             type="button"
-            onPointerDown={() => {
-              if (document.activeElement instanceof HTMLElement) {
-                document.activeElement.blur();
-              }
-            }}
             onClick={onOpenAttachmentMenu}
             className="flex-shrink-0 w-10 h-10 mb-0.5 flex items-center justify-center bg-[var(--theme-surface)]/85 backdrop-blur-md border border-[var(--theme-border)] text-[var(--theme-accent)] rounded-full hover:bg-[var(--theme-accent)]/15 transition-all active:scale-95 shadow-md cursor-pointer"
             aria-label="Open attachments menu"
@@ -751,14 +754,13 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
                 onFocus={() => {
                   if (typeof window !== 'undefined') {
                     (window as any).__isChatInputFocused = true;
+                    (window as any).__keepChatInputActive = true;
                   }
                   setShowEmojiPicker(false);
                 }}
                 onBlur={() => {
-                  if (typeof window !== 'undefined') {
-                    (window as any).__isChatInputFocused = false;
-                    (window as any).__keepChatInputActive = false;
-                  }
+                  (window as any).__isChatInputFocused = false;
+                  (window as any).__keepChatInputActive = false;
                 }}
                 inputMode="text"
                 enterKeyHint="send"
@@ -782,11 +784,6 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
             <div className="pr-2 mb-1.5 shrink-0">
               <button
                 type="button"
-                onPointerDown={() => {
-                  if (document.activeElement instanceof HTMLElement) {
-                    document.activeElement.blur();
-                  }
-                }}
                 onClick={onOpenNudgeMenu}
                 className="p-1.5 text-[var(--theme-accent)]/70 hover:text-[var(--theme-accent)] transition-colors active:scale-90 cursor-pointer"
                 aria-label="Send a feeling"
