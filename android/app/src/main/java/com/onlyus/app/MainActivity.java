@@ -264,8 +264,10 @@ if (getBridge() != null && getBridge().getWebView() != null) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
         }
 
-        // Start background message sync service for Rahul's edition
+        // Clear stale chat alerts and saved history whenever the standard app opens.
+        // The Notes stealth edition remains completely untouched.
         if (!getPackageName().contains("notes")) {
+            OnlyUsNotificationPlugin.clearConversationNotification(this);
             try {
                 android.content.Intent serviceIntent = new android.content.Intent(this, OnlyUsSyncService.class);
                 startService(serviceIntent);
