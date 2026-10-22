@@ -36,7 +36,7 @@ import { useMessageSync } from './hooks/useMessageSync';
 import { useWebRTCCall } from './hooks/useWebRTCCall';
 import { CallModal } from './components/CallModal';
 import { CallHistoryModal } from './components/CallHistoryModal';
-import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase, triggerPushNotification } from './lib/notifications';
+import { initLocalNotifications, OnlyUsNativeNotification, syncFcmTokenToSupabase } from './lib/notifications';
 import { OnlyUsIntro } from './components/OnlyUsIntro';
 import { ChatPetCompanion } from './components/ChatPetCompanion';
 import { PetSettingsModal } from './components/PetSettingsModal';
@@ -2900,24 +2900,7 @@ const ChatView = React.memo(function ChatView({
         const { data: savedMessage, error } = await supabase.from('messages').insert([insertPayload]).select().single();
 
         if (error) throw error;
-
-        // Dispatches WhatsApp-style push notification for media
-        let mediaText = '📎 Media attachment';
-        if (finalPrimaryAttachment?.type === 'audio') mediaText = caption ? `🎤 Voice note: ${caption}` : '🎤 Voice note';
-        else if (finalPrimaryAttachment?.type === 'image') mediaText = caption ? `📷 Photo: ${caption}` : '📷 Photo';
-        else if (finalPrimaryAttachment?.type === 'video') mediaText = caption ? `🎥 Video: ${caption}` : '🎥 Video';
-        else if (caption) mediaText = caption;
-
-        triggerPushNotification({
-          senderRole: role,
-          senderName: role === 'owner' ? 'Rahul' : (userProfile?.display_name || 'Nusrat'),
-          text: mediaText,
-          avatarUrl: userProfile?.photo_url || undefined,
-          messageId: savedMessage?.id,
-          ciphertext: insertPayload.ciphertext,
-          iv: insertPayload.iv,
-          is_encrypted: insertPayload.is_encrypted,
-        });
+        // The database INSERT trigger owns push delivery so each message is sent once.
 
         const hydratedMedia = hydrateMessageMedia(savedMessage);
         setMessages(prev => {
@@ -3059,18 +3042,7 @@ const ChatView = React.memo(function ChatView({
       const { data: savedMessage, error } = await supabase.from('messages').insert([insertRow]).select().single();
       
       if (error) throw error;
-
-      // Dispatches high-priority WhatsApp-style push notification to partner's device
-      triggerPushNotification({
-        senderRole: role,
-        senderName: role === 'owner' ? 'Rahul' : (userProfile?.display_name || 'Nusrat'),
-        text: text,
-        avatarUrl: userProfile?.photo_url || undefined,
-        messageId: savedMessage?.id,
-        ciphertext: insertRow.ciphertext,
-        iv: insertRow.iv,
-        is_encrypted: insertRow.is_encrypted,
-      });
+      // The database INSERT trigger owns push delivery so each message is sent once.
 
       setMessages(prev => {
         const isExisting = prev.some(m => m.id === savedMessage.id);
