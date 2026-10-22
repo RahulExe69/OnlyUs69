@@ -43,6 +43,13 @@ public class OnlyUsFirebaseMessagingService extends FirebaseMessagingService {
             return;
         }
 
+        // Don't post a system notification while OnlyUs is already open.
+        // The Notes edition is guarded above and never enters this path.
+        if (MainActivity.isAppInForeground()) {
+            Log.d(TAG, "Suppressing push notification because OnlyUs is foregrounded");
+            return;
+        }
+
         Log.d(TAG, "FCM Message received from: " + remoteMessage.getFrom());
 
         Map<String, String> data = remoteMessage.getData();
