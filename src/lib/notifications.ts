@@ -31,53 +31,66 @@ let isTokenListenerRegistered = false;
  * Registers the device's high-priority FCM token into Supabase so messages wake up the phone
  */
 export async function syncFcmTokenToSupabase(userId: string, role: string) {
-  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
-    return;
-  }
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
+  // The stealth Notes APK must never register a push token.
   const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
-  if (isNotes) return; // Stealth edition has zero push tokens registered
+  if (isNotes) return;
+
+  const upsertToken = async (rawToken: string) => {
+    const token = rawToken.trim();
+    if (!token) return false;
+    const { error } = await supabase.from('fcm_tokens').upsert(
+      {
+        user_id: userId,
+        role,
+        token,
+        platform: 'android',
+        device_model: typeof navigator !== 'undefined' ? navigator.userAgent : 'Android',
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'token' }
+    );
+    if (error) {
+      console.error('[notifications] FCM token registration failed:', error.message);
+      return false;
+    }
+    console.info('[notifications] FCM token registered for role:', role);
+    return true;
+  };
 
   try {
-    const { token } = await OnlyUsNativeNotification.getFcmToken();
-    if (token && token.trim() !== '') {
-      await supabase.from('fcm_tokens').upsert(
-        {
-          user_id: userId,
-          role,
-          token: token.trim(),
-          platform: 'android',
-          device_model: typeof navigator !== 'undefined' ? navigator.userAgent : 'Android',
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'token' }
-      );
+    // Firebase token creation can lag native startup; retry briefly rather than silently
+    // treating an empty token as successful registration.
+    let registered = false;
+    for (let attempt = 0; attempt < 3 && !registered; attempt++) {
+      try {
+        const { token } = await OnlyUsNativeNotification.getFcmToken();
+        if (token) registered = await upsertToken(token);
+      } catch (error) {
+        console.warn('[notifications] FCM token fetch attempt failed:', attempt + 1, error);
+      }
+      if (!registered && attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
+      }
+    }
+    if (!registered) {
+      console.warn('[notifications] FCM token is not registered yet; it will retry on the next app/login lifecycle.');
     }
 
     if (!isTokenListenerRegistered) {
-      isTokenListenerRegistered = true;
-      OnlyUsNativeNotification.addListener('fcmTokenRefresh', async (data: { token: string }) => {
-        if (data && data.token && data.token.trim() !== '') {
-          try {
-            await supabase.from('fcm_tokens').upsert(
-              {
-                user_id: userId,
-                role,
-                token: data.token.trim(),
-                platform: 'android',
-                device_model: typeof navigator !== 'undefined' ? navigator.userAgent : 'Android',
-                updated_at: new Date().toISOString()
-              },
-              { onConflict: 'token' }
-            );
-          } catch (e) {
-            console.warn('Failed to sync refreshed FCM token to Supabase:', e);
-          }
+      await OnlyUsNativeNotification.addListener('fcmTokenRefresh', async (data: { token: string }) => {
+        if (!data?.token?.trim()) return;
+        try {
+          await upsertToken(data.token);
+        } catch (error) {
+          console.warn('[notifications] Failed to sync refreshed FCM token:', error);
         }
       });
+      isTokenListenerRegistered = true;
     }
   } catch (err) {
-    console.warn('FCM token registration notice:', err);
+    console.warn('[notifications] FCM token registration failed:', err);
   }
 }
 
