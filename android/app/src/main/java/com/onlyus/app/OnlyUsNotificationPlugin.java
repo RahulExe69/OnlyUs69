@@ -153,15 +153,29 @@ public class OnlyUsNotificationPlugin extends Plugin {
     @PluginMethod
     public void cancelChatNotification(PluginCall call) {
         Context context = getContext();
-        if (context != null) {
+        if (context != null && !context.getPackageName().contains("notes")) {
             int notificationId = call.getInt("notificationId", -1);
             if (notificationId != -1) {
                 NotificationManagerCompat.from(context).cancel(notificationId);
             } else {
-                NotificationManagerCompat.from(context).cancelAll();
+                // OnlyUs has one persistent conversation notification. Clear it and its
+                // saved MessagingStyle history so read messages cannot reappear.
+                NotificationManagerCompat.from(context).cancel(69001);
+                String historyKey = "chat_notification_history_" + context.getPackageName();
+                context.getSharedPreferences("onlyus_notification_state", Context.MODE_PRIVATE)
+                    .edit().remove(historyKey).apply();
             }
         }
         call.resolve();
+    }
+
+    /** Clear the active conversation notification when the standard app returns to foreground. */
+    public static void clearConversationNotification(Context context) {
+        if (context == null || context.getPackageName().contains("notes")) return;
+        NotificationManagerCompat.from(context).cancel(69001);
+        String historyKey = "chat_notification_history_" + context.getPackageName();
+        context.getSharedPreferences("onlyus_notification_state", Context.MODE_PRIVATE)
+            .edit().remove(historyKey).apply();
     }
 
     /**
