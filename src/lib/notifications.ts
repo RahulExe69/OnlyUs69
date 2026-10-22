@@ -234,6 +234,12 @@ export async function dispatchMessageNotification(
   const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
   if (isNotes) return; // Zero notifications in stealth edition
 
+  // Native Android receives background pushes through FCM. Dispatching a second
+  // local notification from Realtime creates duplicates; foreground messages should
+  // remain in the open conversation instead of generating a system alert.
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+
   let body = msg.text || '';
   if (!body && msg.media) {
     if (msg.media.type === 'audio') body = '🎤 Voice note';
