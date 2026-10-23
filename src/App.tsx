@@ -219,15 +219,30 @@ export default function App() {
 
   // Screen lock, home button, & minimize auto-lock listener
   useEffect(() => {
+    const isMediaPickerActive = () => {
+      const until = Number(sessionStorage.getItem('onlyus_media_picker_until') || 0);
+      if (until > Date.now()) return true;
+      sessionStorage.removeItem('onlyus_media_picker_until');
+      return false;
+    };
+    const clearMediaPickerGuard = () => {
+      sessionStorage.removeItem('onlyus_media_picker_until');
+    };
     const handleVisibility = () => {
       if (document.hidden) {
+        // Android temporarily backgrounds Notes when the system camera/photo picker opens.
+        // Keep the vault unlocked for that hand-off; ordinary Home/minimize still auto-locks.
+        if (isMediaPickerActive()) return;
         const pref = localStorage.getItem('onlyus_stealth_mode');
         if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
           sessionStorage.removeItem('onlyus_vault_unlocked');
           setIsStealthUnlocked(false);
         }
+      } else if (isMediaPickerActive()) {
+        clearMediaPickerGuard();
       }
     };
+    window.addEventListener('focus', clearMediaPickerGuard);
     document.addEventListener('visibilitychange', handleVisibility);
 
     let appStateSub: any = null;
@@ -237,6 +252,9 @@ export default function App() {
       try {
         appStateSub = await CapApp.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) {
+            const pickerUntil = Number(sessionStorage.getItem('onlyus_media_picker_until') || 0);
+            if (pickerUntil > Date.now()) return;
+            sessionStorage.removeItem('onlyus_media_picker_until');
             const pref = localStorage.getItem('onlyus_stealth_mode');
             if (pref === 'true' || navigator.userAgent.includes('OnlyUsFlavor/Notes')) {
               sessionStorage.removeItem('onlyus_vault_unlocked');
@@ -276,6 +294,7 @@ export default function App() {
     })();
 
     return () => {
+      window.removeEventListener('focus', clearMediaPickerGuard);
       document.removeEventListener('visibilitychange', handleVisibility);
       try {
         if (appStateSub && typeof appStateSub.remove === 'function') {
@@ -2677,6 +2696,8 @@ const ChatView = React.memo(function ChatView({
   };
 
   const handleSelectMedia = (e: React.ChangeEvent<HTMLInputElement>, isCamera = false) => {
+    // Whether the user selected media or cancelled, the system picker hand-off is over.
+    sessionStorage.removeItem('onlyus_media_picker_until');
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
@@ -3625,7 +3646,6 @@ const ChatView = React.memo(function ChatView({
         type="file" 
         ref={cameraInputRef} 
         accept="image/*,video/*" 
-        capture="environment" 
         className="hidden" 
         onChange={(e) => handleSelectMedia(e, true)} 
       />
@@ -3657,6 +3677,8 @@ const ChatView = React.memo(function ChatView({
             color="bg-[var(--theme-accent)] text-white" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
+              // Allow Android's external camera/photo picker to return without triggering stealth auto-lock.
+              sessionStorage.setItem('onlyus_media_picker_until', String(Date.now() + 3 * 60 * 1000));
               cameraInputRef.current?.click();
             }} 
           />
@@ -3666,6 +3688,7 @@ const ChatView = React.memo(function ChatView({
             color="bg-[var(--theme-bubble-partner)] text-[var(--theme-bubble-partner-text)]" 
             onClick={() => {
               onSetShowAttachmentMenu(false);
+              sessionStorage.setItem('onlyus_media_picker_until', String(Date.now() + 3 * 60 * 1000));
               fileInputRef.current?.click();
             }} 
           />
