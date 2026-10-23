@@ -159,6 +159,8 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
 
   const triggerPhotoPick = (target: 'partner' | 'me') => {
     setCropTarget(target);
+    // Keep the Notes vault alive while Android's external photo picker is open.
+    sessionStorage.setItem('onlyus_media_picker_until', String(Date.now() + 3 * 60 * 1000));
     photoInputRef.current?.click();
   };
 
