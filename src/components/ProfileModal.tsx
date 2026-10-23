@@ -508,7 +508,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </FireSphere>
                 <button
                   type="button"
-                  onClick={() => partnerFileInputRef.current?.click()}
+                  onClick={() => {
+                    sessionStorage.setItem('onlyus_media_picker_until', String(Date.now() + 3 * 60 * 1000));
+                    partnerFileInputRef.current?.click();
+                  }}
                   className="absolute bottom-1 right-1 bg-[var(--theme-accent)] p-2.5 rounded-full text-white shadow-lg border-2 border-[var(--theme-surface)] hover:scale-110 active:scale-95 transition-transform z-20 cursor-pointer"
                   title="Change partner's photo"
                 >

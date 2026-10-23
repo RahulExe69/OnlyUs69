@@ -2,6 +2,9 @@ package com.onlyus.app;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.hardware.Sensor;
@@ -25,7 +28,12 @@ import java.util.List;
 public class MainActivity extends BridgeActivity implements SensorEventListener {
     private static MainActivity instance;
     private final Handler otaHandler = new Handler(Looper.getMainLooper());
+    private final Handler panicExitHandler = new Handler(Looper.getMainLooper());
+    private static final long MEDIA_PICKER_EXIT_FALLBACK_MS = 15 * 60 * 1000L;
     private boolean otaCheckStarted = false;
+    private boolean panicExitStarted = false;
+    private BroadcastReceiver screenOffReceiver;
+    private Runnable mediaPickerExitFallback;
     private static volatile boolean isAppForeground = false;
     private SensorManager sensorManager;
 public static boolean isAppInForeground() {
@@ -62,6 +70,10 @@ public static boolean isAppInForeground() {
                     sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
                 }
             }
+
+            // Locking the display is an immediate panic-exit signal for the Notes disguise.
+            // Keep this separate from onStop(), which also runs while Android opens media pickers.
+            registerNotesScreenOffReceiver();
         }
 
         // 3. Request app-specific permissions on initial launch
@@ -71,6 +83,99 @@ public static boolean isAppInForeground() {
         initializeOtaUpdater();
     }
 
+
+    private boolean isNotesFlavor() {
+        return getPackageName().contains("notes");
+    }
+
+    private void registerNotesScreenOffReceiver() {
+        screenOffReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())
+                        && isNotesFlavor()
+                        && !OnlyUsUpdatePlugin.shouldKeepActivityAlive()) {
+                    exitNotesApp();
+                }
+            }
+        };
+        ContextCompat.registerReceiver(
+                this,
+                screenOffReceiver,
+                new IntentFilter(Intent.ACTION_SCREEN_OFF),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+        );
+    }
+
+    private void scheduleMediaPickerExitFallback() {
+        cancelMediaPickerExitFallback();
+        mediaPickerExitFallback = () -> {
+            if (!isAppForeground
+                    && !isFinishing()
+                    && !isDestroyed()
+                    && !OnlyUsUpdatePlugin.shouldKeepActivityAlive()) {
+                // A picker that was abandoned via Home must not leave an unlocked Notes task behind forever.
+                exitNotesApp();
+            }
+        };
+        panicExitHandler.postDelayed(mediaPickerExitFallback, MEDIA_PICKER_EXIT_FALLBACK_MS);
+    }
+
+    private void cancelMediaPickerExitFallback() {
+        if (mediaPickerExitFallback != null) {
+            panicExitHandler.removeCallbacks(mediaPickerExitFallback);
+            mediaPickerExitFallback = null;
+        }
+    }
+
+    private void exitNotesApp() {
+        if (!isNotesFlavor() || panicExitStarted) return;
+        panicExitStarted = true;
+        runOnUiThread(() -> {
+            try {
+                finishAndRemoveTask();
+            } catch (Exception ignored) {}
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(0);
+        });
+    }
+
+    /**
+     * Preserve the Notes panic-exit on an intentional Home/recents departure without killing
+     * the activity when a guarded camera/gallery/document picker is opening.
+     */
+    @Override
+    public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (!isNotesFlavor() || panicExitStarted || OnlyUsUpdatePlugin.shouldKeepActivityAlive()) return;
+
+        android.webkit.WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null) {
+            panicExitHandler.postDelayed(() -> {
+                if (!isAppForeground && !OnlyUsUpdatePlugin.shouldKeepActivityAlive()) exitNotesApp();
+            }, 150L);
+            return;
+        }
+
+        try {
+            webView.evaluateJavascript(
+                    "(function(){try{return Number(sessionStorage.getItem('onlyus_media_picker_until')||0)>Date.now()}catch(e){return false}})()",
+                    pickerActive -> panicExitHandler.postDelayed(() -> {
+                        if (panicExitStarted || isFinishing() || isDestroyed()
+                                || isAppForeground || OnlyUsUpdatePlugin.shouldKeepActivityAlive()) return;
+                        if ("true".equals(pickerActive)) {
+                            scheduleMediaPickerExitFallback();
+                        } else {
+                            exitNotesApp();
+                        }
+                    }, 100L)
+            );
+        } catch (Exception e) {
+            panicExitHandler.postDelayed(() -> {
+                if (!isAppForeground && !OnlyUsUpdatePlugin.shouldKeepActivityAlive()) exitNotesApp();
+            }, 150L);
+        }
+    }
 
     /**
      * Applies a previously staged web bundle early during startup, then checks
@@ -252,6 +357,7 @@ if (getBridge() != null && getBridge().getWebView() != null) {
     public void onResume() {
         super.onResume();
         isAppForeground = true;
+        cancelMediaPickerExitFallback();
         OnlyUsUpdatePlugin.onActivityResumed(this);
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
@@ -270,6 +376,13 @@ if (getBridge() != null && getBridge().getWebView() != null) {
 
     @Override
     public void onDestroy() {
+        cancelMediaPickerExitFallback();
+        if (screenOffReceiver != null) {
+            try {
+                unregisterReceiver(screenOffReceiver);
+            } catch (IllegalArgumentException ignored) {}
+            screenOffReceiver = null;
+        }
         if (instance == this) {
             instance = null;
         }
