@@ -70,6 +70,7 @@ function parseReleaseMetadata(manifest: any, tagName: string, packageId: string)
     manifest?.schemaVersion !== 1 ||
     String(manifest?.versionTag || '') !== tagName ||
     !/^\d+\.\d+\.\d+$/.test(versionName) ||
+    versionName !== tagName.replace(/^v/i, '') ||
     !Number.isSafeInteger(versionCode) || versionCode < 1 ||
     !edition || edition.packageId !== packageId ||
     !downloadUrl.startsWith(RELEASE_ASSET_PREFIX) ||
