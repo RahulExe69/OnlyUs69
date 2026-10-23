@@ -235,24 +235,17 @@ if (getBridge() != null && getBridge().getWebView() != null) {
     @Override
     public void onStop() {
         super.onStop();
-        // If in notes flavor and the app is stopped (Home button, switched apps, minimized, or screen locked)
-        if (getPackageName().contains("notes")
-                && (!OnlyUsUpdatePlugin.shouldKeepActivityAlive())) {
-            finishAndRemoveTask();
-            System.exit(0);
-        }
+        // Do not kill the Notes activity here. Android also calls onStop when an external
+        // camera, document picker, or photo picker takes focus. The JS vault auto-locks
+        // on genuine backgrounding; killing the Activity here discards media-picker results.
     }
 
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        // If system is trimming memory or user pressed UI overview/home
-        if (getPackageName().contains("notes")
-                && level >= TRIM_MEMORY_UI_HIDDEN
-                && (!OnlyUsUpdatePlugin.shouldKeepActivityAlive())) {
-            finishAndRemoveTask();
-            System.exit(0);
-        }
+        // UI-hidden memory callbacks also occur while external camera/picker activities
+        // are open, so never force-kill the Notes activity from this callback.
+        // FLAG_SECURE and the JS stealth auto-lock remain enabled.
     }
 
     @Override
