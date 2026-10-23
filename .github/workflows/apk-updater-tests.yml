@@ -1,0 +1,36 @@
+name: APK updater regression tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/hooks/useApkForceUpdate.ts'
+      - 'src/lib/apkReleaseDiscovery.mjs'
+      - 'scripts/generate-release-metadata.mjs'
+      - 'scripts/test-apk-release-discovery.test.mjs'
+      - 'package.json'
+      - '.github/workflows/apk-updater-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  updater-tests:
+    name: Validate APK updater metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test release ordering and metadata validation
+        run: npm run test:updater
+
+      - name: Check metadata generator syntax
+        run: node --check scripts/generate-release-metadata.mjs
+
+      - name: Check release discovery syntax
+        run: node --check src/lib/apkReleaseDiscovery.mjs
