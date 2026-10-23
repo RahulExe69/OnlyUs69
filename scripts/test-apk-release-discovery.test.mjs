@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compareVersions, getReleaseTagFromDownloadUrl, parseLegacyReleaseMetadata, sortStableReleases } from '../src/lib/apkReleaseDiscovery.mjs';
 
-test('chooses the highest semantic version even when the newest API item is older', () => {
-  // /releases/latest may still point at 1.0.7 while the list contains 1.0.8.
+test('chooses the highest semantic version regardless of release-list order', () => {
+  // The list response is not assumed to be in semantic-version order.
   const sorted = sortStableReleases([
     { tag_name: 'v1.0.7', published_at: '2026-10-23T19:00:00Z' },
     { tag_name: 'v1.0.8', published_at: '2026-10-23T18:00:00Z' }
