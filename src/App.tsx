@@ -193,9 +193,11 @@ export default function App() {
     />
   ) : null;
 
-  // Panic shake listener when vault is unlocked: shake to exit & lock
+  // Panic shake-to-exit is a Notes-only stealth feature.
+  // The standard OnlyUs APK is always unlocked, so checking only isStealthUnlocked
+  // accidentally enabled this handler in the regular app too.
   useEffect(() => {
-    if (!isStealthUnlocked) return;
+    if (!isNotesFlavor || !isStealthUnlocked) return;
     let lastX = 0, lastY = 0, lastZ = 0, lastTime = 0;
     const handleMotion = (event: DeviceMotionEvent) => {
       const current = event.accelerationIncludingGravity;
@@ -215,7 +217,7 @@ export default function App() {
     };
     window.addEventListener('devicemotion', handleMotion, { passive: true });
     return () => window.removeEventListener('devicemotion', handleMotion);
-  }, [isStealthUnlocked]);
+  }, [isNotesFlavor, isStealthUnlocked]);
 
   // Screen lock, home button, & minimize auto-lock listener
   useEffect(() => {
