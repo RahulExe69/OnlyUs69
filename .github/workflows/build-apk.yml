@@ -333,6 +333,30 @@ jobs:
             Notes-v${{ steps.vars.outputs.version_name }}.apk
             onlyus-update-metadata.json
 
+      - name: Sync legacy latest.json for older installed APKs
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && steps.vars.outputs.build_type == 'release'
+        working-directory: release-repo
+        env:
+          RELEASE_VERSION_TAG: ${{ steps.vars.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const metadata = JSON.parse(await readFile('../onlyus-update-metadata.json', 'utf8'));
+          // Keep the legacy manifest schema stable; release-attached metadata retains versionTag.
+          delete metadata.versionTag;
+          await writeFile('latest.json', JSON.stringify(metadata, null, 2) + '\\n');
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          if git diff --cached --quiet; then
+            echo "latest.json already matches the release metadata."
+          else
+            git commit -m "chore: sync legacy updater metadata for ${RELEASE_VERSION_TAG}"
+            git push origin HEAD:main
+          fi
+
       - name: Workflow Summary (Success)
         if: success()
         run: |
