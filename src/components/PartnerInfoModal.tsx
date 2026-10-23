@@ -163,6 +163,7 @@ export const PartnerInfoModal: React.FC<PartnerInfoModalProps> = ({
   };
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    sessionStorage.removeItem('onlyus_media_picker_until');
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
