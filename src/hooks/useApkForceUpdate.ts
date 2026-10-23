@@ -1,20 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { App } from '@capacitor/app';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
-const LATEST_RELEASE_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases/latest';
+const RELEASES_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases?per_page=100';
+const RELEASES_LATEST_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases/latest';
+const RELEASE_ASSET_PREFIX = 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/';
 
 export type ApkUpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'current'
-  | 'available'
-  | 'downloading'
-  | 'installer'
-  | 'permission'
-  | 'ready'
-  | 'error'
-  | 'installed'
-  | 'offline';
+  | 'idle' | 'checking' | 'current' | 'available' | 'downloading'
+  | 'installer' | 'permission' | 'ready' | 'error' | 'installed' | 'offline';
 
 export interface ApkUpdateRelease {
   appName: string;
@@ -29,43 +23,131 @@ export interface ApkUpdateRelease {
   sizeBytes: number;
 }
 
-interface AppInfo {
-  packageId: string;
-  versionName: string;
-  versionCode: number;
-}
-
-interface NativeProgress {
-  status: string;
-  progress?: number;
-  downloadedBytes?: number;
-  totalBytes?: number;
-  error?: string;
-}
-
-interface UpdateStarted {
-  started: boolean;
-}
-
+interface AppInfo { packageId: string; versionName: string; versionCode: number }
+interface NativeProgress { status: string; progress?: number; downloadedBytes?: number; totalBytes?: number; error?: string }
+interface UpdateStarted { started: boolean }
+interface GitHubAsset { name?: string; browser_download_url?: string }
+interface GitHubRelease { tag_name?: string; published_at?: string; draft?: boolean; prerelease?: boolean; assets?: GitHubAsset[] }
 interface OnlyUsUpdaterPlugin {
   getAppInfo(): Promise<AppInfo>;
   closeApp(): Promise<void>;
   downloadAndInstallUpdate(options: {
-    downloadUrl: string;
-    expectedPackageId: string;
-    expectedVersionName: string;
-    expectedVersionCode: string;
-    expectedSha256: string;
-    expectedSizeBytes: string;
+    downloadUrl: string; expectedPackageId: string; expectedVersionName: string;
+    expectedVersionCode: string; expectedSha256: string; expectedSizeBytes: string;
   }): Promise<UpdateStarted>;
   installPendingUpdate(): Promise<UpdateStarted>;
-  addListener(
-    eventName: 'progress',
-    listenerFunc: (progress: NativeProgress) => void
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'progress', listenerFunc: (progress: NativeProgress) => void): Promise<PluginListenerHandle>;
 }
 
 const OnlyUsUpdater = registerPlugin<OnlyUsUpdaterPlugin>('OnlyUsUpdater');
+
+function compareVersions(a: string, b: string): number {
+  const parse = (value: string) => value.replace(/^v/i, '').split('.').map(part => Number.parseInt(part, 10) || 0);
+  const left = parse(a);
+  const right = parse(b);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const difference = (left[i] || 0) - (right[i] || 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function parseReleaseMetadata(manifest: any, tagName: string, packageId: string): ApkUpdateRelease | null {
+  const versionName = String(manifest?.versionName || tagName.replace(/^v/i, '')).trim().replace(/^v/i, '');
+  const versionCode = Number(manifest?.versionCode);
+  const edition = manifest?.editions?.[packageId];
+  const notes = Array.isArray(manifest?.releaseNotes)
+    ? manifest.releaseNotes.map((section: any) => ({
+        title: String(section?.title || '').trim(),
+        items: Array.isArray(section?.items) ? section.items.map((item: unknown) => String(item).trim()).filter(Boolean) : []
+      })).filter((section: { title: string; items: string[] }) => section.title && section.items.length > 0)
+    : [];
+  const downloadUrl = String(edition?.downloadUrl || '');
+  const sha256 = String(edition?.sha256 || '').toLowerCase();
+  const sizeBytes = Number(edition?.sizeBytes);
+
+  if (
+    manifest?.schemaVersion !== 1 ||
+    String(manifest?.versionTag || '') !== tagName ||
+    !/^\d+\.\d+\.\d+$/.test(versionName) ||
+    !Number.isSafeInteger(versionCode) || versionCode < 1 ||
+    !edition || edition.packageId !== packageId ||
+    !downloadUrl.startsWith(RELEASE_ASSET_PREFIX) ||
+    !/^[a-f0-9]{64}$/.test(sha256) ||
+    !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 ||
+    notes.length === 0
+  ) return null;
+
+  return {
+    appName: String(manifest.appName || 'OnlyUs'),
+    versionName,
+    versionCode,
+    publishedAt: String(manifest.publishedAt || ''),
+    releaseNotes: notes,
+    packageId,
+    assetName: String(edition.assetName || ''),
+    downloadUrl,
+    sha256,
+    sizeBytes
+  };
+}
+
+async function fetchJson(url: string, signal: AbortSignal, accept = 'application/vnd.github+json') {
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers: { Accept: accept },
+    signal
+  });
+  if (!response.ok) throw new Error('GitHub returned HTTP ' + response.status + '.');
+  return response.json();
+}
+
+async function findNewestValidRelease(packageId: string, signal: AbortSignal): Promise<ApkUpdateRelease | null> {
+  // Prefer GitHub's canonical latest-release endpoint. It naturally falls back after a release is deleted.
+  // If its metadata/assets are broken, inspect the remaining published releases and choose the newest valid one.
+  const triedTags = new Set<string>();
+  try {
+    const latest = await fetchJson(RELEASES_LATEST_API + '?t=' + Date.now(), signal) as GitHubRelease;
+    const tag = String(latest?.tag_name || '');
+    if (tag) {
+      triedTags.add(tag);
+      const metadataAsset = latest.assets?.find(asset => asset?.name === 'onlyus-update-metadata.json');
+      if (metadataAsset?.browser_download_url) {
+        try {
+          const metadata = await fetchJson(metadataAsset.browser_download_url + '?t=' + Date.now(), signal, 'application/json');
+          const parsed = parseReleaseMetadata(metadata, tag, packageId);
+          if (parsed) return parsed;
+        } catch (error) {
+          if (signal.aborted) throw error;
+        }
+      }
+    }
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // The list endpoint below can still work if the /latest request failed transiently.
+  }
+
+  const releases = await fetchJson(RELEASES_API + '&t=' + Date.now(), signal) as GitHubRelease[];
+  const candidates = releases
+    .filter(item => !item.draft && !item.prerelease && item.tag_name && !triedTags.has(item.tag_name))
+    .sort((a, b) => compareVersions(String(b.tag_name), String(a.tag_name)));
+
+  for (const candidate of candidates) {
+    if (signal.aborted) throw new Error('Update check cancelled.');
+    const tag = String(candidate.tag_name);
+    const metadataAsset = candidate.assets?.find(asset => asset?.name === 'onlyus-update-metadata.json');
+    if (!metadataAsset?.browser_download_url) continue;
+    try {
+      const metadata = await fetchJson(metadataAsset.browser_download_url + '?t=' + Date.now(), signal, 'application/json');
+      const parsed = parseReleaseMetadata(metadata, tag, packageId);
+      if (parsed) return parsed;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      // A malformed/deleted release should not hide a valid older release.
+    }
+  }
+  return null;
+}
 
 export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
   const [release, setRelease] = useState<ApkUpdateRelease | null>(null);
@@ -73,167 +155,110 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
   const [status, setStatus] = useState<ApkUpdateStatus>('idle');
   const [progress, setProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const checkInFlight = useRef(false);
 
   useEffect(() => {
     if (!enabled || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
     let cancelled = false;
     let progressListener: PluginListenerHandle | null = null;
-    const controller = new AbortController();
-    // The check includes native bridge startup and two sequential GitHub requests; 6.5s was too short on mobile networks.
-    const timeout = window.setTimeout(() => controller.abort(), 20000);
+    let appStateListener: PluginListenerHandle | null = null;
+    let activeController: AbortController | null = null;
 
     const checkForUpdate = async () => {
+      if (cancelled || checkInFlight.current) return;
+      checkInFlight.current = true;
+      activeController = new AbortController();
+      const controller = activeController;
+      const timeout = window.setTimeout(() => controller.abort(), 30000);
       setStatus('checking');
       setErrorMessage('');
 
       try {
-        // Subscribe before reading or downloading anything; progress comes from the native installer bridge.
-        progressListener = await OnlyUsUpdater.addListener('progress', event => {
-          setProgress(Math.max(0, Math.min(100, Number(event.progress) || 0)));
-          if (event.status === 'downloading') {
-            setStatus('downloading');
-            setErrorMessage('');
-          } else if (event.status === 'installer') {
-            setStatus('installer');
-            setErrorMessage('');
-          } else if (event.status === 'permission') {
-            setStatus('permission');
-            setErrorMessage(event.error || '');
-          } else if (event.status === 'ready') {
-            setStatus('ready');
-            setErrorMessage(event.error || 'The installer was closed before the update completed.');
-          } else if (event.status === 'installed') {
-            setStatus('installed');
-            setErrorMessage('');
-          } else if (event.status === 'error') {
-            setStatus('error');
-            setErrorMessage(event.error || 'The APK could not be downloaded or opened.');
-          }
-        });
-        if (cancelled) {
-          await progressListener.remove();
-          progressListener = null;
-          return;
-        }
-
         const nativeInfo = await OnlyUsUpdater.getAppInfo();
         const packageId = String(nativeInfo.packageId || '');
         const installedCode = Number(nativeInfo.versionCode);
-        const installedName = String(nativeInfo.versionName || '1.0.0')
-          .replace(/-(rahul|nusrat)$/i, '');
-
+        const installedName = String(nativeInfo.versionName || '1.0.0').replace(/-(rahul|nusrat)$/i, '');
         if (!packageId || !Number.isSafeInteger(installedCode) || installedCode < 1) {
           throw new Error('Installed app version could not be read.');
         }
         if (cancelled) return;
         setCurrentVersionName(installedName);
 
-        const response = await fetch(LATEST_RELEASE_API + '?t=' + Date.now(), {
-          cache: 'no-store',
-          headers: { Accept: 'application/vnd.github+json' },
-          signal: controller.signal
-        });
-        if (!response.ok) throw new Error('GitHub Releases returned HTTP ' + response.status + '.');
-
-        const githubRelease = await response.json();
-        const tagName = String(githubRelease?.tag_name || '').trim();
-        const releaseTagVersionName = tagName.replace(/^v/i, '');
-        const releaseAssets = Array.isArray(githubRelease?.assets) ? githubRelease.assets : [];
-        const metadataAsset = releaseAssets.find((asset: any) => asset?.name === 'onlyus-update-metadata.json');
-        if (!metadataAsset?.browser_download_url) {
-          throw new Error('This release does not include update verification metadata. Installations can retry the check after a compatible release is published.');
-        }
-        const metadataResponse = await fetch(String(metadataAsset.browser_download_url) + '?t=' + Date.now(), {
-          cache: 'no-store',
-          headers: { Accept: 'application/json' },
-          signal: controller.signal
-        });
-        if (!metadataResponse.ok) throw new Error('Release verification metadata returned HTTP ' + metadataResponse.status + '.');
-        const manifest = await metadataResponse.json();
-        if (String(manifest?.versionTag || '') !== tagName) {
-          throw new Error('Release metadata does not match the latest release tag.');
-        }
-        const versionName = String(manifest?.versionName || releaseTagVersionName).trim().replace(/^v/i, '');
-        const versionCode = Number(manifest?.versionCode);
-        const packageAsset = manifest?.editions?.[packageId];
-        const releaseNotes = Array.isArray(manifest?.releaseNotes)
-          ? manifest.releaseNotes
-              .map((section: any) => ({
-                title: String(section?.title || '').trim(),
-                items: Array.isArray(section?.items) ? section.items.map((item: unknown) => String(item).trim()).filter(Boolean) : []
-              }))
-              .filter((section: { title: string; items: string[] }) => section.title && section.items.length > 0)
-          : [];
-
-        if (
-          manifest?.schemaVersion !== 1 ||
-          !/^\d+\.\d+\.\d+$/.test(versionName) ||
-          !Number.isSafeInteger(versionCode) ||
-          versionCode < 1 ||
-          !packageAsset ||
-          packageAsset.packageId !== packageId ||
-          !Array.isArray(manifest.releaseNotes) ||
-          releaseNotes.length === 0
-        ) {
-          throw new Error('Update metadata is missing required fields.');
-        }
-
-        if (versionCode <= installedCode) {
-          if (!cancelled) setStatus('current');
+        const nextRelease = await findNewestValidRelease(packageId, controller.signal);
+        if (cancelled) return;
+        if (!nextRelease) throw new Error('No valid published APK release metadata was found.');
+        if (nextRelease.versionCode <= installedCode) {
+          setRelease(null);
+          setStatus('current');
           return;
         }
-
-        const downloadUrl = String(packageAsset.downloadUrl || '');
-        const sha256 = String(packageAsset.sha256 || '').toLowerCase();
-        const sizeBytes = Number(packageAsset.sizeBytes);
-        if (
-          !downloadUrl.startsWith('https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/') ||
-          !/^[a-f0-9]{64}$/.test(sha256) ||
-          !Number.isSafeInteger(sizeBytes) ||
-          sizeBytes < 1
-        ) {
-          throw new Error('Release APK metadata is invalid.');
-        }
-
-        const nextRelease: ApkUpdateRelease = {
-          appName: String(manifest.appName || 'OnlyUs'),
-          versionName,
-          versionCode,
-          publishedAt: String(manifest.publishedAt || ''),
-          releaseNotes,
-          packageId,
-          assetName: String(packageAsset.assetName || ''),
-          downloadUrl,
-          sha256,
-          sizeBytes
-        };
-        if (!cancelled) {
-          setRelease(nextRelease);
-          setStatus('available');
-        }
+        setRelease(nextRelease);
+        setStatus('available');
       } catch (error) {
         if (cancelled) return;
-        // Fail open: nothing is cached; the next app run retries from scratch.
-        setRelease(null);
         setStatus('offline');
         setErrorMessage(error instanceof Error ? error.message : 'Update check unavailable.');
+      } finally {
+        window.clearTimeout(timeout);
+        if (activeController === controller) activeController = null;
+        checkInFlight.current = false;
       }
     };
 
-    void checkForUpdate();
+    const onResume = () => { void checkForUpdate(); };
+    const onOnline = () => { void checkForUpdate(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkForUpdate();
+    };
+
+    const setup = async () => {
+      try {
+        progressListener = await OnlyUsUpdater.addListener('progress', event => {
+          setProgress(Math.max(0, Math.min(100, Number(event.progress) || 0)));
+          if (event.status === 'downloading') { setStatus('downloading'); setErrorMessage(''); }
+          else if (event.status === 'installer') { setStatus('installer'); setErrorMessage(''); }
+          else if (event.status === 'permission') { setStatus('permission'); setErrorMessage(event.error || ''); }
+          else if (event.status === 'ready') { setStatus('ready'); setErrorMessage(event.error || 'The installer was closed before the update completed.'); }
+          else if (event.status === 'installed') { setStatus('installed'); setErrorMessage(''); }
+          else if (event.status === 'error') { setStatus('error'); setErrorMessage(event.error || 'The APK could not be downloaded or opened.'); }
+        });
+      } catch {
+        // Update checks still work if progress events are unavailable.
+      }
+      if (cancelled) {
+        if (progressListener) await progressListener.remove();
+        return;
+      }
+      try {
+        appStateListener = await App.addListener('appStateChange', state => {
+          if (state.isActive) void checkForUpdate();
+        });
+      } catch {
+        // Browser visibility and network events remain available.
+      }
+      void checkForUpdate();
+    };
+
+    void setup();
+    const retryTimer = window.setInterval(() => { void checkForUpdate(); }, 15 * 60 * 1000);
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
-      controller.abort();
+      window.clearInterval(retryTimer);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      activeController?.abort();
       if (progressListener) void progressListener.remove();
+      if (appStateListener) void appStateListener.remove();
+      checkInFlight.current = false;
     };
   }, [enabled]);
 
   const closeApp = useCallback(() => {
-    void OnlyUsUpdater.closeApp().catch(() => {
-      // Web previews have no native Android app to close.
-    });
+    void OnlyUsUpdater.closeApp().catch(() => {});
   }, []);
 
   const startUpdate = useCallback(async () => {
@@ -274,14 +299,5 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
     await startUpdate();
   }, [startUpdate]);
 
-  return {
-    release,
-    currentVersionName,
-    status,
-    progress,
-    errorMessage,
-    startUpdate,
-    retryUpdate,
-    closeApp
-  };
+  return { release, currentVersionName, status, progress, errorMessage, startUpdate, retryUpdate, closeApp };
 }
