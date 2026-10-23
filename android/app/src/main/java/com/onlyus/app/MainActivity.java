@@ -331,15 +331,23 @@ if (getBridge() != null && getBridge().getWebView() != null) {
     @Override
     public void onPause() {
         super.onPause();
-        isAppForeground = false;
+        // Do not mark the app backgrounded merely because a transient system surface
+        // (notification shade, permission dialog, etc.) temporarily takes window focus.
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
     }
 
     @Override
+    public void onStart() {
+        super.onStart();
+        isAppForeground = true;
+    }
+
+    @Override
     public void onStop() {
         super.onStop();
+        isAppForeground = false;
         // Do not kill the Notes activity here. Android also calls onStop when an external
         // camera, document picker, or photo picker takes focus. The JS vault auto-locks
         // on genuine backgrounding; killing the Activity here discards media-picker results.
