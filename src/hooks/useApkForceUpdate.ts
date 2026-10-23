@@ -80,7 +80,8 @@ export function useApkForceUpdate({ enabled }: { enabled: boolean }) {
     let cancelled = false;
     let progressListener: PluginListenerHandle | null = null;
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 6500);
+    // The check includes native bridge startup and two sequential GitHub requests; 6.5s was too short on mobile networks.
+    const timeout = window.setTimeout(() => controller.abort(), 20000);
 
     const checkForUpdate = async () => {
       setStatus('checking');
