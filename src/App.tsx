@@ -946,11 +946,12 @@ export default function App() {
     };
   }, []);
 
-  // Permissions: Request notifications on initial login for Direct edition (Rahul)
+  // Keep push registration healthy for the regular OnlyUs edition.
+  // A token fetch can fail during cold startup; retry when the app returns to foreground.
   useEffect(() => {
-    if (!user) return;
+    if (!user || isNotesFlavor) return;
     const isNotes = typeof navigator !== 'undefined' && navigator.userAgent.includes('OnlyUsFlavor/Notes');
-    // Nusrat's stealth edition intentionally avoids notification popups to protect stealth
+    // Double-guard the stealth edition: it must never request notifications or register a push token.
     if (isNotes) return;
 
     // Initialize WhatsApp-style local notifications and inline reply callback
@@ -987,14 +988,35 @@ export default function App() {
 
     // Register high-priority FCM token for background/closed app push delivery
     const role: UserRole = isOwner ? 'owner' : (userProfile?.role || 'owner');
-    syncFcmTokenToSupabase(user.id, role);
+    const registerPushToken = () => {
+      void syncFcmTokenToSupabase(user.id, role);
+    };
+    registerPushToken();
+
+    let appStateListener: { remove: () => Promise<void> } | undefined;
+    let disposed = false;
+    // Retry token registration after returning from Android background. This covers
+    // cold-start timing where Firebase may not have produced a token during login.
+    CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive && !disposed) registerPushToken();
+    }).then(listener => {
+      if (disposed) void listener.remove();
+      else appStateListener = listener;
+    }).catch(error => {
+      console.warn('[notifications] Unable to register app-state retry listener:', error);
+    });
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
       }
     }
-  }, [user, userProfile?.role, isOwner]);
+
+    return () => {
+      disposed = true;
+      if (appStateListener) void appStateListener.remove();
+    };
+  }, [user, userProfile?.role, isOwner, isNotesFlavor]);
 
   // Helper: Verify if partner's cached passcode is still valid against current app_config
   const verifyPasscodeSession = useCallback((config: AppConfig) => {
