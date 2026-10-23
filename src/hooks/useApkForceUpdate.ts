@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App } from '@capacitor/app';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
-import { getReleaseTagFromDownloadUrl, parseLegacyReleaseMetadata, sortStableReleases } from '../lib/apkReleaseDiscovery.mjs';
+import {
+  getReleaseTagFromDownloadUrl,
+  parseCanonicalReleaseMetadata,
+  parseLegacyReleaseMetadata,
+  sortStableReleases
+} from '../lib/apkReleaseDiscovery.mjs';
 
+const CURRENT_MANIFEST_URL = 'https://raw.githubusercontent.com/RahulExe69/OnlyUs69-Releases/main/latest.json';
 const RELEASES_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases?per_page=100';
 const RELEASE_ASSET_PREFIX = 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/';
 
@@ -94,6 +100,18 @@ async function fetchJson(url: string, signal: AbortSignal, accept = 'application
 }
 
 async function findNewestValidRelease(packageId: string, signal: AbortSignal): Promise<ApkUpdateRelease | null> {
+  // The canonical root manifest is served as static raw text with browser CORS
+  // support. Prefer it over fetching a JSON file as a GitHub Release download
+  // asset, which is a less reliable cross-origin fetch inside Android WebView.
+  try {
+    const manifest = await fetchJson(CURRENT_MANIFEST_URL + '?t=' + Date.now(), signal, 'application/json');
+    const current = parseCanonicalReleaseMetadata(manifest, packageId);
+    if (current) return current;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // Recover through the release API below if the canonical manifest is not reachable.
+  }
+
   let releases: GitHubRelease[];
 
   try {
@@ -102,9 +120,7 @@ async function findNewestValidRelease(packageId: string, signal: AbortSignal): P
     releases = await fetchJson(RELEASES_API + '&t=' + Date.now(), signal) as GitHubRelease[];
   } catch (error) {
     if (signal.aborted) throw error;
-    // Fail open rather than trusting the legacy root manifest: its versionCode can
-    // differ from the signed APK's actual versionCode. Attached release metadata
-    // is tied to the exact tag and includes the exact APK hash/asset.
+    // Fail open rather than marking an unavailable check as "current".
     return null;
   }
 
