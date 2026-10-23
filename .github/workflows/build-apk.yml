@@ -345,7 +345,7 @@ jobs:
           const metadata = JSON.parse(await readFile('../onlyus-update-metadata.json', 'utf8'));
           // Keep the legacy manifest schema stable; release-attached metadata retains versionTag.
           delete metadata.versionTag;
-          await writeFile('latest.json', JSON.stringify(metadata, null, 2) + '\\n');
+          await writeFile('latest.json', JSON.stringify(metadata, null, 2) + '\n');
           NODE
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
