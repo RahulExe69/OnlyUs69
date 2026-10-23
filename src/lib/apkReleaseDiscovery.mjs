@@ -51,8 +51,7 @@ export function sortStableReleases(releases) {
 
 /**
  * Return the release tag embedded in an official GitHub release asset URL.
- * This is used to validate metadata from latest.json, which intentionally
- * omits versionTag for legacy compatibility.
+ * This validates the release asset URLs referenced by either metadata schema.
  */
 export function getReleaseTagFromDownloadUrl(value) {
   try {
