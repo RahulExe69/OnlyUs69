@@ -12,7 +12,8 @@
     "cap:sync": "cap sync",
     "cap:build": "npm run build && npm run icons && cap sync",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:updater": "node --test scripts/test-apk-release-discovery.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
