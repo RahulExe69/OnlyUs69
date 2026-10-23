@@ -1083,16 +1083,16 @@ export default function App() {
           const defaultHandle = data.username || (data.email ? data.email.split('@')[0] : (data.role === 'owner' ? 'rahul' : 'nusrat'));
           const profile = { ...data, uid: user.id, username: defaultHandle } as UserProfile;
 
-          const cachedTheme = (typeof window !== 'undefined' ? localStorage.getItem('onlyus_chat_theme') : null) as ThemeName | null;
-          // Determine the active theme:
-          // The user's explicit local device selection (cachedTheme) takes top priority.
-          // If no local theme is set, fall back to the remote database profile theme, or '3d-dark'.
-          const resolvedTheme: ThemeName = (cachedTheme && isValidTheme(cachedTheme))
-            ? cachedTheme
-            : ((profile.theme && isValidTheme(profile.theme as ThemeName)) ? (profile.theme as ThemeName) : '3d-dark');
+          // The signed-in account's saved theme is authoritative on login.
+          // Local storage belongs to this device and may contain another account's theme.
+          // Never write a device-cached theme over an existing account's saved preference.
+          const resolvedTheme: ThemeName =
+            (profile.theme && isValidTheme(profile.theme as ThemeName))
+              ? (profile.theme as ThemeName)
+              : '3d-dark';
 
-          // Keep remote database and local storage in complete sync
-          if (profile.theme !== resolvedTheme) {
+          // Repair only an invalid/missing server value with a safe default.
+          if (!profile.theme || !isValidTheme(profile.theme as ThemeName)) {
             profile.theme = resolvedTheme;
             const targetId = user.id || profile.id || profile.uid;
             if (targetId) {
@@ -1115,7 +1115,8 @@ export default function App() {
             applyTheme(resolvedTheme);
           }
         } else if (!error || error.code === 'PGRST116') {
-          const cachedTheme = (localStorage.getItem('onlyus_chat_theme') as ThemeName) || 'romantic';
+          // A genuinely new account must not inherit whichever account used this device last.
+          const cachedTheme: ThemeName = '3d-dark';
           const defaultHandle = (email || "").split('@')[0] || (role === 'owner' ? 'rahul' : 'nusrat');
           const newProfile = {
             id: user.id,
