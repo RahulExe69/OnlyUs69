@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App } from '@capacitor/app';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { getReleaseTagFromDownloadUrl, sortStableReleases } from '../lib/apkReleaseDiscovery.mjs';
 
 const RELEASES_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases?per_page=100';
-const RELEASES_LATEST_API = 'https://api.github.com/repos/RahulExe69/OnlyUs69-Releases/releases/latest';
+const LEGACY_MANIFEST_API = 'https://raw.githubusercontent.com/RahulExe69/OnlyUs69-Releases/main/latest.json';
 const RELEASE_ASSET_PREFIX = 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/';
 
 export type ApkUpdateStatus =
@@ -52,7 +53,7 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-function parseReleaseMetadata(manifest: any, tagName: string, packageId: string): ApkUpdateRelease | null {
+function parseReleaseMetadata(manifest: any, tagName: string, packageId: string, allowMissingVersionTag = false): ApkUpdateRelease | null {
   const versionName = String(manifest?.versionName || tagName.replace(/^v/i, '')).trim().replace(/^v/i, '');
   const versionCode = Number(manifest?.versionCode);
   const edition = manifest?.editions?.[packageId];
@@ -68,12 +69,15 @@ function parseReleaseMetadata(manifest: any, tagName: string, packageId: string)
 
   if (
     manifest?.schemaVersion !== 1 ||
-    String(manifest?.versionTag || '') !== tagName ||
+    (allowMissingVersionTag
+      ? Boolean(manifest?.versionTag && String(manifest.versionTag) !== tagName)
+      : String(manifest?.versionTag || '') !== tagName) ||
     !/^\d+\.\d+\.\d+$/.test(versionName) ||
     versionName !== tagName.replace(/^v/i, '') ||
     !Number.isSafeInteger(versionCode) || versionCode < 1 ||
     !edition || edition.packageId !== packageId ||
     !downloadUrl.startsWith(RELEASE_ASSET_PREFIX) ||
+    getReleaseTagFromDownloadUrl(downloadUrl) !== tagName ||
     !/^[a-f0-9]{64}$/.test(sha256) ||
     !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 ||
     notes.length === 0
@@ -103,50 +107,82 @@ async function fetchJson(url: string, signal: AbortSignal, accept = 'application
   return response.json();
 }
 
+async function parseLegacyLatestManifest(packageId: string, signal: AbortSignal): Promise<ApkUpdateRelease | null> {
+  const manifest = await fetchJson(LEGACY_MANIFEST_API + '?t=' + Date.now(), signal, 'application/json');
+  const edition = manifest?.editions?.[packageId];
+  const tagName = getReleaseTagFromDownloadUrl(String(edition?.downloadUrl || ''));
+  if (!tagName) return null;
+  return parseReleaseMetadata(manifest, tagName, packageId, true);
+}
+
 async function findNewestValidRelease(packageId: string, signal: AbortSignal): Promise<ApkUpdateRelease | null> {
-  // Prefer GitHub's canonical latest-release endpoint. It naturally falls back after a release is deleted.
-  // If its metadata/assets are broken, inspect the remaining published releases and choose the newest valid one.
-  const triedTags = new Set<string>();
+  let releases: GitHubRelease[];
+
   try {
-    const latest = await fetchJson(RELEASES_LATEST_API + '?t=' + Date.now(), signal) as GitHubRelease;
-    const tag = String(latest?.tag_name || '');
-    if (tag) {
-      triedTags.add(tag);
-      const metadataAsset = latest.assets?.find(asset => asset?.name === 'onlyus-update-metadata.json');
-      if (metadataAsset?.browser_download_url) {
-        try {
-          const metadata = await fetchJson(metadataAsset.browser_download_url + '?t=' + Date.now(), signal, 'application/json');
-          const parsed = parseReleaseMetadata(metadata, tag, packageId);
-          if (parsed) return parsed;
-        } catch (error) {
-          if (signal.aborted) throw error;
-        }
-      }
-    }
+    // Do not rely on /releases/latest: GitHub may designate an older release as
+    // "latest" even when a higher semantic-version tag has already been published.
+    releases = await fetchJson(RELEASES_API + '&t=' + Date.now(), signal) as GitHubRelease[];
   } catch (error) {
     if (signal.aborted) throw error;
-    // The list endpoint below can still work if the /latest request failed transiently.
+    // The raw manifest is a fallback when the Releases API is unavailable/rate-limited.
+    try {
+      return await parseLegacyLatestManifest(packageId, signal);
+    } catch (fallbackError) {
+      if (signal.aborted) throw fallbackError;
+      return null;
+    }
   }
 
-  const releases = await fetchJson(RELEASES_API + '&t=' + Date.now(), signal) as GitHubRelease[];
-  const candidates = releases
-    .filter(item => !item.draft && !item.prerelease && item.tag_name && !triedTags.has(item.tag_name))
-    .sort((a, b) => compareVersions(String(b.tag_name), String(a.tag_name)));
+  const candidates = sortStableReleases(releases);
+  let legacyManifestPromise: Promise<any> | null = null;
 
   for (const candidate of candidates) {
     if (signal.aborted) throw new Error('Update check cancelled.');
     const tag = String(candidate.tag_name);
     const metadataAsset = candidate.assets?.find(asset => asset?.name === 'onlyus-update-metadata.json');
-    if (!metadataAsset?.browser_download_url) continue;
+
+    if (
+      metadataAsset?.browser_download_url &&
+      getReleaseTagFromDownloadUrl(metadataAsset.browser_download_url) === tag
+    ) {
+      try {
+        const metadata = await fetchJson(
+          metadataAsset.browser_download_url + '?t=' + Date.now(),
+          signal,
+          'application/json'
+        );
+        const parsed = parseReleaseMetadata(metadata, tag, packageId);
+        if (parsed) return parsed;
+      } catch (error) {
+        if (signal.aborted) throw error;
+        // Bad/missing metadata on one release must not hide an older valid one.
+      }
+    }
+
+    // latest.json intentionally omits versionTag for backwards compatibility.
+    // Use it only when its download URL identifies this exact release candidate,
+    // never when it points at a deleted or different version.
     try {
-      const metadata = await fetchJson(metadataAsset.browser_download_url + '?t=' + Date.now(), signal, 'application/json');
-      const parsed = parseReleaseMetadata(metadata, tag, packageId);
-      if (parsed) return parsed;
+      if (!legacyManifestPromise) {
+        legacyManifestPromise = fetchJson(
+          LEGACY_MANIFEST_API + '?t=' + Date.now(),
+          signal,
+          'application/json'
+        );
+      }
+      const legacyManifest = await legacyManifestPromise;
+      const legacyEdition = legacyManifest?.editions?.[packageId];
+      const legacyTag = getReleaseTagFromDownloadUrl(String(legacyEdition?.downloadUrl || ''));
+      if (legacyTag === tag) {
+        const parsed = parseReleaseMetadata(legacyManifest, tag, packageId, true);
+        if (parsed) return parsed;
+      }
     } catch (error) {
       if (signal.aborted) throw error;
-      // A malformed/deleted release should not hide a valid older release.
+      // Continue scanning published releases if the legacy manifest is unavailable.
     }
   }
+
   return null;
 }
 
