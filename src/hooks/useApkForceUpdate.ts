@@ -41,7 +41,7 @@ interface OnlyUsUpdaterPlugin {
 
 const OnlyUsUpdater = registerPlugin<OnlyUsUpdaterPlugin>('OnlyUsUpdater');
 
-function parseReleaseMetadata(manifest: any, tagName: string, packageId: string, allowMissingVersionTag = false): ApkUpdateRelease | null {
+function parseReleaseMetadata(manifest: any, tagName: string, packageId: string): ApkUpdateRelease | null {
   const versionName = String(manifest?.versionName || tagName.replace(/^v/i, '')).trim().replace(/^v/i, '');
   const versionCode = Number(manifest?.versionCode);
   const edition = manifest?.editions?.[packageId];
@@ -57,9 +57,7 @@ function parseReleaseMetadata(manifest: any, tagName: string, packageId: string,
 
   if (
     manifest?.schemaVersion !== 1 ||
-    (allowMissingVersionTag
-      ? Boolean(manifest?.versionTag && String(manifest.versionTag) !== tagName)
-      : String(manifest?.versionTag || '') !== tagName) ||
+    String(manifest?.versionTag || '') !== tagName ||
     !/^\d+\.\d+\.\d+$/.test(versionName) ||
     versionName !== tagName.replace(/^v/i, '') ||
     !Number.isSafeInteger(versionCode) || versionCode < 1 ||
@@ -107,6 +105,7 @@ async function findNewestValidRelease(packageId: string, signal: AbortSignal): P
     // Fail open rather than trusting the legacy root manifest: its versionCode can
     // differ from the signed APK's actual versionCode. Attached release metadata
     // is tied to the exact tag and includes the exact APK hash/asset.
+    return null;
   }
 
   const candidates = sortStableReleases(releases);
