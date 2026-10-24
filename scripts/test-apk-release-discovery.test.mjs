@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareVersions, getReleaseTagFromDownloadUrl, parseLegacyReleaseMetadata, sortStableReleases } from '../src/lib/apkReleaseDiscovery.mjs';
+import {
+  compareVersions,
+  getReleaseTagFromDownloadUrl,
+  parseCanonicalReleaseMetadata,
+  parseLegacyReleaseMetadata,
+  sortStableReleases
+} from '../src/lib/apkReleaseDiscovery.mjs';
 
 test('chooses the highest semantic version regardless of release-list order', () => {
   // The list response is not assumed to be in semantic-version order.
@@ -44,6 +50,76 @@ test('extracts only tags embedded in official release asset URLs', () => {
     getReleaseTagFromDownloadUrl('https://github.com/attacker/other/releases/download/v1.0.8/OnlyUs.apk'),
     null
   );
+});
+
+const currentV109Manifest = {
+  schemaVersion: 1,
+  appName: 'OnlyUs',
+  versionName: '1.0.9',
+  versionCode: 1000009,
+  publishedAt: '2026-10-23T21:47:13.308Z',
+  releaseNotes: [
+    { title: 'Other updates', items: ['Fix update detection', 'Improve reliability'] }
+  ],
+  editions: {
+    'com.onlyus.app': {
+      packageId: 'com.onlyus.app',
+      assetName: 'OnlyUs.apk',
+      downloadUrl: 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/v1.0.9/OnlyUs.apk',
+      sizeBytes: 4987902,
+      sha256: '8a84c15d6c77dbf2d5effcfb8afd60f5322996b8eba282b2f3dc2cb6e0d2f392'
+    },
+    'com.onlyus.notes': {
+      packageId: 'com.onlyus.notes',
+      assetName: 'Notes.apk',
+      downloadUrl: 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/v1.0.9/Notes.apk',
+      sizeBytes: 4983757,
+      sha256: '880ca8e077ed5504e13a40a860e96704fd5f9e05d98f0e9a340d969f324710b1'
+    }
+  }
+};
+
+test('parses canonical latest.json even when legacy-compatible root manifest omits versionTag', () => {
+  const parsed = parseCanonicalReleaseMetadata(currentV109Manifest, 'com.onlyus.app');
+  assert.ok(parsed);
+  assert.equal(parsed.versionName, '1.0.9');
+  assert.equal(parsed.versionCode, 1000009);
+  assert.equal(parsed.packageId, 'com.onlyus.app');
+  assert.equal(parsed.assetName, 'OnlyUs.apk');
+  assert.equal(parsed.sizeBytes, 4987902);
+  assert.equal(parsed.sha256, currentV109Manifest.editions['com.onlyus.app'].sha256);
+});
+
+test('selects the Notes APK metadata without mixing editions', () => {
+  const parsed = parseCanonicalReleaseMetadata(currentV109Manifest, 'com.onlyus.notes');
+  assert.ok(parsed);
+  assert.equal(parsed.packageId, 'com.onlyus.notes');
+  assert.equal(parsed.assetName, 'Notes.apk');
+  assert.equal(parsed.downloadUrl, currentV109Manifest.editions['com.onlyus.notes'].downloadUrl);
+  assert.equal(parsed.sha256, currentV109Manifest.editions['com.onlyus.notes'].sha256);
+});
+
+test('rejects canonical manifest when tag, package, asset, checksum, or notes do not validate', () => {
+  const mismatchedTag = structuredClone(currentV109Manifest);
+  mismatchedTag.editions['com.onlyus.app'].downloadUrl =
+    'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/v1.0.8/OnlyUs.apk';
+  assert.equal(parseCanonicalReleaseMetadata(mismatchedTag, 'com.onlyus.app'), null);
+
+  const wrongPackage = structuredClone(currentV109Manifest);
+  wrongPackage.editions['com.onlyus.app'].packageId = 'com.attacker.app';
+  assert.equal(parseCanonicalReleaseMetadata(wrongPackage, 'com.onlyus.app'), null);
+
+  const wrongAsset = structuredClone(currentV109Manifest);
+  wrongAsset.editions['com.onlyus.app'].assetName = 'Notes.apk';
+  assert.equal(parseCanonicalReleaseMetadata(wrongAsset, 'com.onlyus.app'), null);
+
+  const badChecksum = structuredClone(currentV109Manifest);
+  badChecksum.editions['com.onlyus.app'].sha256 = 'not-a-checksum';
+  assert.equal(parseCanonicalReleaseMetadata(badChecksum, 'com.onlyus.app'), null);
+
+  const noNotes = structuredClone(currentV109Manifest);
+  noNotes.releaseNotes = [];
+  assert.equal(parseCanonicalReleaseMetadata(noNotes, 'com.onlyus.app'), null);
 });
 
 const legacyV108Manifest = {

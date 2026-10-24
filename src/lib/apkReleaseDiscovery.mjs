@@ -15,6 +15,7 @@
  */
 
 const STABLE_VERSION_TAG = /^v?\d+\.\d+\.\d+$/i;
+const OFFICIAL_RELEASE_ASSET_PREFIX = 'https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/';
 
 /** Compare stable semantic versions (including the v1.0.10 vs v1.0.9 case). */
 export function compareVersions(a, b) {
@@ -69,6 +70,84 @@ export function getReleaseTagFromDownloadUrl(value) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse the canonical root latest.json published alongside each APK release.
+ * Unlike the release-attached metadata asset, latest.json intentionally omits
+ * versionTag for compatibility with older clients. Derive the tag from the APK
+ * URL and require it to agree with the manifest's semantic version.
+ *
+ * This parser is deliberately strict: the manifest is allowed to select only
+ * the expected official APK alias for the installed package.
+ *
+ * @param {any} manifest
+ * @param {string} packageId
+ * @returns {null | {
+ *   appName: string,
+ *   versionName: string,
+ *   versionCode: number,
+ *   publishedAt: string,
+ *   releaseNotes: Array<{title: string, items: string[]}>,
+ *   packageId: string,
+ *   assetName: string,
+ *   downloadUrl: string,
+ *   sha256: string,
+ *   sizeBytes: number
+ * }}
+ */
+export function parseCanonicalReleaseMetadata(manifest, packageId) {
+  const versionName = String(manifest?.versionName || '').trim().replace(/^v/i, '');
+  const versionCode = Number(manifest?.versionCode);
+  const edition = manifest?.editions?.[packageId];
+  const expectedAssetName = packageId === 'com.onlyus.app'
+    ? 'OnlyUs.apk'
+    : packageId === 'com.onlyus.notes'
+      ? 'Notes.apk'
+      : '';
+  const assetName = String(edition?.assetName || '');
+  const downloadUrl = String(edition?.downloadUrl || '');
+  const sha256 = String(edition?.sha256 || '').toLowerCase();
+  const sizeBytes = Number(edition?.sizeBytes);
+  const expectedTag = 'v' + versionName;
+  const urlTag = getReleaseTagFromDownloadUrl(downloadUrl);
+  const notes = Array.isArray(manifest?.releaseNotes)
+    ? manifest.releaseNotes.map(section => ({
+        title: String(section?.title || '').trim(),
+        items: Array.isArray(section?.items)
+          ? section.items.map(item => String(item).trim()).filter(Boolean)
+          : []
+      })).filter(section => section.title && section.items.length > 0)
+    : [];
+
+  if (
+    manifest?.schemaVersion !== 1 ||
+    !/^\d+\.\d+\.\d+$/.test(versionName) ||
+    !Number.isSafeInteger(versionCode) || versionCode < 1 ||
+    !expectedAssetName ||
+    !edition || edition.packageId !== packageId ||
+    assetName !== expectedAssetName ||
+    !downloadUrl.startsWith(OFFICIAL_RELEASE_ASSET_PREFIX) ||
+    !urlTag || urlTag.replace(/^v/i, '') !== versionName ||
+    (manifest?.versionTag && String(manifest.versionTag).replace(/^v/i, '') !== versionName) ||
+    !downloadUrl.endsWith('/' + encodeURIComponent(expectedAssetName)) ||
+    !/^[a-f0-9]{64}$/.test(sha256) ||
+    !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 ||
+    notes.length === 0
+  ) return null;
+
+  return {
+    appName: String(manifest.appName || (packageId === 'com.onlyus.notes' ? 'Notes' : 'OnlyUs')),
+    versionName,
+    versionCode,
+    publishedAt: String(manifest.publishedAt || ''),
+    releaseNotes: notes,
+    packageId,
+    assetName,
+    downloadUrl,
+    sha256,
+    sizeBytes
+  };
 }
 
 /**
@@ -138,7 +217,7 @@ export function parseLegacyReleaseMetadata(manifest, tagName, packageId, assets)
     versionName !== tagName.replace(/^v/i, '') ||
     !Number.isSafeInteger(versionCode) ||
     versionCode < 1 ||
-    !downloadUrl.startsWith('https://github.com/RahulExe69/OnlyUs69-Releases/releases/download/') ||
+    !downloadUrl.startsWith(OFFICIAL_RELEASE_ASSET_PREFIX) ||
     getReleaseTagFromDownloadUrl(downloadUrl) !== tagName ||
     !new URL(downloadUrl).pathname.endsWith('/' + encodeURIComponent(assetName)) ||
     !Number.isSafeInteger(sizeBytes) ||
