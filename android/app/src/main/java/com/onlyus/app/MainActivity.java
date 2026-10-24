@@ -56,24 +56,43 @@ public static boolean isAppInForeground() {
         boolean isNotes = getPackageName().contains("notes");
 
         if (isNotes) {
-            // 1. Prevent screenshots & hide preview in recent apps drawer
-            getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            );
-
-            // 2. Register native accelerometer shake listener for instant panic exit
-            sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-            if (sensorManager != null) {
-                accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-                if (accelerometer != null) {
-                    sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
-                }
+            // These are defensive/stealth enhancements, not prerequisites for opening the chat.
+            // Some OEM Android builds can reject sensor or dynamic-receiver registration at runtime;
+            // never let an optional Notes-only feature prevent the activity from starting.
+            try {
+                // Prevent screenshots & hide preview in the recent-apps drawer.
+                getWindow().setFlags(
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE
+                );
+            } catch (RuntimeException e) {
+                Log.w("OnlyUsNotesStartup", "Could not enable secure-window flag", e);
             }
 
-            // Locking the display is an immediate panic-exit signal for the Notes disguise.
-            // Keep this separate from onStop(), which also runs while Android opens media pickers.
-            registerNotesScreenOffReceiver();
+            try {
+                // Register native accelerometer shake listener for instant panic exit.
+                sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+                if (sensorManager != null) {
+                    accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                    if (accelerometer != null) {
+                        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+                    }
+                }
+            } catch (RuntimeException e) {
+                // Chat startup can continue even if an OEM sensor service is unavailable.
+                Log.w("OnlyUsNotesStartup", "Shake-to-exit sensor unavailable; continuing startup", e);
+                sensorManager = null;
+                accelerometer = null;
+            }
+
+            try {
+                // Display-off remains a separate panic signal; onStop() also runs for media pickers.
+                registerNotesScreenOffReceiver();
+            } catch (RuntimeException e) {
+                // Fallback: keep the disguise/chat usable rather than crashing on receiver registration.
+                Log.w("OnlyUsNotesStartup", "Screen-off receiver unavailable; continuing startup", e);
+                screenOffReceiver = null;
+            }
         }
 
         // 3. Request app-specific permissions on initial launch
@@ -360,7 +379,12 @@ if (getBridge() != null && getBridge().getWebView() != null) {
         cancelMediaPickerExitFallback();
         OnlyUsUpdatePlugin.onActivityResumed(this);
         if (sensorManager != null && accelerometer != null && getPackageName().contains("notes")) {
-            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+            try {
+                sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+            } catch (RuntimeException e) {
+                // OEMs may invalidate the sensor service while the task returns from background.
+                Log.w("OnlyUsNotesStartup", "Could not resume shake-to-exit sensor", e);
+            }
         }
 
         // Clear stale chat alerts and saved history whenever the standard app opens.
